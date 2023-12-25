@@ -3,6 +3,7 @@ SD FaceFusion, by RunDiffusion
 
 ![image](https://github.com/runnitai/sd_facefusion/assets/1633844/bbfa6b69-c8db-4089-81df-048dd6fe89a5)
 
+[For the most optimal cloud experience for Automatic, SD Facefusion, and everything else, check out Rundiffusion](https://rundiffusion.com/)
 
 > Next generation face swapper and enhancer extension for Automatic1111, based on the original FaceFusion project.
 
