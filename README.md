@@ -13,7 +13,7 @@
 -------
 
 <img width="1199" alt="image" src="https://github.com/runnitai/sd_facefusion/assets/1633844/7534bc81-1305-427e-b6e8-1b6e0617397c">
-🌐 [For the most optimal cloud experience for Automatic, SD FaceFusion, and everything else, check out Rundiffusion!](https://rundiffusion.com/)
+🌐 For the most optimal cloud experience for Automatic, SD FaceFusion, and everything else, check out [Rundiffusion](https://rundiffusion.com/).
 
 
 🔥 **Features**
