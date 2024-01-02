@@ -2,6 +2,7 @@ from typing import Any, List, Literal
 from argparse import ArgumentParser
 import cv2
 import numpy
+import numpy as np
 
 import facefusion.globals
 import facefusion.processors.frame.core as frame_processors
@@ -60,43 +61,53 @@ def post_process() -> None:
     clear_content_analyser()
 
 
-def debug_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
+def debug_face(source_face: Face, target_face: Face, temp_frame: Frame) -> np.ndarray:
     primary_color = (0, 0, 255)
     secondary_color = (0, 255, 0)
-    bounding_box = target_face.bbox.astype(numpy.int32)
+    bounding_box = target_face.bbox.astype(np.int32)
+
+    # Create an overlay image
+    overlay = np.zeros_like(temp_frame, dtype=np.uint8)
+
     if 'bbox' in frame_processors_globals.face_debugger_items:
-        cv2.rectangle(temp_frame, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]),
+        cv2.rectangle(overlay, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]),
                       secondary_color, 2)
+
     if 'face-mask' in frame_processors_globals.face_debugger_items:
         crop_frame, affine_matrix = warp_face(temp_frame, target_face.kps, 'arcface_128_v2', (128, 512))
         inverse_matrix = cv2.invertAffineTransform(affine_matrix)
         temp_frame_size = temp_frame.shape[:2][::-1]
         crop_mask_list = []
+
         if 'box' in facefusion.globals.face_mask_types:
-            crop_mask_list.append(
-                create_static_box_mask(crop_frame.shape[:2][::-1], 0, facefusion.globals.face_mask_padding))
+            crop_mask_list.append(create_static_box_mask(crop_frame.shape[:2][::-1], 0, facefusion.globals.face_mask_padding))
+
         if 'occlusion' in facefusion.globals.face_mask_types:
             crop_mask_list.append(create_occlusion_mask(crop_frame))
+
         if 'region' in facefusion.globals.face_mask_types:
             crop_mask_list.append(create_region_mask(crop_frame, facefusion.globals.face_mask_regions))
-        crop_mask = numpy.minimum.reduce(crop_mask_list).clip(0, 1)
-        crop_mask = (crop_mask * 255).astype(numpy.uint8)
+
+        crop_mask = np.minimum.reduce(crop_mask_list).clip(0, 1)
+        crop_mask = (crop_mask * 255).astype(np.uint8)
         inverse_mask_frame = cv2.warpAffine(crop_mask, inverse_matrix, temp_frame_size)
         inverse_mask_frame_edges = cv2.threshold(inverse_mask_frame, 100, 255, cv2.THRESH_BINARY)[1]
         inverse_mask_frame_edges[inverse_mask_frame_edges > 0] = 255
         inverse_mask_contours = cv2.findContours(inverse_mask_frame_edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)[0]
-        cv2.drawContours(temp_frame, inverse_mask_contours, -1, primary_color, 2)
-    if bounding_box[3] - bounding_box[1] > 60 and bounding_box[2] - bounding_box[0] > 60:
+        cv2.drawContours(overlay, inverse_mask_contours, -1, primary_color, 2)
+
+    if bounding_box[3] - bounding_box[1] > 40 and bounding_box[2] - bounding_box[0] > 40:
         if 'kps' in frame_processors_globals.face_debugger_items:
-            kps = target_face.kps.astype(numpy.int32)
+            kps = target_face.kps.astype(np.int32)
             for index in range(kps.shape[0]):
-                cv2.circle(temp_frame, (kps[index][0], kps[index][1]), 3, primary_color, -1)
+                cv2.circle(overlay, (kps[index][0], kps[index][1]), 3, primary_color, -1)
+
         if 'score' in frame_processors_globals.face_debugger_items:
             score_text = str(round(target_face.score, 2))
             score_position = (bounding_box[0] + 10, bounding_box[1] + 20)
-            cv2.putText(temp_frame, score_text, score_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, secondary_color, 2)
-    return temp_frame
+            cv2.putText(overlay, score_text, score_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, secondary_color, 2)
 
+    return overlay
 
 def get_reference_frame(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
     pass

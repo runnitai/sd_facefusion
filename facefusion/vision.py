@@ -4,6 +4,10 @@ import cv2
 
 from facefusion.typing import Frame
 
+LAST_VIDEO_PATH: Optional[str] = None
+LAST_FPS: Optional[float] = None
+LAST_TOTAL_FRAMES: Optional[int] = None
+
 
 def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[Frame]:
     if video_path:
@@ -19,20 +23,35 @@ def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[Frame]:
 
 
 def detect_fps(video_path: str) -> Optional[float]:
+    global LAST_VIDEO_PATH, LAST_FPS
     if video_path:
+        if LAST_VIDEO_PATH == video_path and LAST_FPS is not None:
+            return LAST_FPS
         video_capture = cv2.VideoCapture(video_path)
         if video_capture.isOpened():
-            return video_capture.get(cv2.CAP_PROP_FPS)
+            LAST_FPS = video_capture.get(cv2.CAP_PROP_FPS)
+            LAST_VIDEO_PATH = video_path
+            video_capture.release()
+            return LAST_FPS
+    LAST_VIDEO_PATH = None
+    LAST_FPS = None
     return None
 
 
 def count_video_frame_total(video_path: str) -> int:
+    global LAST_VIDEO_PATH, LAST_TOTAL_FRAMES
     if video_path:
+        if LAST_VIDEO_PATH == video_path and LAST_TOTAL_FRAMES is not None:
+            return LAST_TOTAL_FRAMES
         video_capture = cv2.VideoCapture(video_path)
         if video_capture.isOpened():
             video_frame_total = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
             video_capture.release()
+            LAST_VIDEO_PATH = video_path
+            LAST_TOTAL_FRAMES = video_frame_total
             return video_frame_total
+    LAST_VIDEO_PATH = None
+    LAST_TOTAL_FRAMES = None
     return 0
 
 

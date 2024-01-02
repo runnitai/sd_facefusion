@@ -70,6 +70,11 @@
     overflow-y: auto;
 }
 
+#ff_preview_frame_forward_button, #ff_preview_frame_back_button {
+    min-width: 48px!important;
+    max-width: 48px!important;
+}
+
 .output_elements {
     min-height: 0 !important;
 }

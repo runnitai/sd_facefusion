@@ -7,7 +7,8 @@ import facefusion.globals
 import facefusion.choices
 from facefusion import wording
 from facefusion.face_store import clear_static_faces, clear_reference_faces
-from facefusion.vision import get_video_frame, read_static_image, normalize_frame_color
+from facefusion.vision import get_video_frame, read_static_image, normalize_frame_color, count_video_frame_total, \
+    detect_fps
 from facefusion.face_analyser import get_many_faces
 from facefusion.typing import Frame, FaceSelectorMode, Face
 from facefusion.filesystem import is_image, is_video
@@ -101,7 +102,8 @@ def listen() -> None:
     galleries = [REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY]
     FACE_SELECTOR_MODE_DROPDOWN.select(update_face_selector_mode, inputs=FACE_SELECTOR_MODE_DROPDOWN,
                                        outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
-                                                REFERENCE_FACE_DISTANCE_SLIDER, ADD_REFERENCE_FACE_BUTTON, REMOVE_REFERENCE_FACE_BUTTON])
+                                                REFERENCE_FACE_DISTANCE_SLIDER, ADD_REFERENCE_FACE_BUTTON,
+                                                REMOVE_REFERENCE_FACE_BUTTON])
     REFERENCE_FACE_POSITION_GALLERY.select(update_selected_face_index)
     REFERENCE_FACES_SELECTION_GALLERY.select(update_selected_face_index)
     REFERENCE_FACE_DISTANCE_SLIDER.change(update_reference_face_distance, inputs=REFERENCE_FACE_DISTANCE_SLIDER)
@@ -137,23 +139,34 @@ def listen() -> None:
         if component:
             component.change(clear_and_update_reference_position_gallery, outputs=galleries)
     preview_frame_slider = get_ui_component('preview_frame_slider')
+    preview_frame_back_button = get_ui_component('preview_frame_back_button')
+    preview_frame_forward_button = get_ui_component('preview_frame_forward_button')
     preview_image = get_ui_component('preview_image')
     if preview_frame_slider:
-        #update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE
+        # update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE
         ADD_REFERENCE_FACE_BUTTON.click(add_reference_face,
                                         inputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
-                                                preview_frame_slider], outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image])
-        REMOVE_REFERENCE_FACE_BUTTON.click(fn=remove_reference_face, inputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_frame_slider],
+                                                preview_frame_slider],
+                                        outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image])
+        REMOVE_REFERENCE_FACE_BUTTON.click(fn=remove_reference_face,
+                                           inputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_frame_slider],
                                            outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image])
 
-        preview_frame_slider.change(update_reference_frame_number, inputs=preview_frame_slider)
-        preview_frame_slider.release(update_reference_position_gallery, outputs=galleries)
+        preview_frame_back_button.click(reference_frame_back,
+                                        inputs=preview_frame_slider, outputs=[preview_frame_slider,
+                                                                              REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
+        preview_frame_forward_button.click(reference_frame_forward, inputs=preview_frame_slider,
+                                             outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
+        preview_frame_slider.change(update_reference_frame_number_and_gallery, inputs=preview_frame_slider,
+                                    outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
 
 
-def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     facefusion.globals.face_selector_mode = face_selector_mode
     visible = 'reference' in face_selector_mode
-    return gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(visible=visible)
+    return gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(
+        visible=visible), gradio.update(visible=visible), gradio.update(visible=visible)
 
 
 def update_selected_face_index(event: gradio.SelectData) -> None:
@@ -247,6 +260,19 @@ def update_reference_frame_number(reference_frame_number: int) -> None:
     facefusion.globals.reference_frame_number = reference_frame_number
 
 
+def reference_frame_back(reference_frame_number: int) -> None:
+    frames_per_second = int(detect_fps(facefusion.globals.target_path))
+    reference_frame_number = max(0, reference_frame_number - frames_per_second)
+    return update_reference_frame_number_and_gallery(reference_frame_number)
+
+
+def reference_frame_forward(reference_frame_number: int) -> None:
+    frames_per_second = int(detect_fps(facefusion.globals.target_path))
+    reference_frame_number = min(reference_frame_number + frames_per_second, count_video_frame_total(
+        facefusion.globals.target_path))
+    return update_reference_frame_number_and_gallery(reference_frame_number)
+
+
 def clear_and_update_reference_position_gallery() -> gradio.update:
     clear_reference_faces()
     clear_static_faces()
@@ -270,6 +296,26 @@ def update_reference_position_gallery() -> Tuple[gradio.update, gradio.update]:
     if gallery_frames:
         return gradio.update(value=gallery_frames), selection_gallery
     return gradio.update(value=None), selection_gallery
+
+
+def update_reference_frame_number_and_gallery(reference_frame_number) -> Tuple[gradio.update, gradio.update]:
+    gallery_frames = []
+    facefusion.globals.reference_frame_number = reference_frame_number
+    selection_gallery = gradio.update()
+    if is_image(facefusion.globals.target_path):
+        reference_frame = read_static_image(facefusion.globals.target_path)
+        gallery_frames = extract_gallery_frames(reference_frame)
+    elif is_video(facefusion.globals.target_path):
+        reference_frame = get_video_frame(facefusion.globals.target_path, facefusion.globals.reference_frame_number)
+        gallery_frames = extract_gallery_frames(reference_frame)
+    else:
+        selection_gallery = gradio.update(value=None)
+        facefusion.globals.reference_face_dict = {}
+        global current_selected_faces
+        current_selected_faces = []
+    if gallery_frames:
+        return gradio.update(value=reference_frame_number), gradio.update(value=gallery_frames), selection_gallery
+    return gradio.update(value=reference_frame_number), gradio.update(value=None), selection_gallery
 
 
 def extract_gallery_frames(reference_frame: Frame) -> List[Frame]:

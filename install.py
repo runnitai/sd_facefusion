@@ -1,6 +1,7 @@
+import platform
 import subprocess
 import os, sys
-from typing import Optional
+from typing import Optional, Dict, Tuple
 from packaging import version as pv
 
 from importlib import metadata
@@ -117,7 +118,7 @@ def install_requirements():
 def install_runtimes():
     torch_version = '2.0.1'
     torch_cuda_wheel = 'cu118'  # Update this to the correct CUDA version if needed
-    onnxruntime_version = '1.16.1'
+    onnxruntime_version = '1.16.3'
     onnxruntime_cuda_name = 'onnxruntime-gpu'
     # Uninstall existing PyTorch and ONNX Runtime installations
     if not is_installed(onnxruntime_cuda_name, onnxruntime_version, True):
