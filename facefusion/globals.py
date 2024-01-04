@@ -17,6 +17,7 @@ headless: Optional[bool] = False
 log_level: Optional[LogLevel] = ['info']
 # execution
 execution_providers: List[str] = ["CUDAExecutionProvider"]
+
 execution_thread_count: Optional[int] = 22
 execution_queue_count: Optional[int] = 1
 max_memory: Optional[int] = None

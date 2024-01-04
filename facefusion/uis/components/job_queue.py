@@ -194,6 +194,11 @@ def enqueue() -> gradio.update:
         print(f"Missing required value in facefusion.globals")
         return gradio.update(), gradio.update(), gradio.update()
     new_job = JobParams().from_dict(global_dict)
+
+    processors = new_job.frame_processors
+    if "face_debugger" in processors:
+        processors.remove("face_debugger")
+        new_job.frame_processors = processors
     new_job.output_path = normalize_output_path(new_job.source_paths, new_job.target_path, new_job.output_path)
     target_file = gradio.update()
     source_image = gradio.update()

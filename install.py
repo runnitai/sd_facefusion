@@ -1,13 +1,12 @@
-import platform
+import os
 import subprocess
-import os, sys
-from typing import Optional, Dict, Tuple
-from packaging import version as pv
-
-from importlib import metadata
-from tqdm import tqdm
+import sys
 import urllib.request
-from AutoIntegrityCheck.validator import validate_auto_integrity
+from importlib import metadata
+from typing import Optional
+
+from packaging import version as pv
+from tqdm import tqdm
 
 try:
     from modules.paths_internal import models_path, script_path
@@ -17,9 +16,6 @@ except:
     except:
         model_path = os.path.abspath("models")
 
-if not validate_auto_integrity(script_path):
-    print("AutoIntegrityCheck failed, exiting...")
-    exit(1)
 
 req_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")
 
