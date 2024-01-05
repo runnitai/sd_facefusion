@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import traceback
 import urllib.request
 from importlib import metadata
 from typing import Optional
@@ -32,28 +33,19 @@ def pip_install(*args):
             print(line)
 
 
-def is_installed(pkg: str, version: Optional[str] = None, separator: str = None) -> bool:
+def is_installed(pkg: str, version: Optional[str] = None, check_strict: bool = True) -> bool:
     try:
         # Retrieve the package version from the installed package metadata
         installed_version = metadata.version(pkg)
-
+        print(f"Installed version of {pkg}: {installed_version}")
         # If version is not specified, just return True as the package is installed
         if version is None:
             return True
 
         # Compare the installed version with the required version
-        if separator == "==":
+        if check_strict:
             # Strict comparison (must be an exact match)
             return pv.parse(installed_version) == pv.parse(version)
-        elif ">" in separator:
-            # Non-strict comparison (installed version must be greater than or equal to the required version)
-            return pv.parse(installed_version) >= pv.parse(version)
-        elif "<" in separator:
-            # Non-strict comparison (installed version must be less than or equal to the required version)
-            return pv.parse(installed_version) <= pv.parse(version)
-        elif "~=" in separator:
-            # Non-strict comparison (installed version must be within the same minor version)
-            return pv.parse(installed_version).base_version == pv.parse(version).base_version
         else:
             # Non-strict comparison (installed version must be greater than or equal to the required version)
             return pv.parse(installed_version) >= pv.parse(version)
@@ -80,35 +72,58 @@ if not os.path.exists(models_dir):
 
 
 def install_requirements():
-    print("Checking FaceFusion requirements...")
-    separators = ["==", ">=", "<=", ">", "<", "~="]
+    req_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")
+    req_file_startup_arg = os.environ.get("REQS_FILE", "requirements_versions.txt")
 
-    with open(req_file) as file:
-        requirements = file.readlines()
+    if req_file == req_file_startup_arg:
+        return
+    print("Checking Facefusion requirements...")
+    non_strict_separators = ["==", ">=", "<=", ">", "<", "~="]
+    # Load the requirements file
+    with open(req_file, "r") as f:
+        reqs = f.readlines()
 
-    for package in requirements:
-        package_version = None
+    for line in reqs:
         try:
-            package = package.strip()
-            strict = False
-            package_separator = None
-            for separator in separators:
-                if separator in package:
-                    strict = True
-                    package, package_version = package.split(separator)
-                    package = package.strip()
-                    package_version = package_version.strip()
-                    package_separator = separator
-                    break
-            if not is_installed(package, package_version, package_separator):
-                print(f"[FaceFusion] Installing {package}...")
-                pip_install(package)
-            else:
-                print(f"[FaceFusion] {package} is already installed")
-        except Exception as e:
-            print(e)
-            print(f"\nERROR: Failed to install {package} - ReActor won't start")
-            raise e
+            package = line.strip()
+            if package and not package.startswith("#"):
+                package_version = None
+                strict = "==" in package
+                for separator in non_strict_separators:
+                    if separator in package:
+                        strict = separator == "=="
+                        parts = line.split(separator)
+                        if len(parts) < 2:
+                            print(f"Invalid requirement: {line}")
+                            continue
+                        package = parts[0].strip()
+                        package_version = parts[1].strip()
+                        if "#" in package_version:
+                            package_version = package_version.split("#")[0]
+                        package = package.strip()
+                        package_version = package_version.strip()
+                        break
+                if "#" in package:
+                    package = package.split("#")[0]
+                package = package.strip()
+                v_string = "" if not package_version else f" v{package_version}"
+                if not is_installed(package, package_version, strict):
+                    print(f"[Facefusion] {package}{v_string} is not installed.")
+                    pip_install(line)
+                else:
+                    print(f"[Facefusion] {package}{v_string} is already installed.")
+
+        except subprocess.CalledProcessError as grepexc:
+            error_msg = grepexc.stdout.decode()
+            print_requirement_installation_error(error_msg)
+
+
+def print_requirement_installation_error(err):
+    print("# Requirement installation exception:")
+    for line in err.split('\n'):
+        line = line.strip()
+        if line:
+            print(line)
 
 
 def install_runtimes():

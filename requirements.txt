@@ -2,7 +2,6 @@ basicsr>=1.4.2
 filetype==1.2.0
 ffmpeg_progress_yield
 onnx>=1.15.0
-onnxruntime>=1.16.3
 onnxruntime-gpu>=1.16.3
 opencv-python==4.8.1.78
 pytube==15.0.0
