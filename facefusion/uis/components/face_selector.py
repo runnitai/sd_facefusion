@@ -7,6 +7,7 @@ import facefusion.globals
 import facefusion.choices
 from facefusion import wording
 from facefusion.face_store import clear_static_faces, clear_reference_faces
+from facefusion.uis.components.face_masker import clear_mask_times
 from facefusion.vision import get_video_frame, read_static_image, normalize_frame_color, count_video_frame_total, \
     detect_fps
 from facefusion.face_analyser import get_many_faces
@@ -100,6 +101,7 @@ def render() -> None:
 
 def listen() -> None:
     galleries = [REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY]
+    bottom_mask_positions = get_ui_component('bottom_mask_positions')
     FACE_SELECTOR_MODE_DROPDOWN.select(update_face_selector_mode, inputs=FACE_SELECTOR_MODE_DROPDOWN,
                                        outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
                                                 REFERENCE_FACE_DISTANCE_SLIDER, ADD_REFERENCE_FACE_BUTTON,
@@ -134,23 +136,26 @@ def listen() -> None:
             'face_detector_size_dropdown',
             'face_detector_score_slider'
         ]
+    galleries_plus = [REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY, bottom_mask_positions]
     for component_name in change_two_component_names:
         component = get_ui_component(component_name)
         if component:
-            component.change(clear_and_update_reference_position_gallery, outputs=galleries)
+            component.change(clear_and_update_reference_position_gallery, outputs=galleries_plus)
     preview_frame_slider = get_ui_component('preview_frame_slider')
     preview_frame_back_button = get_ui_component('preview_frame_back_button')
     preview_frame_forward_button = get_ui_component('preview_frame_forward_button')
+    mask_enable_button = get_ui_component('mask_enable_button')
+    mask_disable_button = get_ui_component('mask_disable_button')
     preview_image = get_ui_component('preview_image')
     if preview_frame_slider:
         # update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE
         ADD_REFERENCE_FACE_BUTTON.click(add_reference_face,
                                         inputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
                                                 preview_frame_slider],
-                                        outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image])
+                                        outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image, mask_enable_button, mask_disable_button])
         REMOVE_REFERENCE_FACE_BUTTON.click(fn=remove_reference_face,
                                            inputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_frame_slider],
-                                           outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image])
+                                           outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image, mask_enable_button, mask_disable_button])
 
         preview_frame_back_button.click(reference_frame_back,
                                         inputs=preview_frame_slider, outputs=[preview_frame_slider,
@@ -179,7 +184,7 @@ def clear_and_update_reference_face_position(event: gradio.SelectData) -> gradio
     clear_reference_faces()
     clear_static_faces()
     update_reference_face_position(event.index)
-    return update_reference_position_gallery()
+    return update_reference_position_gallery(), clear_mask_times()
 
 
 def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gradio.Gallery:
@@ -206,10 +211,11 @@ def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gra
             current_selected_faces.append(face_data)
             dest_items.append(selected_item["name"])
         from facefusion.uis.components.preview import update_preview_image
-        out_preview = update_preview_image(reference_frame_number)
-        return gradio.update(value=dest_items), out_preview
+
+        out_preview, enable_button, disable_button = update_preview_image(reference_frame_number)
+        return gradio.update(value=dest_items), out_preview, enable_button, disable_button
     else:
-        return gradio.update(), gradio.update()  # Return the original gallery if no item is selected or if it's empty
+        return gradio.update(), gradio.update(), gradio.update(), gradio.update()  # Return the original gallery if no item is selected or if it's empty
 
 
 def remove_reference_face(gallery: gradio.Gallery, preview_frame_number) -> gradio.Gallery:
@@ -244,8 +250,8 @@ def remove_reference_face(gallery: gradio.Gallery, preview_frame_number) -> grad
     facefusion.globals.reference_face_dict = global_reference_faces
     current_selected_faces.pop(selected_face_index)
     from facefusion.uis.components.preview import update_preview_image
-    preview_image = update_preview_image(preview_frame_number)
-    return gradio.update(value=new_items), preview_image
+    preview_image, enable_button, disable_button = update_preview_image(preview_frame_number)
+    return gradio.update(value=new_items), preview_image, enable_button, disable_button
 
 
 def update_reference_face_position(reference_face_position: int = 0) -> None:

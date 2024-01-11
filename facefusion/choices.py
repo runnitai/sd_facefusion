@@ -1,8 +1,8 @@
 from typing import List
 
-import numpy
 
-from facefusion.typing import FaceSelectorMode, FaceAnalyserOrder, FaceAnalyserAge, FaceAnalyserGender, FaceMaskType, FaceMaskRegion, TempFrameFormat, OutputVideoEncoder
+from facefusion.typing import FaceSelectorMode, FaceAnalyserOrder, FaceAnalyserAge, FaceAnalyserGender, FaceMaskType, FaceMaskRegion, TempFrameFormat, OutputVideoEncoder, OutputVideoPreset
+from facefusion.common_helper import create_int_range, create_float_range
 
 face_analyser_orders : List[FaceAnalyserOrder] = [ 'left-right', 'right-left', 'top-bottom', 'bottom-top', 'small-large', 'large-small', 'best-worst', 'worst-best' ]
 face_analyser_ages : List[FaceAnalyserAge] = [ 'child', 'teen', 'adult', 'senior' ]
@@ -12,16 +12,17 @@ face_detector_sizes : List[str] = [ '160x160', '320x320', '480x480', '512x512', 
 face_selector_modes : List[FaceSelectorMode] = [ 'reference', 'one', 'many' ]
 face_mask_types : List[FaceMaskType] = [ 'box', 'occlusion', 'region' ]
 face_mask_regions : List[FaceMaskRegion] = [ 'skin', 'left-eyebrow', 'right-eyebrow', 'left-eye', 'right-eye', 'eye-glasses', 'nose', 'mouth', 'upper-lip', 'lower-lip' ]
-temp_frame_formats : List[TempFrameFormat] = [ 'jpg', 'png' ]
+temp_frame_formats : List[TempFrameFormat] = [ 'jpg', 'png', 'bmp' ]
 output_video_encoders : List[OutputVideoEncoder] = [ 'libx264', 'libx265', 'libvpx-vp9', 'h264_nvenc', 'hevc_nvenc' ]
+output_video_presets : List[OutputVideoPreset] = [ 'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow' ]
 
-execution_thread_count_range : List[int] = numpy.arange(1, 129, 1).tolist()
-execution_queue_count_range : List[int] = numpy.arange(1, 33, 1).tolist()
-max_memory_range : List[int] = numpy.arange(0, 129, 1).tolist()
-face_detector_score_range : List[float] = numpy.arange(0.0, 1.05, 0.05).tolist()
-face_mask_blur_range : List[float] = numpy.arange(0.0, 1.05, 0.05).tolist()
-face_mask_padding_range : List[float] = numpy.arange(0, 101, 1).tolist()
-reference_face_distance_range : List[float] = numpy.arange(0.0, 1.55, 0.05).tolist()
-temp_frame_quality_range : List[int] = numpy.arange(0, 101, 1).tolist()
-output_image_quality_range : List[int] = numpy.arange(0, 101, 1).tolist()
-output_video_quality_range : List[int] = numpy.arange(0, 101, 1).tolist()
+execution_thread_count_range : List[int] = create_int_range(1, 128, 1)
+execution_queue_count_range : List[int] = create_int_range(1, 32, 1)
+max_memory_range : List[int] = create_int_range(0, 128, 1)
+face_detector_score_range : List[float] = create_float_range(0.0, 1.0, 0.05)
+face_mask_blur_range : List[float] = create_float_range(0.0, 1.0, 0.05)
+face_mask_padding_range : List[int] = create_int_range(0, 100, 1)
+reference_face_distance_range : List[float] = create_float_range(0.0, 1.5, 0.05)
+temp_frame_quality_range : List[int] = create_int_range(0, 100, 1)
+output_image_quality_range : List[int] = create_int_range(0, 100, 1)
+output_video_quality_range : List[int] = create_int_range(0, 100, 1)

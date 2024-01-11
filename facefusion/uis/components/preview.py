@@ -13,6 +13,7 @@ from facefusion.filesystem import is_video, is_image
 from facefusion.job_params import JobParams
 from facefusion.processors.frame.core import load_frame_processor_module
 from facefusion.typing import Frame, Face
+from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import ComponentName
 from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, resize_frame_dimension, \
@@ -53,7 +54,7 @@ def render() -> None:
         preview_image_args['value'] = normalize_frame_color(preview_frame)
     if is_video(facefusion.globals.target_path):
         temp_frame = get_video_frame(facefusion.globals.target_path, facefusion.globals.reference_frame_number)
-        preview_frame = process_preview_frame(source_face, reference_faces, temp_frame)
+        preview_frame = process_preview_frame(source_face, reference_faces, temp_frame, facefusion.globals.reference_frame_number)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
         preview_image_args['visible'] = True
         preview_frame_slider_args['value'] = facefusion.globals.reference_frame_number
@@ -80,9 +81,17 @@ def render() -> None:
 
 
 def listen() -> None:
-    PREVIEW_FRAME_SLIDER.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
-    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=[PREVIEW_FRAME_SLIDER, PREVIEW_IMAGE])
-    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=[PREVIEW_FRAME_SLIDER, PREVIEW_IMAGE])
+    mask_disable_button = get_ui_component('mask_disable_button')
+    mask_enable_button = get_ui_component('mask_enable_button')
+    mask_clear = get_ui_component('mask_clear_button')
+    all_update_elements = [PREVIEW_IMAGE, mask_enable_button, mask_disable_button]
+    more_elements = [PREVIEW_FRAME_SLIDER] + all_update_elements
+    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
+    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
+    PREVIEW_FRAME_SLIDER.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
+    mask_disable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
+    mask_enable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
+    mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     multi_one_component_names: List[ComponentName] = \
         [
             'source_image',
@@ -93,7 +102,7 @@ def listen() -> None:
         component = get_ui_component(component_name)
         if component:
             for method in ['upload', 'change', 'clear']:
-                getattr(component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
+                getattr(component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     multi_two_component_names: List[ComponentName] = \
         [
             'target_image',
@@ -115,7 +124,7 @@ def listen() -> None:
     for component_name in select_component_names:
         component = get_ui_component(component_name)
         if component:
-            component.select(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
+            component.select(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     change_one_component_names: List[ComponentName] = \
         [
             'frame_processors_checkbox_group',
@@ -137,7 +146,7 @@ def listen() -> None:
     for component_name in change_one_component_names:
         component = get_ui_component(component_name)
         if component:
-            component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
+            component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     change_two_component_names: List[ComponentName] = \
         [
             'face_swapper_model_dropdown',
@@ -148,7 +157,7 @@ def listen() -> None:
     for component_name in change_two_component_names:
         component = get_ui_component(component_name)
         if component:
-            component.change(clear_and_update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
+            component.change(clear_and_update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
 
 
 def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
@@ -159,35 +168,36 @@ def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
 
 
 def update_preview_image(frame_number: int = 0) -> gradio.Image:
-    # clear_reference_faces()
-    # conditional_append_reference_faces()
     source_frames = read_static_images(facefusion.globals.source_paths)
     source_face = get_average_face(source_frames)
+    enable_button, disable_button = update_mask_buttons(frame_number)
     reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     if is_image(facefusion.globals.target_path):
         target_frame = read_static_image(facefusion.globals.target_path)
-        preview_frame = process_preview_frame(source_face, reference_faces, target_frame)
+        preview_frame = process_preview_frame(source_face, reference_faces, target_frame, frame_number)
         preview_frame = normalize_frame_color(preview_frame)
-        return gradio.Image(value=preview_frame, visible=True)
+        return gradio.Image(value=preview_frame, visible=True), enable_button, disable_button
     if is_video(facefusion.globals.target_path):
         temp_frame = get_video_frame(facefusion.globals.target_path, frame_number)
-        preview_frame = process_preview_frame(source_face, reference_faces, temp_frame)
+        preview_frame = process_preview_frame(source_face, reference_faces, temp_frame, frame_number)
         preview_frame = normalize_frame_color(preview_frame)
-        return gradio.update(value=preview_frame, visible=True)
-    return gradio.update(value=None, visible=True)
+        return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
+    return gradio.update(value=None, visible=True), enable_button, disable_button
 
 
 def preview_back(reference_frame_number: int = 0) -> gradio.update:
     frames_per_second = int(detect_fps(facefusion.globals.target_path))
     reference_frame_number = max(0, reference_frame_number - frames_per_second)
-    return gradio.update(value=reference_frame_number), update_preview_image(reference_frame_number)
+    preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
+    return gradio.update(value=reference_frame_number), preview, enable_btn, disable_btn
 
 
 def preview_forward(reference_frame_number: int = 0) -> gradio.update:
     frames_per_second = int(detect_fps(facefusion.globals.target_path))
     reference_frame_number = min(reference_frame_number + frames_per_second,
                                  count_video_frame_total(facefusion.globals.target_path))
-    return gradio.update(value=reference_frame_number), update_preview_image(reference_frame_number)
+    preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
+    return gradio.update(value=reference_frame_number), preview, enable_btn, disable_btn
 
 
 def update_preview_frame_slider() -> gradio.update:
@@ -199,7 +209,7 @@ def update_preview_frame_slider() -> gradio.update:
         visible=False)
 
 
-def process_preview_frame(source_face: Face, reference_faces: Face, temp_frame: Frame) -> Frame:
+def process_preview_frame(source_face: Face, reference_faces: Face, temp_frame: Frame, frame_number: int = -1) -> Frame:
     temp_frame = resize_frame_dimension(temp_frame, 640, 640)
     if analyse_frame(temp_frame):
         return cv2.GaussianBlur(temp_frame, (99, 99), 0)
@@ -210,18 +220,27 @@ def process_preview_frame(source_face: Face, reference_faces: Face, temp_frame: 
         overlay = frame_processor_module.process_frame(
             source_face,
             reference_faces,
-            temp_frame
+            temp_frame,
+            frame_number
         )
     for frame_processor in facefusion.globals.frame_processors:
         if frame_processor == "face_debugger":
             continue
         frame_processor_module = load_frame_processor_module(frame_processor)
-        if frame_processor_module.pre_process('preview', job):
-            temp_frame = frame_processor_module.process_frame(
-                source_face,
-                reference_faces,
-                temp_frame
-            )
+        if frame_processor_module.pre_process('preview'):
+            if frame_processor == "face_swapper":
+                temp_frame = frame_processor_module.process_frame(
+                    source_face,
+                    reference_faces,
+                    temp_frame,
+                    frame_number
+                )
+            else:
+                temp_frame = frame_processor_module.process_frame(
+                    source_face,
+                    reference_faces,
+                    temp_frame
+                )
     if overlay is not None:
         # Apply overlay to temp_frame
         mask = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)

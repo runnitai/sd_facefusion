@@ -3,10 +3,9 @@ from typing import Optional, Tuple, List
 
 import gradio
 
-from facefusion import choices as ff_choices
 import facefusion.globals
-from facefusion import wording
-from facefusion.typing import OutputVideoEncoder
+from facefusion import wording, choices
+from facefusion.typing import OutputVideoEncoder, OutputVideoPreset
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import ComponentName
 from facefusion.filesystem import is_image, is_video
@@ -15,6 +14,7 @@ from modules.paths_internal import script_path
 OUTPUT_PATH_TEXTBOX: Optional[gradio.Textbox] = None
 OUTPUT_IMAGE_QUALITY_SLIDER: Optional[gradio.Slider] = None
 OUTPUT_VIDEO_ENCODER_DROPDOWN: Optional[gradio.Dropdown] = None
+OUTPUT_VIDEO_PRESET_DROPDOWN: Optional[gradio.Dropdown] = None
 OUTPUT_VIDEO_QUALITY_SLIDER: Optional[gradio.Slider] = None
 
 
@@ -22,6 +22,7 @@ def render() -> None:
     global OUTPUT_PATH_TEXTBOX
     global OUTPUT_IMAGE_QUALITY_SLIDER
     global OUTPUT_VIDEO_ENCODER_DROPDOWN
+    global OUTPUT_VIDEO_PRESET_DROPDOWN
     global OUTPUT_VIDEO_QUALITY_SLIDER
     out_path = os.path.join(script_path, "outputs", "facefusion")
     if not os.path.exists(out_path):
@@ -36,25 +37,32 @@ def render() -> None:
     OUTPUT_IMAGE_QUALITY_SLIDER = gradio.Slider(
         label=wording.get('output_image_quality_slider_label'),
         value=facefusion.globals.output_image_quality,
-        step=ff_choices.output_image_quality_range[1] - ff_choices.output_image_quality_range[0],
-        minimum=ff_choices.output_image_quality_range[0],
+        step=choices.output_image_quality_range[1] - choices.output_image_quality_range[0],
+        minimum=choices.output_image_quality_range[0],
         elem_id='output_image_quality_slider',
-        maximum=ff_choices.output_image_quality_range[-1],
+        maximum=choices.output_image_quality_range[-1],
         visible=is_image(facefusion.globals.target_path)
     )
     OUTPUT_VIDEO_ENCODER_DROPDOWN = gradio.Dropdown(
         label=wording.get('output_video_encoder_dropdown_label'),
-        choices=ff_choices.output_video_encoders,
+        choices=choices.output_video_encoders,
         value=facefusion.globals.output_video_encoder,
         visible=is_video(facefusion.globals.target_path),
         elem_id='output_video_encoder_dropdown'
+    )
+    OUTPUT_VIDEO_PRESET_DROPDOWN = gradio.Dropdown(
+        label=wording.get('output_video_preset_dropdown_label'),
+        choices=facefusion.choices.output_video_presets,
+        value=facefusion.globals.output_video_preset,
+        visible=is_video(facefusion.globals.target_path),
+        elem_id='output_video_preset_dropdown'
     )
     OUTPUT_VIDEO_QUALITY_SLIDER = gradio.Slider(
         label=wording.get('output_video_quality_slider_label'),
         value=facefusion.globals.output_video_quality,
         step=1,
-        minimum=ff_choices.output_video_quality_range[0],
-        maximum=ff_choices.output_video_quality_range[-1],
+        minimum=choices.output_video_quality_range[0],
+        maximum=choices.output_video_quality_range[-1],
         visible=is_video(facefusion.globals.target_path),
         elem_id='output_video_quality_slider'
     )
@@ -65,6 +73,7 @@ def listen() -> None:
     OUTPUT_PATH_TEXTBOX.change(update_output_path, inputs=OUTPUT_PATH_TEXTBOX)
     OUTPUT_IMAGE_QUALITY_SLIDER.change(update_output_image_quality, inputs=OUTPUT_IMAGE_QUALITY_SLIDER)
     OUTPUT_VIDEO_ENCODER_DROPDOWN.select(update_output_video_encoder, inputs=OUTPUT_VIDEO_ENCODER_DROPDOWN)
+    OUTPUT_VIDEO_PRESET_DROPDOWN.change(update_output_video_preset, inputs=OUTPUT_VIDEO_PRESET_DROPDOWN)
     OUTPUT_VIDEO_QUALITY_SLIDER.change(update_output_video_quality, inputs=OUTPUT_VIDEO_QUALITY_SLIDER)
     multi_component_names: List[ComponentName] = \
         [
@@ -78,15 +87,15 @@ def listen() -> None:
             for method in ['upload', 'change', 'clear']:
                 getattr(component, method)(remote_update,
                                            outputs=[OUTPUT_IMAGE_QUALITY_SLIDER, OUTPUT_VIDEO_ENCODER_DROPDOWN,
-                                                    OUTPUT_VIDEO_QUALITY_SLIDER])
+                                                    OUTPUT_VIDEO_QUALITY_SLIDER, OUTPUT_VIDEO_PRESET_DROPDOWN])
 
 
 def remote_update() -> Tuple[gradio.update, gradio.update, gradio.update]:
     if is_image(facefusion.globals.target_path):
-        return gradio.update(visible=True), gradio.update(visible=False), gradio.update(visible=False)
+        return gradio.update(visible=True), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
     if is_video(facefusion.globals.target_path):
-        return gradio.update(visible=False), gradio.update(visible=True), gradio.update(visible=True)
-    return gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
+        return gradio.update(visible=False), gradio.update(visible=True), gradio.update(visible=True), gradio.update(visible=True)
+    return gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
 
 def update_output_path(output_path: str) -> None:
@@ -99,6 +108,10 @@ def update_output_image_quality(output_image_quality: int) -> None:
 
 def update_output_video_encoder(output_video_encoder: OutputVideoEncoder) -> None:
     facefusion.globals.output_video_encoder = output_video_encoder
+
+
+def update_output_video_preset(output_video_preset: OutputVideoPreset) -> None:
+    facefusion.globals.output_video_preset = output_video_preset
 
 
 def update_output_video_quality(output_video_quality: int) -> None:

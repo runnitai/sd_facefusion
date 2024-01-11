@@ -29,27 +29,27 @@ THREAD_SEMAPHORE: threading.Semaphore = threading.Semaphore()
 THREAD_LOCK: threading.Lock = threading.Lock()
 EXECUTION_THREAD_COUNT = 1
 NAME = __name__.upper()
-MODELS : ModelSet =\
-{
-    'real_esrgan_x2plus':
+MODELS: ModelSet = \
     {
-        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/real_esrgan_x2plus.pth',
-        'path': resolve_relative_path('../.assets/models/real_esrgan_x2plus.pth'),
-        'scale': 2
-    },
-    'real_esrgan_x4plus':
-    {
-        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/real_esrgan_x4plus.pth',
-        'path': resolve_relative_path('../.assets/models/real_esrgan_x4plus.pth'),
-        'scale': 4
-    },
-    'real_esrnet_x4plus':
-    {
-        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/real_esrnet_x4plus.pth',
-        'path': resolve_relative_path('../.assets/models/real_esrnet_x4plus.pth'),
-        'scale': 4
+        'real_esrgan_x2plus':
+            {
+                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/real_esrgan_x2plus.pth',
+                'path': resolve_relative_path('../.assets/models/real_esrgan_x2plus.pth'),
+                'scale': 2
+            },
+        'real_esrgan_x4plus':
+            {
+                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/real_esrgan_x4plus.pth',
+                'path': resolve_relative_path('../.assets/models/real_esrgan_x4plus.pth'),
+                'scale': 4
+            },
+        'real_esrnet_x4plus':
+            {
+                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/real_esrnet_x4plus.pth',
+                'path': resolve_relative_path('../.assets/models/real_esrnet_x4plus.pth'),
+                'scale': 4
+            }
     }
-}
 OPTIONS: Optional[OptionsWithModel] = None
 
 
@@ -84,9 +84,9 @@ def get_options(key: Literal['model']) -> Any:
 
     if OPTIONS is None:
         OPTIONS = \
-        {
-            'model': MODELS[frame_processors_globals.frame_enhancer_model]
-        }
+            {
+                'model': MODELS[frame_processors_globals.frame_enhancer_model]
+            }
     return OPTIONS.get(key)
 
 
@@ -97,8 +97,13 @@ def set_options(key: Literal['model'], value: Any) -> None:
 
 
 def register_args(program: ArgumentParser) -> None:
-    program.add_argument('--frame-enhancer-model', help = wording.get('frame_processor_model_help'), default = 'real_esrgan_x2plus', choices = frame_processors_choices.frame_enhancer_models)
-    program.add_argument('--frame-enhancer-blend', help = wording.get('frame_processor_blend_help'), type = int, default = 80, choices = frame_processors_choices.frame_enhancer_blend_range, metavar = create_metavar(frame_processors_choices.frame_enhancer_blend_range))
+    program.add_argument('--frame-enhancer-model', help=wording.get('frame_processor_model_help'),
+                         default=config.get_str_value('frame_processors.frame_enhancer_model', 'real_esrgan_x2plus'),
+                         choices=frame_processors_choices.frame_enhancer_models)
+    program.add_argument('--frame-enhancer-blend', help=wording.get('frame_processor_blend_help'), type=int,
+                         default=config.get_int_value('frame_processors.frame_enhancer_blend', '80'),
+                         choices=frame_processors_choices.frame_enhancer_blend_range,
+                         metavar=create_metavar(frame_processors_choices.frame_enhancer_blend_range))
 
 
 def apply_args(program: ArgumentParser) -> None:
@@ -114,21 +119,21 @@ def pre_check() -> bool:
     return True
 
 
-def pre_process(mode: ProcessMode, job: JobParams) -> bool:
-    global EXECUTION_THREAD_COUNT
-    global JOB
-    EXECUTION_THREAD_COUNT = job.execution_thread_count
-    JOB = job
+def post_check() -> bool:
     model_url = get_options('model').get('url')
     model_path = get_options('model').get('path')
     if not is_download_done(model_url, model_path):
-        update_status(wording.get('model_download_not_done') + wording.get('exclamation_mark'), NAME)
+        logger.error(wording.get('model_download_not_done') + wording.get('exclamation_mark'), NAME)
         return False
     elif not is_file(model_path):
-        update_status(f"Could not find model at path {model_path}", NAME)
+        logger.error(wording.get('model_file_not_present') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode == 'output' and not job.output_path:
-        update_status(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
+    return True
+
+
+def pre_process(mode: ProcessMode) -> bool:
+    if mode == 'output' and not facefusion.globals.output_path:
+        logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True
 
@@ -155,11 +160,11 @@ def blend_frame(temp_frame: Frame, paste_frame: Frame) -> Frame:
     return temp_frame
 
 
-def get_reference_frame(source_face : Face, target_face : Face, temp_frame : Frame) -> Frame:
+def get_reference_frame(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
     pass
 
 
-def process_frame(source_face : Face, reference_faces : FaceSet, temp_frame : Frame) -> Frame:
+def process_frame(source_face: Face, reference_faces: FaceSet, temp_frame: Frame) -> Frame:
     return enhance_frame(temp_frame)
 
 
@@ -179,7 +184,7 @@ def process_frames(source_paths: str, temp_frame_paths: List[str], update_progre
     return temp_frame_paths
 
 
-def process_image(source_paths : List[str], target_path : str, output_path : str) -> None:
+def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
     target_frame = read_static_image(target_path)
     result = process_frame(None, None, target_frame)
     write_image(output_path, result)

@@ -1,14 +1,14 @@
+import logging
 import os.path
 from typing import Optional
 
 import gradio
 
 import facefusion.globals
+from facefusion.job_params import JobParams
 from facefusion.normalizer import normalize_output_path
 from facefusion.uis.core import get_ui_component, register_ui_component
-from facefusion.job_params import JobParams
 
-import logging
 logger = logging.getLogger(__name__)
 
 OUTPUT_ENQUEUE_BUTTON: Optional[gradio.Button] = None
@@ -217,7 +217,7 @@ def enqueue() -> gradio.update:
 
     print(f"Adding job to queue: {new_job.to_dict()}")
     JOB_QUEUE.append(new_job)
-    from facefusion.uis.components.job_queue_options import CLEAR_TARGET, CLEAR_SOURCE
+    from facefusion.uis.components.job_queue_options import CLEAR_SOURCE
     target_file = gradio.update(value=None)
     if CLEAR_SOURCE:
         source_image = gradio.update(value=None)

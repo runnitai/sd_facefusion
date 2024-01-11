@@ -3,7 +3,7 @@ import platform
 import subprocess
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Generator, Deque
+from typing import Optional, Generator, Deque, List
 
 import cv2
 import gradio
@@ -17,7 +17,7 @@ from facefusion.mytqdm import mytqdm
 from facefusion.processors.frame.core import get_frame_processors_modules
 from facefusion.typing import Frame, Face
 from facefusion.uis.core import get_ui_component
-from facefusion.uis.typing import StreamMode, WebcamMode
+from facefusion.uis.typing import StreamMode, WebcamMode, ComponentName
 from facefusion.vision import normalize_frame_color, read_static_images
 
 WEBCAM_CAPTURE: Optional[cv2.VideoCapture] = None
@@ -72,13 +72,20 @@ def listen() -> None:
     webcam_resolution_dropdown = get_ui_component('webcam_resolution_dropdown')
     webcam_fps_slider = get_ui_component('webcam_fps_slider')
     if webcam_mode_radio and webcam_resolution_dropdown and webcam_fps_slider:
-        start_event = WEBCAM_START_BUTTON.click(start, inputs=[webcam_mode_radio, webcam_resolution_dropdown,
-                                                               webcam_fps_slider], outputs=WEBCAM_IMAGE)
+        start_event = WEBCAM_START_BUTTON.click(start, inputs = [ webcam_mode_radio, webcam_resolution_dropdown, webcam_fps_slider ], outputs = WEBCAM_IMAGE)
     WEBCAM_STOP_BUTTON.click(stop, cancels=start_event)
-    source_image = get_ui_component('source_image')
-    if source_image:
-        for method in ['upload', 'change', 'clear']:
-            getattr(source_image, method)(stop, cancels=start_event)
+    change_two_component_names : List[ComponentName] = \
+    [
+        'frame_processors_checkbox_group',
+        'face_swapper_model_dropdown',
+        'face_enhancer_model_dropdown',
+        'frame_enhancer_model_dropdown',
+        'source_image'
+    ]
+    for component_name in change_two_component_names:
+        component = get_ui_component(component_name)
+        if component:
+            component.change(update, cancels =  start_event)
 
 
 def start(webcam_mode: WebcamMode, resolution: str, fps: float) -> Generator[Frame, None, None]:
@@ -107,8 +114,7 @@ def start(webcam_mode: WebcamMode, resolution: str, fps: float) -> Generator[Fra
                 yield None
 
 
-def multi_process_capture(source_face: Face, webcam_capture: cv2.VideoCapture, fps: float) -> Generator[
-    Frame, None, None]:
+def multi_process_capture(source_face : Face, webcam_capture : cv2.VideoCapture, fps : float) -> Generator[Frame, None, None]:
     with mytqdm(desc=wording.get('processing'), unit='frame', ascii=' =',
                 disable=facefusion.globals.log_level in ['warn', 'error']) as progress:
         with ThreadPoolExecutor(max_workers=facefusion.globals.execution_thread_count) as executor:
@@ -129,6 +135,15 @@ def multi_process_capture(source_face: Face, webcam_capture: cv2.VideoCapture, f
                     yield deque_capture_frames.popleft()
 
 
+def update() -> None:
+    for frame_processor in facefusion.globals.frame_processors:
+        frame_processor_module = load_frame_processor_module(frame_processor)
+        while not frame_processor_module.post_check():
+            logger.disable()
+            sleep(0.5)
+        logger.enable()
+        if not frame_processor_module.pre_process('stream'):
+            return
 def stop() -> gradio.update:
     clear_webcam_capture()
     return gradio.update(value=None)

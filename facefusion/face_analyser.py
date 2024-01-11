@@ -17,38 +17,38 @@ FACE_ANALYSER = None
 THREAD_SEMAPHORE: threading.Semaphore = threading.Semaphore()
 THREAD_LOCK: threading.Lock = threading.Lock()
 MODELS: ModelSet = \
+{
+    'face_detector_retinaface':
     {
-        'face_detector_retinaface':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/retinaface_10g.onnx',
-                'path': resolve_relative_path('../.assets/models/retinaface_10g.onnx')
-            },
-        'face_detector_yunet':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/yunet_2023mar.onnx',
-                'path': resolve_relative_path('../.assets/models/yunet_2023mar.onnx')
-            },
-        'face_recognizer_arcface_blendswap':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/arcface_w600k_r50.onnx',
-                'path': resolve_relative_path('../.assets/models/arcface_w600k_r50.onnx')
-            },
-        'face_recognizer_arcface_inswapper':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/arcface_w600k_r50.onnx',
-                'path': resolve_relative_path('../.assets/models/arcface_w600k_r50.onnx')
-            },
-        'face_recognizer_arcface_simswap':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/arcface_simswap.onnx',
-                'path': resolve_relative_path('../.assets/models/arcface_simswap.onnx')
-            },
-        'gender_age':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/gender_age.onnx',
-                'path': resolve_relative_path('../.assets/models/gender_age.onnx')
-            }
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/retinaface_10g.onnx',
+        'path': resolve_relative_path('../.assets/models/retinaface_10g.onnx')
+    },
+    'face_detector_yunet':
+    {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/yunet_2023mar.onnx',
+        'path': resolve_relative_path('../.assets/models/yunet_2023mar.onnx')
+    },
+    'face_recognizer_arcface_blendswap':
+    {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/arcface_w600k_r50.onnx',
+        'path': resolve_relative_path('../.assets/models/arcface_w600k_r50.onnx')
+    },
+    'face_recognizer_arcface_inswapper':
+    {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/arcface_w600k_r50.onnx',
+        'path': resolve_relative_path('../.assets/models/arcface_w600k_r50.onnx')
+    },
+    'face_recognizer_arcface_simswap':
+    {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/arcface_simswap.onnx',
+        'path': resolve_relative_path('../.assets/models/arcface_simswap.onnx')
+    },
+    'gender_age':
+    {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/gender_age.onnx',
+        'path': resolve_relative_path('../.assets/models/gender_age.onnx')
     }
+}
 
 
 def get_face_analyser() -> Any:
@@ -233,7 +233,7 @@ def calc_embedding(temp_frame: Frame, kps: Kps) -> Tuple[Embedding, Embedding]:
 
 def detect_gender_age(frame: Frame, kps: Kps) -> Tuple[int, int]:
     gender_age = get_face_analyser().get('gender_age')
-    crop_frame, affine_matrix = warp_face(frame, kps, 'arcface_112_v2', (96, 96))
+    crop_frame, affine_matrix = warp_face(frame, kps, 'ffhq_512', (512, 96))
     crop_frame = numpy.expand_dims(crop_frame, axis=0).transpose(0, 3, 1, 2).astype(numpy.float32)
     prediction = gender_age.run(None,
                                 {
@@ -319,6 +319,12 @@ def compare_faces(face: Face, reference_face: Face, face_distance: float) -> boo
         current_face_distance = 1 - numpy.dot(face.normed_embedding, reference_face.normed_embedding)
         return current_face_distance < face_distance
     return False
+
+
+def calc_face_distance(face : Face, reference_face : Face) -> float:
+    if hasattr(face, 'normed_embedding') and hasattr(reference_face, 'normed_embedding'):
+        return 1 - numpy.dot(face.normed_embedding, reference_face.normed_embedding)
+    return 0
 
 
 def sort_by_order(faces: List[Face], order: FaceAnalyserOrder) -> List[Face]:

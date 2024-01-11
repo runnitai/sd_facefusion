@@ -16,31 +16,31 @@ FACE_OCCLUDER = None
 FACE_PARSER = None
 THREAD_LOCK: threading.Lock = threading.Lock()
 MODELS: ModelSet = \
+{
+    'face_occluder':
     {
-        'face_occluder':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/face_occluder.onnx',
-                'path': resolve_relative_path('../.assets/models/face_occluder.onnx')
-            },
-        'face_parser':
-            {
-                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/face_parser.onnx',
-                'path': resolve_relative_path('../.assets/models/face_parser.onnx')
-            }
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/face_occluder.onnx',
+        'path': resolve_relative_path('../.assets/models/face_occluder.onnx')
+    },
+    'face_parser':
+    {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/face_parser.onnx',
+        'path': resolve_relative_path('../.assets/models/face_parser.onnx')
     }
+}
 FACE_MASK_REGIONS: Dict[FaceMaskRegion, int] = \
-    {
-        'skin': 1,
-        'left-eyebrow': 2,
-        'right-eyebrow': 3,
-        'left-eye': 4,
-        'right-eye': 5,
-        'eye-glasses': 6,
-        'nose': 10,
-        'mouth': 11,
-        'upper-lip': 12,
-        'lower-lip': 13
-    }
+{
+    'skin': 1,
+    'left-eyebrow': 2,
+    'right-eyebrow': 3,
+    'left-eye': 4,
+    'right-eye': 5,
+    'eye-glasses': 6,
+    'nose': 10,
+    'mouth': 11,
+    'upper-lip': 12,
+    'lower-lip': 13
+}
 
 
 def get_face_occluder() -> Any:
@@ -48,7 +48,7 @@ def get_face_occluder() -> Any:
     with THREAD_LOCK:
         if FACE_OCCLUDER is None:
             model_path = MODELS.get('face_occluder').get('path')
-            FACE_OCCLUDER = onnxruntime.InferenceSession(model_path, providers=["CUDAExecutionProvider"])
+            FACE_OCCLUDER = onnxruntime.InferenceSession(model_path, providers=facefusion.globals.execution_providers)
     return FACE_OCCLUDER
 
 
@@ -57,7 +57,7 @@ def get_face_parser() -> Any:
     with THREAD_LOCK:
         if FACE_PARSER is None:
             model_path = MODELS.get('face_parser').get('path')
-            FACE_PARSER = onnxruntime.InferenceSession(model_path, providers=["CUDAExecutionProvider"])
+            FACE_PARSER = onnxruntime.InferenceSession(model_path, providers=facefusion.globals.execution_providers)
     return FACE_PARSER
 
 

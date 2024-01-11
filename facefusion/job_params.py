@@ -6,7 +6,7 @@ from typing import List, Optional
 from facefusion.typing import (
     FaceAnalyserOrder, FaceAnalyserAge,
     FaceAnalyserGender, TempFrameFormat, OutputVideoEncoder, FaceSelectorMode, FaceDetectorModel, FaceRecognizerModel,
-    Padding, FaceMaskType, FaceMaskRegion, LogLevel
+    Padding, FaceMaskType, FaceMaskRegion, LogLevel, OutputVideoPreset
 )
 from facefusion.choices import face_mask_regions
 from modules.paths_internal import script_path
@@ -26,7 +26,7 @@ class JobParams:
         self.headless: Optional[bool] = False
         self.log_level: Optional[LogLevel] = ['info']
         # execution
-        self.execution_providers: List[str] = ["CUDAExecutionProvider"]
+        self.execution_providers: List[str] = [('CUDAExecutionProvider', {'cudnn_conv_algo_search': 'DEFAULT'})]
         self.execution_thread_count: Optional[int] = 22
         self.execution_queue_count: Optional[int] = 1
         self.max_memory: Optional[int] = None
@@ -45,10 +45,12 @@ class JobParams:
         self.reference_frame_number: Optional[int] = 0
         self.reference_face_dict: Optional[dict] = {}
         # face mask
-        self.face_mask_types : Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
+        self.mask_enabled_times: Optional[List[int]] = [0]
+        self.mask_disabled_times: Optional[List[int]] = []
+        self.face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
         self.face_mask_blur: Optional[float] = 0.3
         self.face_mask_padding: Optional[Padding] = (0, 0, 0, 0)
-        self.face_mask_regions : Optional[List[FaceMaskRegion]] = face_mask_regions
+        self.face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
         # frame extraction
         self.trim_frame_start: Optional[int] = None
         self.trim_frame_end: Optional[int] = None
@@ -59,6 +61,7 @@ class JobParams:
         self.output_image_quality: Optional[int] = 80
         self.output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
         self.output_video_quality: Optional[int] = 80
+        self.output_video_preset : Optional[OutputVideoPreset] = 'veryfast'
         self.keep_fps: Optional[bool] = True
         self.skip_audio: Optional[bool] = False
 

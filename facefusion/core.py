@@ -74,11 +74,12 @@ def apply_args(program: ArgumentParser) -> None:
     # output creation
     facefusion.globals.output_image_quality = args.output_image_quality
     facefusion.globals.output_video_encoder = args.output_video_encoder
+    facefusion.globals.output_video_preset = args.output_video_preset
     facefusion.globals.output_video_quality = args.output_video_quality
     facefusion.globals.keep_fps = args.keep_fps
     facefusion.globals.skip_audio = args.skip_audio
     # frame processors
-    available_frame_processors = list_module_names('facefusion/processors/frame/modules')
+    available_frame_processors = list_directory('facefusion/processors/frame/modules')
     facefusion.globals.frame_processors = args.frame_processors
     for frame_processor in available_frame_processors:
         frame_processor_module = load_frame_processor_module(frame_processor)
@@ -140,7 +141,7 @@ def pre_check() -> bool:
 def conditional_process(status: FFStatus, job: JobParams) -> None:
     conditional_append_reference_faces(job)
     for frame_processor_module in get_frame_processors_modules(job.frame_processors):
-        if not frame_processor_module.pre_process('output', job):
+        if not frame_processor_module.pre_process('output'):
             return
     target_path = job.target_path
     print(f"Processing {target_path}")

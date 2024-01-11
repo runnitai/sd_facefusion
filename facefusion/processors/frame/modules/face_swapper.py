@@ -25,7 +25,7 @@ from facefusion.job_params import JobParams
 from facefusion.processors.frame import choices as frame_processors_choices
 from facefusion.processors.frame import globals as frame_processors_globals
 from facefusion.typing import Face, Frame, Update_Process, ProcessMode, OptionsWithModel, Embedding, \
-    FaceSet, ModelSet
+    FaceSet, ModelSet, Padding
 from facefusion.vision import read_image, read_static_image, read_static_images, write_image
 from modules.paths_internal import models_path
 
@@ -151,7 +151,7 @@ def set_options(key: Literal['model'], value: Any) -> None:
 
 def register_args(program: ArgumentParser) -> None:
     program.add_argument('--face-swapper-model', help=wording.get('frame_processor_model_help'),
-                         default='inswapper_128', choices=frame_processors_choices.face_swapper_models)
+                         default='inswapper_128_fp16', choices=frame_processors_choices.face_swapper_models)
 
 
 def apply_args(program: ArgumentParser) -> None:
@@ -172,42 +172,31 @@ def pre_check() -> bool:
     return True
 
 
-def pre_process(mode: ProcessMode, job: JobParams) -> bool:
-    global FACE_RECOGNITION
-    global REFERENCE_FACE_DISTANCE
-    global REFERENCE_FACE_POSITION
-    global REFERENCE_FRAME_NUMBER
-    global REFERENCE_FACE_DICT
-    global EXECUTION_THREAD_COUNT
-    global JOB
-    JOB = job
-    FACE_RECOGNITION = job.face_selector_mode
-    REFERENCE_FACE_DISTANCE = job.reference_face_distance
-    REFERENCE_FACE_POSITION = job.reference_face_position
-    REFERENCE_FRAME_NUMBER = job.reference_frame_number
-    REFERENCE_FACE_DICT = job.reference_face_dict
-    EXECUTION_THREAD_COUNT = job.execution_thread_count
+def post_check() -> bool:
     model_url = get_options('model').get('url')
     model_path = get_options('model').get('path')
-    conditional_download(os.path.dirname(model_path), [model_url])
-    if not is_download_done(model_url, model_path):
-        update_status(wording.get('model_download_not_done') + wording.get('exclamation_mark'), NAME)
+    if not facefusion.globals.skip_download and not is_download_done(model_url, model_path):
+        logger.error(wording.get('model_download_not_done') + wording.get('exclamation_mark'), NAME)
         return False
     elif not is_file(model_path):
         update_status(f"Can't find model: {model_path}")
         return False
-    if not are_images(job.source_paths):
-        update_status(wording.get('select_image_source') + wording.get('exclamation_mark'), NAME)
+    return True
+
+
+def pre_process(mode: ProcessMode) -> bool:
+    if not are_images(facefusion.globals.source_paths):
+        logger.error(wording.get('select_image_source') + wording.get('exclamation_mark'), NAME)
         return False
-    for source_frame in read_static_images(job.source_paths):
+    for source_frame in read_static_images(facefusion.globals.source_paths):
         if not get_one_face(source_frame):
             logger.error(wording.get('no_source_face_detected') + wording.get('exclamation_mark'), NAME)
             return False
-    if mode in ['output', 'preview'] and not is_image(job.target_path) and not is_video(
-            job.target_path):
+    if mode in ['output', 'preview'] and not is_image(facefusion.globals.target_path) and not is_video(
+            facefusion.globals.target_path):
         logger.error(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode == 'output' and not job.output_path:
+    if mode == 'output' and not facefusion.globals.output_path:
         logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True
@@ -223,16 +212,41 @@ def post_process() -> None:
     read_static_image.cache_clear()
 
 
-def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
+def update_padding(padding: Padding, frame_number: int) -> Padding:
+    if frame_number == -1:
+        print("No frame number...")
+        return padding
+
+    disabled_times = facefusion.globals.mask_disabled_times
+    enabled_times = facefusion.globals.mask_enabled_times
+
+    # Get the latest start frame that is less than or equal to the current frame number
+    latest_disabled_frame = max([frame for frame in disabled_times if frame <= frame_number], default=None)
+
+    # Get the latest end frame that is less than or equal to the current frame number
+    latest_enabled_frame = max([frame for frame in enabled_times if frame <= frame_number], default=None)
+
+    # Determine if the current frame number is within a padding interval
+    if latest_disabled_frame is not None and (
+            latest_enabled_frame is None or latest_disabled_frame > latest_enabled_frame):
+        # The latest keyframe is a start frame without a corresponding end frame, keep current padding
+        new_padding = (0, 0, 0, 0)
+        return new_padding
+    return padding
+
+
+def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, frame_number=-1) -> Frame:
     frame_processor = get_frame_processor()
     model_template = get_options('model').get('template')
     model_size = get_options('model').get('size')
     model_type = get_options('model').get('type')
     crop_frame, affine_matrix = warp_face(temp_frame, target_face.kps, model_template, model_size)
+    padding = facefusion.globals.face_mask_padding
+    padding = update_padding(padding, frame_number)
     crop_mask_list = []
     if 'box' in facefusion.globals.face_mask_types:
         crop_mask_list.append(create_static_box_mask(crop_frame.shape[:2][::-1], facefusion.globals.face_mask_blur,
-                                                     facefusion.globals.face_mask_padding))
+                                                     padding))
     if 'occlusion' in facefusion.globals.face_mask_types:
         crop_mask_list.append(create_occlusion_mask(crop_frame))
     crop_frame = prepare_crop_frame(crop_frame)
@@ -295,21 +309,21 @@ def get_reference_frame(source_face: Face, target_face: Face, temp_frame: Frame)
     return swap_face(source_face, target_face, temp_frame)
 
 
-def process_frame(source_face: Face, reference_faces: FaceSet, temp_frame: Frame) -> Frame:
+def process_frame(source_face: Face, reference_faces: FaceSet, temp_frame: Frame, frame_number: int = -1) -> Frame:
     if 'reference' in facefusion.globals.face_selector_mode:
         similar_faces = find_similar_faces(temp_frame, reference_faces, facefusion.globals.reference_face_distance)
         if similar_faces:
             for similar_face in similar_faces:
-                temp_frame = swap_face(source_face, similar_face, temp_frame)
+                temp_frame = swap_face(source_face, similar_face, temp_frame, frame_number)
     if 'one' in facefusion.globals.face_selector_mode:
         target_face = get_one_face(temp_frame)
         if target_face:
-            temp_frame = swap_face(source_face, target_face, temp_frame)
+            temp_frame = swap_face(source_face, target_face, temp_frame, frame_number)
     if 'many' in facefusion.globals.face_selector_mode:
         many_faces = get_many_faces(temp_frame)
         if many_faces:
             for target_face in many_faces:
-                temp_frame = swap_face(source_face, target_face, temp_frame)
+                temp_frame = swap_face(source_face, target_face, temp_frame, frame_number)
     return temp_frame
 
 
@@ -322,7 +336,8 @@ def process_frames(source_paths: List[str], temp_frame_paths: List[str], update_
         if status.cancelled:
             return temp_frame_paths
         temp_frame = read_image(temp_frame_path)
-        result_frame = process_frame(source_face, reference_faces, temp_frame)
+        frame_number = int(os.path.splitext(os.path.basename(temp_frame_path))[0])
+        result_frame = process_frame(source_face, reference_faces, temp_frame, frame_number)
         write_image(temp_frame_path, result_frame)
         update_progress()
         if status.job_current % 30 == 0:

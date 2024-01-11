@@ -139,24 +139,25 @@ def pre_check() -> bool:
     return True
 
 
-def pre_process(mode: ProcessMode, job: JobParams) -> bool:
-    global JOB
-    global EXECUTION_THREAD_COUNT
-    EXECUTION_THREAD_COUNT = job.execution_thread_count
-    JOB = job
+def post_check() -> bool:
     model_url = get_options('model').get('url')
     model_path = get_options('model').get('path')
     if not is_download_done(model_url, model_path):
-        update_status(wording.get('model_download_not_done') + wording.get('exclamation_mark'), NAME)
+        logger.error(wording.get('model_download_not_done') + wording.get('exclamation_mark'), NAME)
         return False
     elif not is_file(model_path):
         update_status(f"Can't find model: {model_path}")
         return False
-    if mode in ['output', 'preview'] and not is_image(job.target_path) and not is_video(job.target_path):
-        update_status(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
+    return True
+
+
+def pre_process(mode: ProcessMode) -> bool:
+    if mode in ['output', 'preview'] and not is_image(facefusion.globals.target_path) and not is_video(
+            facefusion.globals.target_path):
+        logger.error(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode == 'output' and not job.output_path:
-        update_status(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
+    if mode == 'output' and not facefusion.globals.output_path:
+        logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True
 

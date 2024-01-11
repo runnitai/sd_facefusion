@@ -23,7 +23,9 @@ FRAME_PROCESSORS_METHODS = \
         'register_args',
         'apply_args',
         'pre_check',
+        'post_check',
         'pre_process',
+        'post_process',
         'get_reference_frame',
         'process_frame',
         'process_frames',
@@ -71,7 +73,7 @@ def multi_process_frames(source_paths: List[str], temp_frame_paths: List[str], p
     with mytqdm(total=len(temp_frame_paths), desc=wording.get('processing'), unit='frame', state=state) as progress:
         progress.set_postfix(
             {
-                'execution_providers': encode_execution_providers(facefusion.globals.execution_providers),
+                'execution_providers': facefusion.globals.execution_providers,
                 'execution_thread_count': facefusion.globals.execution_thread_count,
                 'execution_queue_count': facefusion.globals.execution_queue_count
             })

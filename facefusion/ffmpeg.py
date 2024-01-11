@@ -1,6 +1,6 @@
 import json
 import subprocess
-from typing import List
+from typing import List, Optional
 
 from ffmpeg_progress_yield import FfmpegProgress
 
@@ -8,6 +8,7 @@ import facefusion.globals
 from facefusion import logger
 from facefusion.filesystem import get_temp_frames_pattern, get_temp_output_video_path
 from facefusion.mytqdm import mytqdm
+from facefusion.typing import OutputVideoPreset
 from facefusion.vision import detect_fps
 
 TEMP_OUTPUT_VIDEO_NAME = 'temp.mp4'
@@ -71,16 +72,16 @@ def extract_frames(target_path: str, fps: float, status=None) -> bool:
     global LAST_VIDEO_INFO
     LAST_VIDEO_INFO = get_video_info(target_path)
     temp_frames_pattern = get_temp_frames_pattern(target_path, '%04d')
-    commands = ['-hwaccel', 'auto', '-i', target_path, '-q:v', str(temp_frame_compression),
-                '-pix_fmt', 'rgb24']
+    commands = ['-hwaccel', 'auto', '-i', target_path, '-q:v', str(temp_frame_compression), '-pix_fmt', 'rgb24']
     if trim_frame_start is not None and trim_frame_end is not None:
-        commands.extend(['-vf', f"trim=start_frame={trim_frame_start}:end_frame={trim_frame_end},fps={fps}"])
+        commands.extend(['-vf', 'trim=start_frame=' + str(trim_frame_start) + ':end_frame=' + str(
+            trim_frame_end) + ',fps=' + str(fps)])
     elif trim_frame_start is not None:
-        commands.extend(['-vf', f"trim=start_frame={trim_frame_start},fps={fps}"])
+        commands.extend(['-vf', 'trim=start_frame=' + str(trim_frame_start) + ',fps=' + str(fps)])
     elif trim_frame_end is not None:
-        commands.extend(['-vf', f"trim=end_frame={trim_frame_end},fps={fps}"])
+        commands.extend(['-vf', 'trim=end_frame=' + str(trim_frame_end) + ',fps=' + str(fps)])
     else:
-        commands.extend(['-vf', f"fps={fps}"])
+        commands.extend(['-vf', 'fps=' + str(fps)])
     commands.extend(['-vsync', '0', temp_frames_pattern])
     return run_ffmpeg(commands, status)
 
@@ -94,25 +95,18 @@ def compress_image(output_path: str) -> bool:
 def merge_video(target_path: str, fps: float, status=None) -> bool:
     temp_output_video_path = get_temp_output_video_path(target_path)
     temp_frames_pattern = get_temp_frames_pattern(target_path, '%04d')
-    commands = ['-hwaccel', 'auto', '-r', str(fps), '-i', temp_frames_pattern, '-c:v', facefusion.globals.output_video_encoder]
+    commands = ['-hwaccel', 'auto', '-r', str(fps), '-i', temp_frames_pattern, '-c:v',
+                facefusion.globals.output_video_encoder]
     if facefusion.globals.output_video_encoder in ['libx264', 'libx265']:
         output_video_compression = round(51 - (facefusion.globals.output_video_quality * 0.51))
-        commands.extend(['-crf', str(output_video_compression)])
-    elif facefusion.globals.output_video_encoder in ['libvpx-vp9']:
+        commands.extend(['-crf', str(output_video_compression), '-preset', facefusion.globals.output_video_preset])
+    if facefusion.globals.output_video_encoder in ['libvpx-vp9']:
         output_video_compression = round(63 - (facefusion.globals.output_video_quality * 0.63))
         commands.extend(['-crf', str(output_video_compression)])
-    elif facefusion.globals.output_video_encoder in ['h264_nvenc', 'hevc_nvenc']:
+    if facefusion.globals.output_video_encoder in ['h264_nvenc', 'hevc_nvenc']:
         output_video_compression = round(51 - (facefusion.globals.output_video_quality * 0.51))
-        commands.extend(['-cq', str(output_video_compression)])
-    elif facefusion.globals.output_video_encoder.startswith('prores_ks'):
-        prores_profiles = {
-            'prores_ks_proxy': '0',
-            'prores_ks_lt': '1',
-            'prores_ks': '2',  # Standard ProRes 422
-            'prores_ks_hq': '3',
-        }
-        prores_profile = prores_profiles.get(facefusion.globals.output_video_encoder, '2')  # Default to standard ProRes 422
-        commands.extend(['-profile:v', prores_profile])
+        commands.extend(
+            ['-cq', str(output_video_compression), '-preset', map_nvenc_preset(facefusion.globals.output_video_preset)])
     commands.extend(['-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-y', temp_output_video_path])
     return run_ffmpeg(commands, status)
 
@@ -131,3 +125,21 @@ def restore_audio(target_path: str, output_path: str, audio_path: str = None, st
         commands.extend(['-to', str(end_time)])
     commands.extend(['-i', target_path, '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-y', output_path])
     return run_ffmpeg(commands, status)
+
+
+def map_nvenc_preset(output_video_preset: OutputVideoPreset) -> Optional[str]:
+    if output_video_preset in ['ultrafast', 'superfast', 'veryfast']:
+        return 'p1'
+    if output_video_preset == 'faster':
+        return 'p2'
+    if output_video_preset == 'fast':
+        return 'p3'
+    if output_video_preset == 'medium':
+        return 'p4'
+    if output_video_preset == 'slow':
+        return 'p5'
+    if output_video_preset == 'slower':
+        return 'p6'
+    if output_video_preset == 'veryslow':
+        return 'p7'
+    return None
