@@ -176,7 +176,7 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
         target_frame = read_static_image(facefusion.globals.target_path)
         preview_frame = process_preview_frame(source_face, reference_faces, target_frame, frame_number)
         preview_frame = normalize_frame_color(preview_frame)
-        return gradio.Image(value=preview_frame, visible=True), enable_button, disable_button
+        return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
     if is_video(facefusion.globals.target_path):
         temp_frame = get_video_frame(facefusion.globals.target_path, frame_number)
         preview_frame = process_preview_frame(source_face, reference_faces, temp_frame, frame_number)

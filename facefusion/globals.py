@@ -48,13 +48,13 @@ face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
 trim_frame_start: Optional[int] = None
 trim_frame_end: Optional[int] = None
 temp_frame_format: Optional[TempFrameFormat] = 'jpg'
-temp_frame_quality: Optional[int] = 100
+temp_frame_quality: Optional[int] = 60
 keep_temp: Optional[bool] = False
 # output creation
-output_image_quality: Optional[int] = 80
-output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
+output_image_quality: Optional[int] = 60
+output_video_encoder: Optional[OutputVideoEncoder] = 'h264_nvenc'
 output_video_preset : Optional[OutputVideoPreset] = 'veryfast'
-output_video_quality: Optional[int] = 50
+output_video_quality: Optional[int] = 60
 keep_fps: Optional[bool] = True
 skip_audio: Optional[bool] = False
 

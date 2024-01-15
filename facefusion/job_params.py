@@ -55,12 +55,12 @@ class JobParams:
         self.trim_frame_start: Optional[int] = None
         self.trim_frame_end: Optional[int] = None
         self.temp_frame_format: Optional[TempFrameFormat] = 'jpg'
-        self.temp_frame_quality: Optional[int] = 100
+        self.temp_frame_quality: Optional[int] = 60
         self.keep_temp: Optional[bool] = False
         # output creation
-        self.output_image_quality: Optional[int] = 80
-        self.output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
-        self.output_video_quality: Optional[int] = 80
+        self.output_image_quality: Optional[int] = 60
+        self.output_video_encoder: Optional[OutputVideoEncoder] = 'h264_nvenc'
+        self.output_video_quality: Optional[int] = 60
         self.output_video_preset : Optional[OutputVideoPreset] = 'veryfast'
         self.keep_fps: Optional[bool] = True
         self.skip_audio: Optional[bool] = False
