@@ -54,7 +54,6 @@ def render() -> None:
     global STOP_CHECK_BUTTON
     global LIVE_STATUS
     global OUTPUT_STATUS
-
     global JOB_QUEUE_TABLE
     global LAST_ELEMENT
     global OUTPUT_ENQUEUE_BUTTON

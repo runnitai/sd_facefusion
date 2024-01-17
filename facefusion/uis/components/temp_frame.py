@@ -6,7 +6,7 @@ import facefusion.choices
 from facefusion import wording
 from facefusion.typing import TempFrameFormat
 from facefusion.filesystem import is_video
-from facefusion.uis.core import get_ui_component
+from facefusion.uis.core import get_ui_component, register_ui_component
 
 TEMP_FRAME_FORMAT_DROPDOWN: Optional[gradio.Dropdown] = None
 TEMP_FRAME_QUALITY_SLIDER: Optional[gradio.Slider] = None
@@ -32,6 +32,8 @@ def render() -> None:
         visible=is_video(facefusion.globals.target_path),
         elem_id='temp_frame_quality_slider'
     )
+    register_ui_component('temp_frame_format_dropdown', TEMP_FRAME_FORMAT_DROPDOWN)
+    register_ui_component('temp_frame_quality_slider', TEMP_FRAME_QUALITY_SLIDER)
 
 
 def listen() -> None:

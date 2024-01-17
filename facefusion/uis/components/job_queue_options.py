@@ -3,6 +3,7 @@ from typing import Optional, List
 import gradio
 
 from facefusion.uis import choices
+from facefusion.uis.core import register_ui_component
 
 JOB_QUEUE_OPTIONS_CHECKBOX_GROUP: Optional[gradio.Checkboxgroup] = None
 CLEAR_SOURCE = False
@@ -20,6 +21,7 @@ def render() -> None:
         elem_id='ff_job_queue_options_checkbox_group',
         visible=False
     )
+    register_ui_component('ff_job_queue_options_checkbox_group', JOB_QUEUE_OPTIONS_CHECKBOX_GROUP)
 
 
 def listen() -> None:

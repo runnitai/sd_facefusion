@@ -67,6 +67,10 @@ def render() -> None:
         elem_id='output_video_quality_slider'
     )
     register_ui_component('output_path_textbox', OUTPUT_PATH_TEXTBOX)
+    register_ui_component('output_image_quality_slider', OUTPUT_IMAGE_QUALITY_SLIDER)
+    register_ui_component('output_video_encoder_dropdown', OUTPUT_VIDEO_ENCODER_DROPDOWN)
+    register_ui_component('output_video_preset_dropdown', OUTPUT_VIDEO_PRESET_DROPDOWN)
+    register_ui_component('output_video_quality_slider', OUTPUT_VIDEO_QUALITY_SLIDER)
 
 
 def listen() -> None:
