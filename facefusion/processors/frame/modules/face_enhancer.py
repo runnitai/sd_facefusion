@@ -8,7 +8,7 @@ import onnxruntime
 
 import facefusion.globals
 import facefusion.processors.frame.core as frame_processors
-from facefusion import wording
+from facefusion import wording, logger
 from facefusion.cli_helper import create_metavar
 from facefusion.content_analyser import clear_content_analyser
 from facefusion.download import conditional_download, is_download_done

@@ -7,14 +7,15 @@ import cv2
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 
+import facefusion
 import facefusion.processors.frame.core as frame_processors
-from facefusion import wording
+from facefusion import wording, logger, globals, config
 from facefusion.cli_helper import create_metavar
 from facefusion.content_analyser import clear_content_analyser
 from facefusion.download import conditional_download, is_download_done
 from facefusion.execution_helper import map_device
 from facefusion.face_analyser import clear_face_analyser
-from facefusion.ff_status import FFStatus, update_status
+from facefusion.ff_status import FFStatus
 from facefusion.filesystem import is_file, resolve_relative_path
 from facefusion.job_params import JobParams
 from facefusion.processors.frame import choices as frame_processors_choices
