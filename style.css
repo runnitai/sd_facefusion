@@ -52,7 +52,7 @@
 }
 
 #ff_reference_face_position_gallery, #ff_reference_faces_selection_gallery {
-    max-height: 120px;
+    max-height: 85px;
     width: calc(100% - 2.2em);
 }
 

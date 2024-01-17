@@ -106,7 +106,6 @@ def render() -> None:
     register_ui_component("mask_enable_button", MASK_ENABLE_BUTTON)
     register_ui_component("mask_clear_button", MASK_CLEAR_BUTTON)
     register_ui_component("face_mask_box_group", FACE_MASK_BOX_GROUP)
-    register_ui_component("face_mask_region_group", FACE_MASK_REGION_GROUP)
 
 
 def listen() -> None:
