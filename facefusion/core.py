@@ -1,5 +1,9 @@
 import os
+import time
 import traceback
+from asyncio import sleep
+
+import numpy
 
 from facefusion.content_analyser import analyse_image, analyse_video
 from facefusion.execution_helper import decode_execution_providers
@@ -8,7 +12,7 @@ from facefusion.face_analyser import get_one_face, get_average_face
 from facefusion.face_store import get_reference_faces, append_reference_face
 from facefusion.ffmpeg import compress_image, extract_frames, merge_video, restore_audio
 from facefusion.filesystem import is_image, is_video, create_temp, get_temp_frame_paths, clear_temp, move_temp, \
-    list_module_names
+    list_module_names, list_directory
 from facefusion.normalizer import normalize_output_path, normalize_padding
 from facefusion.vision import get_video_frame, read_image, detect_fps, read_static_images
 from facefusion.ff_status import FFStatus
@@ -114,17 +118,18 @@ def destroy() -> None:
 
 
 def limit_resources() -> None:
-    if facefusion.globals.max_memory:
-        memory = facefusion.globals.max_memory * 1024 ** 3
-        if platform.system().lower() == 'darwin':
-            memory = facefusion.globals.max_memory * 1024 ** 6
-        if platform.system().lower() == 'windows':
-            import ctypes
-            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-            kernel32.SetProcessWorkingSetSize(-1, ctypes.c_size_t(memory), ctypes.c_size_t(memory))
-        else:
-            import resource
-            resource.setrlimit(resource.RLIMIT_DATA, (memory, memory))
+    return
+    # if facefusion.globals.max_memory:
+    #     memory = facefusion.globals.max_memory * 1024 ** 3
+    #     if platform.system().lower() == 'darwin':
+    #         memory = facefusion.globals.max_memory * 1024 ** 6
+    #     if platform.system().lower() == 'windows':
+    #         import ctypes
+    #         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    #         kernel32.SetProcessWorkingSetSize(-1, ctypes.c_size_t(memory), ctypes.c_size_t(memory))
+    #     else:
+    #         import resource
+    #         resource.setrlimit(resource.RLIMIT_DATA, (memory, memory))
 
 
 def pre_check() -> bool:
@@ -139,10 +144,15 @@ def pre_check() -> bool:
 
 
 def conditional_process(status: FFStatus, job: JobParams) -> None:
-    conditional_append_reference_faces(job)
+    start_time = time.time()
     for frame_processor_module in get_frame_processors_modules(job.frame_processors):
+        while not frame_processor_module.post_check():
+            logger.disable()
+            sleep(0.5)
+        logger.enable()
         if not frame_processor_module.pre_process('output'):
             return
+    conditional_append_reference_faces(job)
     target_path = job.target_path
     print(f"Processing {target_path}")
     try:
@@ -168,14 +178,15 @@ def conditional_append_reference_faces(job: JobParams = None) -> None:
         reference_face = get_one_face(reference_frame, job.reference_face_position)
         append_reference_face('origin', reference_face)
         if source_face and reference_face:
-            for frame_processor_module in get_frame_processors_modules(job.frame_processors):
-                reference_frame = frame_processor_module.get_reference_frame(source_face, reference_face,
-                                                                             reference_frame)
-                reference_face = get_one_face(reference_frame, job.reference_face_position)
-                append_reference_face(frame_processor_module.__name__, reference_face)
+            for frame_processor_module in get_frame_processors_modules(facefusion.globals.frame_processors):
+                abstract_reference_frame = frame_processor_module.get_reference_frame(source_face, reference_face, reference_frame)
+                if numpy.any(abstract_reference_frame):
+                    reference_frame = abstract_reference_frame
+                    reference_face = get_one_face(reference_frame, facefusion.globals.reference_face_position)
+                    append_reference_face(frame_processor_module.__name__, reference_face)
 
 
-def process_image(status, job: JobParams) -> None:
+def process_image(start_time: float, status, job: JobParams) -> None:
     if analyse_image(job.target_path):
         status.update("Naughty naughty!!")
         status.cancel()
@@ -201,6 +212,7 @@ def process_image(status, job: JobParams) -> None:
         status.update(status_str)
     # validate image
     if is_image(job.target_path):
+        seconds = '{:.2f}'.format((time.time() - start_time) % 60)
         status_str = wording.get('processing_image_succeed')
     else:
         status_str = wording.get('processing_image_failed')
@@ -227,7 +239,7 @@ def process_video(status, job) -> None:
 
     # extract frames
     status.update(f"Extracting frames from {os.path.basename(job.target_path)}...")
-    extract_frames(job.target_path, fps, status)
+    extract_frames(job.target_path, job.output_video_resolution, fps, status)
     status.step()
     # process frame
     temp_frame_paths = get_temp_frame_paths(job.target_path)

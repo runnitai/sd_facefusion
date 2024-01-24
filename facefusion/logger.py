@@ -4,8 +4,8 @@ from logging import basicConfig, getLogger, Logger, DEBUG, INFO, WARNING, ERROR
 from facefusion.typing import LogLevel
 
 
-def init(log_level: LogLevel) -> None:
-    basicConfig(format=None)
+def init(log_level : LogLevel) -> None:
+    basicConfig(format = None)
     get_package_logger().setLevel(get_log_levels()[log_level])
 
 
@@ -31,10 +31,14 @@ def error(message : str, scope : str) -> None:
 
 def enable() -> None:
     get_package_logger().disabled = False
+
+
 def disable() -> None:
     get_package_logger().disabled = True
+
+
 def get_log_levels() -> Dict[LogLevel, int]:
-    return \
+    return\
     {
         'error': ERROR,
         'warn': WARNING,

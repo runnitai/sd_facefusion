@@ -136,11 +136,6 @@ def install_runtimes():
         print(f"Installing {onnxruntime_cuda_name}...")
         subprocess.call(['pip', 'uninstall', 'onnxruntime', onnxruntime_cuda_name, '-y'])
         pip_install(f"{onnxruntime_cuda_name}=={onnxruntime_version}")
-    if not is_installed('torch', torch_version, True):
-        print(f"Installing torch...")
-        # Install the specified version of PyTorch with CUDA support
-        pip_install(f'torch=={torch_version}+{torch_cuda_wheel}', '--extra-index-url',
-                    'https://download.pytorch.org/whl/' + torch_cuda_wheel)
 
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))

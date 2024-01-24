@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from facefusion.typing import LogLevel, FaceSelectorMode, FaceAnalyserOrder, FaceAnalyserAge, FaceAnalyserGender, \
     FaceMaskType, OutputVideoEncoder, FaceDetectorModel, FaceRecognizerModel, TempFrameFormat, Padding, FaceMaskRegion, \
-    OutputVideoPreset
+    OutputVideoPreset, VideoMemoryStrategy
 from facefusion.choices import face_mask_regions
 from modules.paths_internal import script_path
 
@@ -19,10 +19,10 @@ log_level: Optional[LogLevel] = ['info']
 # execution
 execution_providers: List[str] = [('CUDAExecutionProvider', {'cudnn_conv_algo_search': 'DEFAULT'})]
 
-
-execution_thread_count: Optional[int] = 22
-execution_queue_count: Optional[int] = 1
-max_memory: Optional[int] = None
+execution_thread_count: Optional[int] = 32
+execution_queue_count: Optional[int] = 2
+video_memory_strategy: Optional[VideoMemoryStrategy] = "tolerant"
+system_memory_limit: Optional[int] = None
 # face analyser
 face_analyser_order: Optional[FaceAnalyserOrder] = 'best-worst'
 face_analyser_age: Optional[FaceAnalyserAge] = None
@@ -47,15 +47,16 @@ face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
 # frame extraction
 trim_frame_start: Optional[int] = None
 trim_frame_end: Optional[int] = None
-temp_frame_format: Optional[TempFrameFormat] = 'jpg'
+temp_frame_format: Optional[TempFrameFormat] = 'bmp'
 temp_frame_quality: Optional[int] = 100
 keep_temp: Optional[bool] = False
 # output creation
 output_image_quality: Optional[int] = 60
 output_video_encoder: Optional[OutputVideoEncoder] = 'h264_nvenc'
-output_video_preset : Optional[OutputVideoPreset] = 'veryfast'
+output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
 output_video_quality: Optional[int] = 60
-keep_fps: Optional[bool] = True
+output_video_resolution: Optional[str] = None
+output_video_fps: Optional[float] = None
 skip_audio: Optional[bool] = False
 
 # frame processors

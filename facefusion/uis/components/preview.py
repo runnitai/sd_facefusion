@@ -16,8 +16,8 @@ from facefusion.typing import Frame, Face
 from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import ComponentName
-from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, resize_frame_dimension, \
-    read_static_image, read_static_images, detect_fps
+from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, \
+    read_static_image, read_static_images, detect_fps, resize_frame_resolution
 
 PREVIEW_IMAGE: Optional[gradio.Image] = None
 PREVIEW_FRAME_SLIDER: Optional[gradio.Slider] = None
@@ -210,7 +210,7 @@ def update_preview_frame_slider() -> gradio.update:
 
 
 def process_preview_frame(source_face: Face, reference_faces: Face, temp_frame: Frame, frame_number: int = -1) -> Frame:
-    temp_frame = resize_frame_dimension(temp_frame, 640, 640)
+    temp_frame = resize_frame_resolution(temp_frame, 640, 640)
     if analyse_frame(temp_frame):
         return cv2.GaussianBlur(temp_frame, (99, 99), 0)
     job = JobParams().from_dict(facefusion.globals.__dict__)

@@ -13,7 +13,7 @@ from facefusion import wording, logger, globals, config
 from facefusion.cli_helper import create_metavar
 from facefusion.content_analyser import clear_content_analyser
 from facefusion.download import conditional_download, is_download_done
-from facefusion.execution_helper import map_device
+from facefusion.execution_helper import map_torch_backend
 from facefusion.face_analyser import clear_face_analyser
 from facefusion.ff_status import FFStatus
 from facefusion.filesystem import is_file, resolve_relative_path
@@ -68,7 +68,7 @@ def get_frame_processor() -> Any:
                     num_out_ch=3,
                     scale=model_scale
                 ),
-                device=map_device(["CUDAExecutionProvider"]),
+                device=map_torch_backend(facefusion.globals.execution_providers),
                 scale=model_scale
             )
     return FRAME_PROCESSOR
@@ -140,10 +140,12 @@ def pre_process(mode: ProcessMode) -> bool:
 
 
 def post_process() -> None:
-    clear_frame_processor()
-    clear_face_analyser()
-    clear_content_analyser()
     read_static_image.cache_clear()
+    if facefusion.globals.video_memory_strategy == 'strict' or facefusion.globals.video_memory_strategy == 'moderate':
+        clear_frame_processor()
+    if facefusion.globals.video_memory_strategy == 'strict':
+        clear_face_analyser()
+        clear_content_analyser()
 
 
 def enhance_frame(temp_frame: Frame) -> Frame:
@@ -180,7 +182,7 @@ def process_frames(source_paths: str, temp_frame_paths: List[str], update_progre
         write_image(temp_frame_path, result_frame)
         update_progress()
         frame_count += 1
-        if frame_count % 30 == 0:
+        if frame_count % 120 == 0:
             status.update_preview(temp_frame_path)
     return temp_frame_paths
 

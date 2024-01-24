@@ -9,7 +9,6 @@ import psutil
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.execution_helper import encode_execution_providers
 from facefusion.mytqdm import mytqdm
 from facefusion.typing import Process_Frames
 
@@ -31,7 +30,6 @@ FRAME_PROCESSORS_METHODS = \
         'process_frames',
         'process_image',
         'process_video',
-        'post_process'
     ]
 
 
@@ -80,15 +78,15 @@ def multi_process_frames(source_paths: List[str], temp_frame_paths: List[str], p
 
         queue_temp_frame_paths: Queue[str] = create_queue(temp_frame_paths)
 
-        with ThreadPoolExecutor() as executor:  # max_workers is chosen automatically
+        with ThreadPoolExecutor(max_workers=32) as executor:  # max_workers is chosen automatically
             futures = []
-            while not queue_temp_frame_paths.empty():
+            queue_frame_paths : Queue[str] = create_queue(temp_frame_paths)
+            queue_per_future = max(len(temp_frame_paths) // facefusion.globals.execution_thread_count * facefusion.globals.execution_queue_count, 1)
+            while not queue_frame_paths.empty():
                 if state.cancelled:
                     return
-
-                payload_temp_frame_paths = [queue_temp_frame_paths.get()]  # Process one frame at a time
-                future = executor.submit(process_frames, source_paths, payload_temp_frame_paths,
-                                         lambda: update_progress(1, 1, progress), state)
+                submit_frame_paths = pick_queue(queue_frame_paths, queue_per_future)
+                future = executor.submit(process_frames, source_paths, submit_frame_paths, progress.update, state)
                 futures.append(future)
 
             for future_done in as_completed(futures):

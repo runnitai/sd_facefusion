@@ -27,8 +27,9 @@ class JobParams:
         self.log_level: Optional[LogLevel] = ['info']
         # execution
         self.execution_providers: List[str] = [('CUDAExecutionProvider', {'cudnn_conv_algo_search': 'DEFAULT'})]
-        self.execution_thread_count: Optional[int] = 22
-        self.execution_queue_count: Optional[int] = 1
+        self.execution_thread_count: Optional[int] = 32
+        self.execution_queue_count: Optional[int] = 2
+        self.video_memory_strategy: Optional[str] = "tolerant"
         self.max_memory: Optional[int] = None
         # face analyser
         self.face_analyser_order: Optional[FaceAnalyserOrder] = 'best-worst'
@@ -54,14 +55,15 @@ class JobParams:
         # frame extraction
         self.trim_frame_start: Optional[int] = None
         self.trim_frame_end: Optional[int] = None
-        self.temp_frame_format: Optional[TempFrameFormat] = 'jpg'
+        self.temp_frame_format: Optional[TempFrameFormat] = 'bmp'
         self.temp_frame_quality: Optional[int] = 60
         self.keep_temp: Optional[bool] = False
         # output creation
         self.output_image_quality: Optional[int] = 60
         self.output_video_encoder: Optional[OutputVideoEncoder] = 'h264_nvenc'
         self.output_video_quality: Optional[int] = 60
-        self.output_video_preset : Optional[OutputVideoPreset] = 'veryfast'
+        self.output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
+        self.output_video_resolution: Optional[str] = None
         self.keep_fps: Optional[bool] = True
         self.skip_audio: Optional[bool] = False
 

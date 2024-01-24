@@ -133,3 +133,9 @@ def list_module_names(path: str) -> Optional[List[str]]:
         files = os.listdir(path)
         return [Path(file).stem for file in files if not Path(file).stem.startswith(('.', '__'))]
     return None
+
+def list_directory(directory_path : str) -> Optional[List[str]]:
+    if is_directory(directory_path):
+        files = os.listdir(directory_path)
+        return [ Path(file).stem for file in files if not Path(file).stem.startswith(('.', '__')) ]
+    return None

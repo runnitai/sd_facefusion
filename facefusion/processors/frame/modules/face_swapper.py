@@ -1,4 +1,5 @@
 import os
+import platform
 import threading
 from argparse import ArgumentParser
 from typing import Any, List, Literal, Optional
@@ -10,12 +11,12 @@ from onnx import numpy_helper
 
 import facefusion.globals
 import facefusion.processors.frame.core as frame_processors
-from facefusion import logger, wording
+from facefusion import logger, wording, config
 from facefusion.content_analyser import clear_content_analyser
 from facefusion.download import conditional_download, is_download_done
 from facefusion.face_analyser import get_one_face, get_average_face, get_many_faces, find_similar_faces, \
     clear_face_analyser
-from facefusion.face_helper import warp_face, paste_back
+from facefusion.face_helper import warp_face_by_kps, paste_back
 from facefusion.face_masker import clear_face_occluder, create_static_box_mask, create_occlusion_mask, \
     create_region_mask, clear_face_parser
 from facefusion.face_store import get_reference_faces
@@ -150,8 +151,11 @@ def set_options(key: Literal['model'], value: Any) -> None:
 
 
 def register_args(program: ArgumentParser) -> None:
-    program.add_argument('--face-swapper-model', help=wording.get('frame_processor_model_help'),
-                         default='inswapper_128_fp16', choices=frame_processors_choices.face_swapper_models)
+    if platform.system().lower() == 'darwin':
+        face_swapper_model_fallback = 'inswapper_128'
+    else:
+        face_swapper_model_fallback = 'inswapper_128_fp16'
+    program.add_argument('--face-swapper-model', help = wording.get('frame_processor_model_help'), default = config.get_str_value('frame_processors.face_swapper_model', face_swapper_model_fallback), choices = frame_processors_choices.face_swapper_models)
 
 
 def apply_args(program: ArgumentParser) -> None:
@@ -203,13 +207,15 @@ def pre_process(mode: ProcessMode) -> bool:
 
 
 def post_process() -> None:
-    clear_frame_processor()
-    clear_model_matrix()
-    clear_face_analyser()
-    clear_content_analyser()
-    clear_face_occluder()
-    clear_face_parser()
     read_static_image.cache_clear()
+    if facefusion.globals.video_memory_strategy == 'strict' or facefusion.globals.video_memory_strategy == 'moderate':
+        clear_frame_processor()
+        clear_model_matrix()
+    if facefusion.globals.video_memory_strategy == 'strict':
+        clear_face_analyser()
+        clear_content_analyser()
+        clear_face_occluder()
+        clear_face_parser()
 
 
 def update_padding(padding: Padding, frame_number: int) -> Padding:
@@ -236,11 +242,9 @@ def update_padding(padding: Padding, frame_number: int) -> Padding:
 
 
 def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, frame_number=-1) -> Frame:
-    frame_processor = get_frame_processor()
     model_template = get_options('model').get('template')
     model_size = get_options('model').get('size')
-    model_type = get_options('model').get('type')
-    crop_frame, affine_matrix = warp_face(temp_frame, target_face.kps, model_template, model_size)
+    crop_frame, affine_matrix = warp_face_by_kps(temp_frame, target_face.kps, model_template, model_size)
     padding = facefusion.globals.face_mask_padding
     padding = update_padding(padding, frame_number)
     crop_mask_list = []
@@ -250,7 +254,20 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, frame_num
     if 'occlusion' in facefusion.globals.face_mask_types:
         crop_mask_list.append(create_occlusion_mask(crop_frame))
     crop_frame = prepare_crop_frame(crop_frame)
+    crop_frame = apply_swap(source_face, crop_frame)
+    crop_frame = normalize_crop_frame(crop_frame)
+    if 'region' in facefusion.globals.face_mask_types:
+        crop_mask_list.append(create_region_mask(crop_frame, facefusion.globals.face_mask_regions))
+    crop_mask = numpy.minimum.reduce(crop_mask_list).clip(0, 1)
+    temp_frame = paste_back(temp_frame, crop_frame, crop_mask, affine_matrix)
+    return temp_frame
+
+
+def apply_swap(source_face : Face, crop_frame : Frame) -> Frame:
+    frame_processor = get_frame_processor()
+    model_type = get_options('model').get('type')
     frame_processor_inputs = {}
+
     for frame_processor_input in frame_processor.get_inputs():
         if frame_processor_input.name == 'source':
             if model_type == 'blendswap':
@@ -260,17 +277,12 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, frame_num
         if frame_processor_input.name == 'target':
             frame_processor_inputs[frame_processor_input.name] = crop_frame  # type: ignore[assignment]
     crop_frame = frame_processor.run(None, frame_processor_inputs)[0][0]
-    crop_frame = normalize_crop_frame(crop_frame)
-    if 'region' in facefusion.globals.face_mask_types:
-        crop_mask_list.append(create_region_mask(crop_frame, facefusion.globals.face_mask_regions))
-    crop_mask = numpy.minimum.reduce(crop_mask_list).clip(0, 1)
-    temp_frame = paste_back(temp_frame, crop_frame, crop_mask, affine_matrix)
-    return temp_frame
+    return crop_frame
 
 
 def prepare_source_frame(source_face: Face) -> Frame:
     source_frame = read_static_image(facefusion.globals.source_paths[0])
-    source_frame, _ = warp_face(source_frame, source_face.kps, 'arcface_112_v2', (112, 112))
+    source_frame, _ = warp_face_by_kps(source_frame, source_face.kps, 'arcface_112_v2', (112, 112))
     source_frame = source_frame[:, :, ::-1] / 255.0
     source_frame = source_frame.transpose(2, 0, 1)
     source_frame = numpy.expand_dims(source_frame, axis=0).astype(numpy.float32)
@@ -301,7 +313,7 @@ def prepare_crop_frame(crop_frame: Frame) -> Frame:
 def normalize_crop_frame(crop_frame: Frame) -> Frame:
     crop_frame = crop_frame.transpose(1, 2, 0)
     crop_frame = (crop_frame * 255.0).round()
-    crop_frame = crop_frame[:, :, ::-1].astype(numpy.uint8)
+    crop_frame = crop_frame[:, :, ::-1]
     return crop_frame
 
 
@@ -340,7 +352,7 @@ def process_frames(source_paths: List[str], temp_frame_paths: List[str], update_
         result_frame = process_frame(source_face, reference_faces, temp_frame, frame_number)
         write_image(temp_frame_path, result_frame)
         update_progress()
-        if status.job_current % 30 == 0:
+        if status.job_current % 120 == 0:
             status.update_preview(temp_frame_path)
     return temp_frame_paths
 

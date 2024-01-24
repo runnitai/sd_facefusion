@@ -19,19 +19,25 @@ Face = namedtuple('Face',
 FaceSet = Dict[str, List[Face]]
 FaceStore = TypedDict('FaceStore',
 {
-    'static_faces': FaceSet,
+    'static_faces' : FaceSet,
     'reference_faces': FaceSet
 })
 Frame = numpy.ndarray[Any, Any]
 Mask = numpy.ndarray[Any, Any]
 Matrix = numpy.ndarray[Any, Any]
+
+Fps = float
 Padding = Tuple[int, int, int, int]
+Resolution = Tuple[int, int]
 
 Update_Process = Callable[[], None]
 Process_Frames = Callable[[List[str], List[str], Update_Process], None]
-LogLevel = Literal['error', 'warn', 'info', 'debug']
+
 Template = Literal['arcface_112_v1', 'arcface_112_v2', 'arcface_128_v2', 'ffhq_512']
 ProcessMode = Literal['output', 'preview', 'stream']
+
+LogLevel = Literal['error', 'warn', 'info', 'debug']
+VideoMemoryStrategy = Literal['strict', 'moderate', 'tolerant']
 FaceSelectorMode = Literal['reference', 'one', 'many']
 FaceAnalyserOrder = Literal['left-right', 'right-left', 'top-bottom', 'bottom-top', 'small-large', 'large-small', 'best-worst', 'worst-best']
 FaceAnalyserAge = Literal['child', 'teen', 'adult', 'senior']
