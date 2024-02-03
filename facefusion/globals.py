@@ -39,15 +39,15 @@ reference_frame_number: Optional[int] = 0
 reference_face_dict: Optional[dict] = {}
 # face mask
 face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
-mask_enabled_times: Optional[List[int]] = [0]
-mask_disabled_times: Optional[List[int]] = []
+mask_enabled_times: Optional[List[int]] = []
+mask_disabled_times: Optional[List[int]] = [0]
 face_mask_blur: Optional[float] = 0.3
 face_mask_padding: Optional[Padding] = (0, 0, 0, 0)
 face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
 # frame extraction
 trim_frame_start: Optional[int] = None
 trim_frame_end: Optional[int] = None
-temp_frame_format: Optional[TempFrameFormat] = 'bmp'
+temp_frame_format: Optional[TempFrameFormat] = 'png'
 temp_frame_quality: Optional[int] = 100
 keep_temp: Optional[bool] = False
 # output creation

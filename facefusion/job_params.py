@@ -46,8 +46,8 @@ class JobParams:
         self.reference_frame_number: Optional[int] = 0
         self.reference_face_dict: Optional[dict] = {}
         # face mask
-        self.mask_enabled_times: Optional[List[int]] = [0]
-        self.mask_disabled_times: Optional[List[int]] = []
+        self.mask_enabled_times: Optional[List[int]] = []
+        self.mask_disabled_times: Optional[List[int]] = [0]
         self.face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
         self.face_mask_blur: Optional[float] = 0.3
         self.face_mask_padding: Optional[Padding] = (0, 0, 0, 0)
@@ -55,7 +55,7 @@ class JobParams:
         # frame extraction
         self.trim_frame_start: Optional[int] = None
         self.trim_frame_end: Optional[int] = None
-        self.temp_frame_format: Optional[TempFrameFormat] = 'bmp'
+        self.temp_frame_format: Optional[TempFrameFormat] = 'png'
         self.temp_frame_quality: Optional[int] = 60
         self.keep_temp: Optional[bool] = False
         # output creation

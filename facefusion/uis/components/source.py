@@ -6,7 +6,7 @@ import gradio
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.filesystem import are_images, TEMP_DIRECTORY_PATH
+from facefusion.filesystem import are_images, TEMP_DIRECTORY_PATH, clear_temp
 from facefusion.uis.core import register_ui_component
 from facefusion.uis.typing import File
 
@@ -70,4 +70,5 @@ def update(files: List[File]) -> gradio.Image:
         facefusion.globals.source_paths = user_files
         return gradio.update(value=largest_file_name, visible=True)
     facefusion.globals.source_paths = None
+    clear_temp()
     return gradio.update(value=None, visible=False)

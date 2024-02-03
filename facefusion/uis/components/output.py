@@ -184,15 +184,14 @@ def start(output_path: str) -> Tuple[gradio.update, gradio.update, gradio.update
         pass
     job_queue.clear()
     out_files, out_image, out_video = process_outputs()
-    if facefusion.globals.target_path:
-        clear_temp()
-    # Clear facefusion.globals after processing
-    params = JobParams()
-    for key in params.__dict__:
-        if not key.startswith("__") and key in facefusion.globals.__dict__:
-            if key == "source_paths":
-                continue
-            facefusion.globals.__dict__[key] = params.__dict__[key]
+    clear_temp()
+    # # Clear facefusion.globals after processing
+    # params = JobParams()
+    # for key in params.__dict__:
+    #     if not key.startswith("__") and key in facefusion.globals.__dict__:
+    #         if key == "source_paths":
+    #             continue
+    #         facefusion.globals.__dict__[key] = params.__dict__[key]
     status.finish(f"Successfully processed {total_jobs} jobs.")
     return out_files, out_image, out_video, src_img, tgt_file, queue_table
 

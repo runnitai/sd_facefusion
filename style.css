@@ -70,9 +70,9 @@
     overflow-y: auto;
 }
 
-#ff_preview_frame_forward_button, #ff_preview_frame_back_button {
-    min-width: 48px!important;
-    max-width: 48px!important;
+.ff_preview_frame_button {
+    min-width: 36px!important;
+    max-width: 36px!important;
 }
 
 .output_elements {

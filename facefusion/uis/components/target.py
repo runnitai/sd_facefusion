@@ -10,7 +10,7 @@ from facefusion import wording
 from facefusion.download import download_video
 from facefusion.face_store import clear_reference_faces, clear_static_faces
 from facefusion.uis.core import register_ui_component
-from facefusion.filesystem import is_image, is_video, is_url, TEMP_DIRECTORY_PATH
+from facefusion.filesystem import is_image, is_video, is_url, TEMP_DIRECTORY_PATH, clear_temp
 
 TARGET_PATH: Optional[gradio.Text] = None
 TARGET_FILE: Optional[gradio.File] = None
@@ -87,14 +87,17 @@ def update_from_path(path: str) -> Tuple[gradio.update, gradio.update, gradio.up
             value=None, visible=False), gradio.update(value=None, visible=False)
     if is_image(path):
         facefusion.globals.target_path = path
+        clear_temp()
         return gradio.update(value=path, visible=True), gradio.update(value=path, visible=True), gradio.update(
             value=path, visible=True), gradio.update(value=None, visible=False)
     if is_video(path):
         facefusion.globals.target_path = path
+        clear_temp()
         return gradio.update(value=path, visible=True), gradio.update(value=path, visible=True), gradio.update(
             value=None, visible=False), gradio.update(value=path, visible=True)
     print(f"Invalid path {path}")
     facefusion.globals.target_path = None
+    clear_temp()
     return gradio.update(value=None, visible=True), gradio.update(value=path, visible=True), gradio.update(value=None,
                                                                                                            visible=False), gradio.update(
         value=None, visible=False)
@@ -125,11 +128,13 @@ def update(file: IO[Any]) -> Tuple[gradio.Image, gradio.Video]:
 
     if file_path and is_image(file_path):
         facefusion.globals.target_path = file_path
+        clear_temp()
         return gradio.update(value=file_path, visible=False), gradio.update(value=file_path,
                                                                             visible=True), gradio.update(value=None,
                                                                                                          visible=False)
     if file_path and is_video(file_path):
         facefusion.globals.target_path = file_path
+        clear_temp()
         return gradio.update(value=file_path, visible=False), gradio.update(value=None, visible=False), gradio.update(
             value=file_path, visible=True)
     facefusion.globals.target_path = None

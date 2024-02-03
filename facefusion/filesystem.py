@@ -64,31 +64,18 @@ def move_temp(target_path: str, output_path: str) -> None:
 
 
 def clear_temp() -> None:
-    # Set max file size to 5GB
-    max_file_size = 5 * 1024 * 1024 * 1024
-    # Delete subfolders in TEMP_DIR_PATH
-    for folder in glob.glob(os.path.join(TEMP_DIRECTORY_PATH, '**/*')):
-        if os.path.isdir(folder):
-            shutil.rmtree(folder)
-    # Get the size of all the files in TEMP_DIR_PATH
-    total_temp_size = sum(os.path.getsize(file) for file in glob.glob(os.path.join(TEMP_DIRECTORY_PATH, '**/*')))
-    # If the total size is greater than the max size, delete the oldest files until it's not
-    if total_temp_size > max_file_size:
-        # Get all the files in TEMP_DIR_PATH sorted by creation time
-        files = sorted(glob.glob(os.path.join(TEMP_DIRECTORY_PATH, '**/*')), key=os.path.getctime)
-        for file in files:
-            # If the total size is less than the max size, stop deleting files
-            if total_temp_size <= max_file_size:
-                break
-            file_size = os.path.getsize(file)
-            # If the file is a directory, delete it
-            if os.path.isdir(file):
-                shutil.rmtree(file)
-            # If the file is a file, delete it
-            if os.path.isfile(file):
-                os.remove(file)
-            # Subtract the size of the deleted file from the total size
-            total_temp_size -= file_size
+    src_files = [f for f in facefusion.globals.source_paths if os.path.exists(f)]
+    tgt_file = facefusion.globals.target_path
+    for item in glob.glob(os.path.join(TEMP_DIRECTORY_PATH, '**/*')):
+        if os.path.isdir(item):
+            shutil.rmtree(item)
+            continue
+        if tgt_file and os.path.exists(tgt_file) and item == tgt_file:
+            continue
+        if item in src_files:
+            continue
+        if os.path.exists(item):
+            os.remove(item)
 
 
 def is_file(file_path: str) -> bool:

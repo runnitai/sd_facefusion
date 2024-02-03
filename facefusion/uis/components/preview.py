@@ -23,6 +23,8 @@ PREVIEW_IMAGE: Optional[gradio.Image] = None
 PREVIEW_FRAME_SLIDER: Optional[gradio.Slider] = None
 PREVIEW_FRAME_BACK_BUTTON: Optional[gradio.Button] = None
 PREVIEW_FRAME_FORWARD_BUTTON: Optional[gradio.Button] = None
+PREVIEW_FRAME_BACK_FIVE_BUTTON: Optional[gradio.Button] = None
+PREVIEW_FRAME_FORWARD_FIVE_BUTTON: Optional[gradio.Button] = None
 
 
 def render() -> None:
@@ -30,6 +32,8 @@ def render() -> None:
     global PREVIEW_FRAME_SLIDER
     global PREVIEW_FRAME_BACK_BUTTON
     global PREVIEW_FRAME_FORWARD_BUTTON
+    global PREVIEW_FRAME_BACK_FIVE_BUTTON
+    global PREVIEW_FRAME_FORWARD_FIVE_BUTTON
 
     preview_image_args: Dict[str, Any] = \
         {
@@ -62,21 +66,40 @@ def render() -> None:
         preview_frame_slider_args['visible'] = True
     PREVIEW_IMAGE = gradio.Image(**preview_image_args)
     with gradio.Row():
-        PREVIEW_FRAME_BACK_BUTTON = gradio.Button(
-            value="-1s",
-            elem_id='ff_preview_frame_back_button',
-            visible=preview_frame_slider_args['visible']
-        )
+        with gradio.Column():
+            PREVIEW_FRAME_BACK_BUTTON = gradio.Button(
+                value="-1s",
+                elem_id='ff_preview_frame_back_button',
+                elem_classes=['ff_preview_frame_button'],
+                visible=preview_frame_slider_args['visible']
+            )
+            PREVIEW_FRAME_BACK_FIVE_BUTTON = gradio.Button(
+                value="-5s",
+                elem_id='ff_preview_frame_back_button',
+                elem_classes=['ff_preview_frame_button'],
+                visible=preview_frame_slider_args['visible']
+            )
         PREVIEW_FRAME_SLIDER = gradio.Slider(**preview_frame_slider_args)
-        PREVIEW_FRAME_FORWARD_BUTTON = gradio.Button(
-            value="+1s",
-            elem_id='ff_preview_frame_forward_button',
-            visible=preview_frame_slider_args['visible']
-        )
+
+        with gradio.Column():
+            PREVIEW_FRAME_FORWARD_BUTTON = gradio.Button(
+                value="+1s",
+                elem_id='ff_preview_frame_forward_button',
+                elem_classes=['ff_preview_frame_button'],
+                visible=preview_frame_slider_args['visible']
+            )
+            PREVIEW_FRAME_FORWARD_FIVE_BUTTON = gradio.Button(
+                value="+1s",
+                elem_id='ff_preview_frame_forward_button',
+                elem_classes=['ff_preview_frame_button'],
+                visible=preview_frame_slider_args['visible']
+            )
 
     register_ui_component('preview_frame_slider', PREVIEW_FRAME_SLIDER)
     register_ui_component('preview_frame_back_button', PREVIEW_FRAME_BACK_BUTTON)
     register_ui_component('preview_frame_forward_button', PREVIEW_FRAME_FORWARD_BUTTON)
+    register_ui_component('preview_frame_back_five_button', PREVIEW_FRAME_BACK_FIVE_BUTTON)
+    register_ui_component('preview_frame_forward_five_button', PREVIEW_FRAME_FORWARD_FIVE_BUTTON)
     register_ui_component('preview_image', PREVIEW_IMAGE)
 
 
@@ -87,8 +110,10 @@ def listen() -> None:
     all_update_elements = [PREVIEW_IMAGE, mask_enable_button, mask_disable_button]
     more_elements = [PREVIEW_FRAME_SLIDER] + all_update_elements
     PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
+    PREVIEW_FRAME_BACK_FIVE_BUTTON.click(preview_back_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
     PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
-    PREVIEW_FRAME_SLIDER.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
+    PREVIEW_FRAME_FORWARD_FIVE_BUTTON.click(preview_forward_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
+    PREVIEW_FRAME_SLIDER.input(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     mask_disable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     mask_enable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
@@ -194,6 +219,21 @@ def preview_back(reference_frame_number: int = 0) -> gradio.update:
 
 def preview_forward(reference_frame_number: int = 0) -> gradio.update:
     frames_per_second = int(detect_fps(facefusion.globals.target_path))
+    reference_frame_number = min(reference_frame_number + frames_per_second,
+                                 count_video_frame_total(facefusion.globals.target_path))
+    preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
+    return gradio.update(value=reference_frame_number), preview, enable_btn, disable_btn
+
+
+def preview_back_five(reference_frame_number: int = 0) -> gradio.update:
+    frames_per_second = int(detect_fps(facefusion.globals.target_path)) * 5
+    reference_frame_number = max(0, reference_frame_number - frames_per_second)
+    preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
+    return gradio.update(value=reference_frame_number), preview, enable_btn, disable_btn
+
+
+def preview_forward_five(reference_frame_number: int = 0) -> gradio.update:
+    frames_per_second = int(detect_fps(facefusion.globals.target_path)) * 5
     reference_frame_number = min(reference_frame_number + frames_per_second,
                                  count_video_frame_total(facefusion.globals.target_path))
     preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)

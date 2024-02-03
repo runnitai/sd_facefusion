@@ -53,8 +53,8 @@ def render() -> None:
             value=facefusion.globals.face_mask_blur
         )
         with gradio.Row():
-            MASK_DISABLE_BUTTON = gradio.Button(value="Disable Mask Padding", variant="secondary")
-            MASK_ENABLE_BUTTON = gradio.Button(value="Enable Mask Padding", variant="primary", visible=False)
+            MASK_DISABLE_BUTTON = gradio.Button(value="Disable Mask Padding", variant="secondary", visible=False)
+            MASK_ENABLE_BUTTON = gradio.Button(value="Enable Mask Padding", variant="primary", visible=True)
             MASK_CLEAR_BUTTON = gradio.Button(value="Clear Markers")
             BOTTOM_MASK_POSITIONS = gradio.HTML(value=generate_frame_html(True))
         with gradio.Row():
