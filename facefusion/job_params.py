@@ -60,7 +60,7 @@ class JobParams:
         self.keep_temp: Optional[bool] = False
         # output creation
         self.output_image_quality: Optional[int] = 60
-        self.output_video_encoder: Optional[OutputVideoEncoder] = 'h264_nvenc'
+        self.output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
         self.output_video_quality: Optional[int] = 60
         self.output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
         self.output_video_resolution: Optional[str] = None

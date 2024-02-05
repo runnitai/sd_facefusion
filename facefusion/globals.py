@@ -52,7 +52,7 @@ temp_frame_quality: Optional[int] = 100
 keep_temp: Optional[bool] = False
 # output creation
 output_image_quality: Optional[int] = 60
-output_video_encoder: Optional[OutputVideoEncoder] = 'h264_nvenc'
+output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
 output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
 output_video_quality: Optional[int] = 60
 output_video_resolution: Optional[str] = None
