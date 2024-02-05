@@ -64,7 +64,9 @@ def move_temp(target_path: str, output_path: str) -> None:
 
 
 def clear_temp() -> None:
-    src_files = [f for f in facefusion.globals.source_paths if os.path.exists(f)]
+    src_files = []
+    if facefusion.globals.source_paths:
+        src_files = [f for f in facefusion.globals.source_paths if os.path.exists(f)]
     tgt_file = facefusion.globals.target_path
     for item in glob.glob(os.path.join(TEMP_DIRECTORY_PATH, '**/*')):
         if os.path.isdir(item):

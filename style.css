@@ -73,6 +73,10 @@
 .ff_preview_frame_button {
     min-width: 36px!important;
     max-width: 36px!important;
+    min-height: 36px!important;
+    max-height: 36px!important;
+    width: 36px!important;
+    height: 36px!important;
 }
 
 .output_elements {

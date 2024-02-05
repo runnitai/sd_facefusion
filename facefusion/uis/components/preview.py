@@ -66,34 +66,33 @@ def render() -> None:
         preview_frame_slider_args['visible'] = True
     PREVIEW_IMAGE = gradio.Image(**preview_image_args)
     with gradio.Row():
-        with gradio.Column():
-            PREVIEW_FRAME_BACK_BUTTON = gradio.Button(
-                value="-1s",
-                elem_id='ff_preview_frame_back_button',
-                elem_classes=['ff_preview_frame_button'],
-                visible=preview_frame_slider_args['visible']
-            )
-            PREVIEW_FRAME_BACK_FIVE_BUTTON = gradio.Button(
-                value="-5s",
-                elem_id='ff_preview_frame_back_button',
-                elem_classes=['ff_preview_frame_button'],
-                visible=preview_frame_slider_args['visible']
-            )
+        PREVIEW_FRAME_BACK_FIVE_BUTTON = gradio.Button(
+            value="-5s",
+            elem_id='ff_preview_frame_back_five_button',
+            elem_classes=['ff_preview_frame_button'],
+            visible=preview_frame_slider_args['visible']
+        )
+
+        PREVIEW_FRAME_BACK_BUTTON = gradio.Button(
+            value="-1s",
+            elem_id='ff_preview_frame_back_button',
+            elem_classes=['ff_preview_frame_button'],
+            visible=preview_frame_slider_args['visible']
+        )
         PREVIEW_FRAME_SLIDER = gradio.Slider(**preview_frame_slider_args)
 
-        with gradio.Column():
-            PREVIEW_FRAME_FORWARD_BUTTON = gradio.Button(
-                value="+1s",
-                elem_id='ff_preview_frame_forward_button',
-                elem_classes=['ff_preview_frame_button'],
-                visible=preview_frame_slider_args['visible']
-            )
-            PREVIEW_FRAME_FORWARD_FIVE_BUTTON = gradio.Button(
-                value="+1s",
-                elem_id='ff_preview_frame_forward_button',
-                elem_classes=['ff_preview_frame_button'],
-                visible=preview_frame_slider_args['visible']
-            )
+        PREVIEW_FRAME_FORWARD_BUTTON = gradio.Button(
+            value="+1s",
+            elem_id='ff_preview_frame_forward_button',
+            elem_classes=['ff_preview_frame_button'],
+            visible=preview_frame_slider_args['visible']
+        )
+        PREVIEW_FRAME_FORWARD_FIVE_BUTTON = gradio.Button(
+            value="+5s",
+            elem_id='ff_preview_frame_forward_five_button',
+            elem_classes=['ff_preview_frame_button'],
+            visible=preview_frame_slider_args['visible']
+        )
 
     register_ui_component('preview_frame_slider', PREVIEW_FRAME_SLIDER)
     register_ui_component('preview_frame_back_button', PREVIEW_FRAME_BACK_BUTTON)
@@ -139,7 +138,8 @@ def listen() -> None:
             for method in ['upload', 'change', 'clear']:
                 getattr(component, method)(update_preview_frame_slider,
                                            outputs=[PREVIEW_FRAME_SLIDER, PREVIEW_FRAME_BACK_BUTTON,
-                                                    PREVIEW_FRAME_FORWARD_BUTTON])
+                                                    PREVIEW_FRAME_FORWARD_BUTTON, PREVIEW_FRAME_BACK_FIVE_BUTTON,
+                                                    PREVIEW_FRAME_FORWARD_FIVE_BUTTON])
     select_component_names: List[ComponentName] = \
         [
             'face_analyser_order_dropdown',
@@ -244,9 +244,9 @@ def update_preview_frame_slider() -> gradio.update:
     if is_video(facefusion.globals.target_path):
         video_frame_total = count_video_frame_total(facefusion.globals.target_path)
         return gradio.update(maximum=video_frame_total, visible=True), gradio.update(visible=True), gradio.update(
-            visible=True)
+            visible=True), gradio.update(visible=True), gradio.update(visible=True)
     return gradio.update(value=None, maximum=None, visible=False), gradio.update(visible=False), gradio.update(
-        visible=False)
+        visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
 
 def process_preview_frame(source_face: Face, reference_faces: Face, temp_frame: Frame, frame_number: int = -1) -> Frame:
