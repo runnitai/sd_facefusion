@@ -17,21 +17,21 @@ def render() -> None:
     global TRIM_FRAME_END_SLIDER
 
     trim_frame_start_slider_args: Dict[str, Any] = \
-    {
-        'label': wording.get('trim_frame_start_slider_label'),
-        'step': 1,
-        'minimum': 0,
-        'maximum': 100,
-        'visible': False
-    }
+        {
+            'label': wording.get('uis.trim_frame_start_slider'),
+            'step': 1,
+            'minimum': 0,
+            'maximum': 100,
+            'visible': False
+        }
     trim_frame_end_slider_args: Dict[str, Any] = \
-    {
-        'label': wording.get('trim_frame_end_slider_label'),
-        'step': 1,
-        'minimum': 0,
-        'maximum': 100,
-        'visible': False
-    }
+        {
+            'label': wording.get('uis.trim_frame_end_slider'),
+            'step': 1,
+            'minimum': 0,
+            'maximum': 100,
+            'visible': False
+        }
     if is_video(facefusion.globals.target_path):
         video_frame_total = count_video_frame_total(facefusion.globals.target_path)
         trim_frame_start_slider_args['value'] = facefusion.globals.trim_frame_start or 0

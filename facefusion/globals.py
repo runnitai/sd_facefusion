@@ -17,7 +17,7 @@ skip_download: Optional[bool] = False
 headless: Optional[bool] = False
 log_level: Optional[LogLevel] = ['info']
 # execution
-execution_providers: List[str] = [('CUDAExecutionProvider', {'cudnn_conv_algo_search': 'DEFAULT'})]
+execution_providers: List[str] = ['CUDAExecutionProvider']
 
 execution_thread_count: Optional[int] = 32
 execution_queue_count: Optional[int] = 2
@@ -27,7 +27,7 @@ system_memory_limit: Optional[int] = None
 face_analyser_order: Optional[FaceAnalyserOrder] = 'best-worst'
 face_analyser_age: Optional[FaceAnalyserAge] = None
 face_analyser_gender: Optional[FaceAnalyserGender] = None
-face_detector_model: Optional[FaceDetectorModel] = 'retinaface'
+face_detector_model: Optional[FaceDetectorModel] = 'yoloface'
 face_detector_size: Optional[str] = "640x640"
 face_detector_score: Optional[float] = 0.4
 face_recognizer_model: Optional[FaceRecognizerModel] = 'arcface_inswapper'
@@ -58,6 +58,8 @@ output_video_quality: Optional[int] = 60
 output_video_resolution: Optional[str] = None
 output_video_fps: Optional[float] = None
 skip_audio: Optional[bool] = False
+# Sync video lip
+sync_video_lip: Optional[bool] = False
 
 # frame processors
 frame_processors: List[str] = ["face_swapper"]

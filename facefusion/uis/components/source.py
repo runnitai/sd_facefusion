@@ -1,74 +1,78 @@
 import os
-import shutil
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import gradio
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.filesystem import are_images, TEMP_DIRECTORY_PATH, clear_temp
+from facefusion.common_helper import get_first
+from facefusion.filesystem import TEMP_DIRECTORY_PATH, clear_temp
+from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths
 from facefusion.uis.core import register_ui_component
 from facefusion.uis.typing import File
 
 SOURCE_FILE: Optional[gradio.File] = None
+SOURCE_AUDIO: Optional[gradio.Audio] = None
 SOURCE_IMAGE: Optional[gradio.Image] = None
 
 
 def render() -> None:
     global SOURCE_FILE
+    global SOURCE_AUDIO
     global SOURCE_IMAGE
 
-    are_source_images = are_images(facefusion.globals.source_paths)
+    has_source_audio = has_audio(facefusion.globals.source_paths)
+    has_source_image = has_image(facefusion.globals.source_paths)
     SOURCE_FILE = gradio.File(
         file_count='multiple',
         file_types=
         [
+            '.mp3',
+            '.wav',
             '.png',
             '.jpg',
             '.webp'
         ],
-        label=wording.get('source_file_label'),
-        value=facefusion.globals.source_paths if are_source_images else None
+        label=wording.get('uis.source_file'),
+        value=facefusion.globals.source_paths if has_source_audio or has_source_image else None,
+        elem_id='source_file'
     )
     source_file_names = [source_file_value['name'] for source_file_value in
                          SOURCE_FILE.value] if SOURCE_FILE.value else None
-    SOURCE_IMAGE = gradio.Image(
-        value=source_file_names[0] if are_source_images else None,
-        visible=are_source_images,
-        show_label=False
+    source_audio_path = get_first(filter_audio_paths(source_file_names))
+    source_image_path = get_first(filter_image_paths(source_file_names))
+    SOURCE_AUDIO = gradio.Audio(
+        value=source_audio_path if has_source_audio else None,
+        visible=has_source_audio,
+        show_label=False,
+        elem_id='source_audio'
     )
+    SOURCE_IMAGE = gradio.Image(
+        value=source_image_path if has_source_image else None,
+        visible=has_source_image,
+        show_label=False,
+        elem_id='source_image'
+    )
+    register_ui_component('source_file', SOURCE_FILE)
+    register_ui_component('source_audio', SOURCE_AUDIO)
     register_ui_component('source_image', SOURCE_IMAGE)
 
 
 def listen() -> None:
-    SOURCE_FILE.change(update, inputs=[SOURCE_FILE], outputs=[SOURCE_IMAGE])
+    SOURCE_FILE.change(update, inputs=SOURCE_FILE, outputs=[SOURCE_AUDIO, SOURCE_IMAGE])
 
 
-def update(files: List[File]) -> gradio.Image:
+def update(files: List[File]) -> Tuple[gradio.Audio, gradio.Image]:
     file_names = [file.name for file in files] if files else None
-    largest_file_name = file_names[0] if file_names else None
-    largest_file_size = 0
     temp_dir = TEMP_DIRECTORY_PATH
     os.makedirs(temp_dir, exist_ok=True)
-    user_files = None
-    if file_names is not None:
-        user_files = []
-        for file_name in file_names:
-            file_path = os.path.join(temp_dir, os.path.basename(file_name))
-            if not os.path.exists(file_path):
-                shutil.copy(file_name, file_path)
-            try:
-                os.remove(file_name)
-            except:
-                pass
-            file_size = os.path.getsize(file_path)
-            if file_size > largest_file_size:
-                largest_file_name = file_path
-                largest_file_size = file_size
-            user_files.append(file_path)
-    if are_images(user_files):
-        facefusion.globals.source_paths = user_files
-        return gradio.update(value=largest_file_name, visible=True)
+    has_source_audio = has_audio(file_names)
+    has_source_image = has_image(file_names)
+    if has_source_audio or has_source_image:
+        source_audio_path = get_first(filter_audio_paths(file_names))
+        source_image_path = get_first(filter_image_paths(file_names))
+        facefusion.globals.source_paths = file_names
+        return gradio.update(value=source_audio_path, visible=has_source_audio), gradio.update(value=source_image_path,
+                                                                                               visible=has_source_image)
     facefusion.globals.source_paths = None
-    clear_temp()
-    return gradio.update(value=None, visible=False)
+    return gradio.update(value=None, visible=False), gradio.update(value=None, visible=False)

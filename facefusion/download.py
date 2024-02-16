@@ -1,7 +1,5 @@
 import json
-import mimetypes
 import os
-import random
 import re
 import subprocess
 import threading
@@ -11,9 +9,10 @@ from functools import lru_cache
 from typing import List, Tuple
 
 import requests
+import yt_dlp
 
 from facefusion import wording
-from facefusion.filesystem import is_file, get_temp_input_video_name, TEMP_DIRECTORY_PATH
+from facefusion.filesystem import is_file, TEMP_DIRECTORY_PATH
 from facefusion.mytqdm import mytqdm
 
 
@@ -81,7 +80,6 @@ def print_stream(stream):
 
 
 def download_convert_ts_to_mp4(ts_url, output_path):
-
     command = [
         'ffmpeg',
         '-i', ts_url,
@@ -118,74 +116,39 @@ def download_convert_ts_to_mp4(ts_url, output_path):
         return True
 
 
-def download_video(target_url: str) -> str:
-    # If the target URL is from YouTube, use pytube to download it
-    if 'youtube.com' in target_url or 'youtu.be' in target_url:
-        print(f"Downloading video from {target_url} with youtube.")
-        from pytube import YouTube
-        youtube = YouTube(target_url)
-        vid_name = youtube.title
-        vid_path = get_temp_input_video_name(vid_name)
-        # If vid_name is not a valid string, make up a random one
-        if not vid_path or vid_path is True:
-            vid_path = 'temp' + str(random.randint(0, 1000000)) + '.mp4'
-        print(f"Downloading video to {vid_path} with name {vid_name}")
-        youtube.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first().download(
-            output_path=TEMP_DIRECTORY_PATH, filename=vid_path)
-        return os.path.join(TEMP_DIRECTORY_PATH, vid_path)
-    # Otherwise, try to download it with curl
-    else:
-        video_extensions = ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.mpg', '.mpeg']
-        # Do a request to get the content type
-        print(f"Downloading video from {target_url} with curl.")
-        request = urllib.request.Request(target_url, method='HEAD')
-        response = urllib.request.urlopen(request)
-        content_type = response.getheader('Content-Type')
-        dest_file_name = response.getheader('Content-Disposition')
-        # If the content type is a video, download it
-        if content_type and content_type.startswith('video/'):
-            video_extension = mimetypes.guess_extension(content_type)
-            if video_extension in video_extensions:
-                vid_name = dest_file_name.split('filename=')[1]
-                vid_path = os.path.join(TEMP_DIRECTORY_PATH, vid_name)
-                if os.path.exists(vid_path):
-                    return vid_path
-                urllib.request.urlretrieve(target_url, vid_path)
-                return vid_path
-        else:
-            print("Checking for media URLS in page.")
-            media_urls = find_media_urls(target_url)
-            media_url, title = media_urls[0]
-            title = title.replace('-', '').strip()
-            title = title.replace(' ', '_')
-            # Sanitize all non-path chars from the string and make sure it doesn't exceed path limits
-            title = ''.join([char for char in title if char.isalnum() or char in ['.', '_', '-', ' ']])
-            title = title[:250]
-            if media_url is None:
-                print("No media URL found.")
-                return ""
-            output_path = os.path.join(TEMP_DIRECTORY_PATH, title + '.mp4')
-            if os.path.exists(output_path):
-                return output_path
-            if ".m3u8" in media_url or ".ts" in media_url:
-                try:
-                    # Download and convert the .ts file to .mp4
-                    if download_convert_ts_to_mp4(media_url, output_path):
-                        print(f"Downloaded and converted the video to {output_path}")
-                        return output_path
-                    else:
-                        return ""
-                except Exception as e:
-                    print(f"Failed to download and convert the video: {e}")
-            if ".mp4" in media_url:
-                try:
-                    urllib.request.urlretrieve(media_url, output_path)
-                    print(f"Downloaded the video to {output_path}")
-                    return output_path
-                except Exception as e:
-                    print(f"Failed to download the video: {e}")
+def get_video_filename(title: str) -> str:
+    # Replace spaces with underscores and remove disallowed characters for filenames
+    safe_title = title.replace(" ", "_").translate({ord(i): None for i in r'\/:*?"<>|'})
+    return f"{safe_title}.mp4"
 
-    return ""
+
+def download_video(target_url: str) -> str:
+    ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
+        'skip_download': True,  # Initially, just get the info
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(target_url, download=False)
+        video_title = info_dict.get('title')
+
+    if video_title:
+        video_filename = get_video_filename(video_title)
+        video_path = os.path.join(TEMP_DIRECTORY_PATH, video_filename)
+
+        if not os.path.exists(video_path):  # Download only if the file doesn't exist
+            ydl_opts['skip_download'] = False  # Now, proceed to download
+            ydl_opts['outtmpl'] = video_path
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([target_url])
+                print(f"Downloaded video to {video_path}")
+        else:
+            print(f"Video already exists: {video_path}")
+
+        return video_path
+    else:
+        print("Could not retrieve video title.")
+        return ""
 
 
 def conditional_download(download_directory_path: str, urls: List[str]) -> None:

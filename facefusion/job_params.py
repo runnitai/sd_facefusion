@@ -35,7 +35,7 @@ class JobParams:
         self.face_analyser_order: Optional[FaceAnalyserOrder] = 'best-worst'
         self.face_analyser_age: Optional[FaceAnalyserAge] = None
         self.face_analyser_gender: Optional[FaceAnalyserGender] = None
-        self.face_detector_model: Optional[FaceDetectorModel] = 'retinaface'
+        self.face_detector_model: Optional[FaceDetectorModel] = 'yoloface'
         self.face_detector_size: Optional[str] = "640x640"
         self.face_detector_score: Optional[float] = 0.4
         self.face_recognizer_model: Optional[FaceRecognizerModel] = 'arcface_inswapper'
@@ -66,6 +66,7 @@ class JobParams:
         self.output_video_resolution: Optional[str] = None
         self.keep_fps: Optional[bool] = True
         self.skip_audio: Optional[bool] = False
+        self.sync_video_lip: Optional[bool] = False
 
         # frame processors
         self.frame_processors: List[str] = ["face_swapper"]
@@ -121,4 +122,12 @@ class JobParams:
         # Method to create an instance from a JSON string
         params = cls()
         params.__dict__.update(json_dict)
+        return params
+
+    @classmethod
+    def from_globals(cls):
+        # Method to create an instance from the global parameters
+        from facefusion.globals import __dict__ as globals_dict
+        params = cls()
+        params.__dict__.update(globals_dict)
         return params

@@ -3,18 +3,18 @@ from typing import List, Optional, Tuple, Any, Dict
 import gradio
 import numpy as np
 
-import facefusion.globals
 import facefusion.choices
+import facefusion.globals
 from facefusion import wording
-from facefusion.face_store import clear_static_faces, clear_reference_faces
-from facefusion.uis.components.face_masker import clear_mask_times
-from facefusion.vision import get_video_frame, read_static_image, normalize_frame_color, count_video_frame_total, \
-    detect_fps
 from facefusion.face_analyser import get_many_faces
-from facefusion.typing import Frame, FaceSelectorMode, Face
+from facefusion.face_store import clear_static_faces, clear_reference_faces
 from facefusion.filesystem import is_image, is_video
+from facefusion.typing import VisionFrame, FaceSelectorMode
+from facefusion.uis.components.face_masker import clear_mask_times
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import ComponentName
+from facefusion.vision import get_video_frame, read_static_image, normalize_frame_color, count_video_frame_total, \
+    detect_fps
 
 FACE_SELECTOR_MODE_DROPDOWN: Optional[gradio.Dropdown] = None
 REFERENCE_FACE_POSITION_GALLERY: Optional[gradio.Gallery] = None
@@ -43,7 +43,7 @@ def render() -> None:
 
     reference_face_gallery_args: Dict[str, Any] = \
         {
-            'label': wording.get('reference_face_gallery_label'),
+            'label': wording.get('uis.reference_face_gallery'),
             'object_fit': 'cover',
             'columns': 8,
             'allow_preview': False,
@@ -56,7 +56,7 @@ def render() -> None:
         reference_frame = get_video_frame(facefusion.globals.target_path, facefusion.globals.reference_frame_number)
         reference_face_gallery_args['value'] = extract_gallery_frames(reference_frame)
     FACE_SELECTOR_MODE_DROPDOWN = gradio.Dropdown(
-        label=wording.get('face_selector_mode_dropdown_label'),
+        label=wording.get('uis.face_selector_mode_dropdown'),
         choices=facefusion.choices.face_selector_modes,
         value=facefusion.globals.face_selector_mode,
         elem_id='ff_face_recognition_dropdown',
@@ -83,7 +83,7 @@ def render() -> None:
             elem_id='ff_reference_faces_selection_gallery'
         )
     REFERENCE_FACE_DISTANCE_SLIDER = gradio.Slider(
-        label=wording.get('reference_face_distance_slider_label'),
+        label=wording.get('uis.reference_face_distance_slider'),
         value=facefusion.globals.reference_face_distance,
         step=facefusion.choices.reference_face_distance_range[1] - facefusion.choices.reference_face_distance_range[0],
         minimum=facefusion.choices.reference_face_distance_range[0],
@@ -152,18 +152,24 @@ def listen() -> None:
         ADD_REFERENCE_FACE_BUTTON.click(add_reference_face,
                                         inputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
                                                 preview_frame_slider],
-                                        outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image, mask_enable_button, mask_disable_button])
+                                        outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image, mask_enable_button,
+                                                 mask_disable_button])
         REMOVE_REFERENCE_FACE_BUTTON.click(fn=remove_reference_face,
                                            inputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_frame_slider],
-                                           outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image, mask_enable_button, mask_disable_button])
+                                           outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image,
+                                                    mask_enable_button, mask_disable_button])
 
         preview_frame_back_button.click(reference_frame_back,
                                         inputs=preview_frame_slider, outputs=[preview_frame_slider,
-                                                                              REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
+                                                                              REFERENCE_FACE_POSITION_GALLERY,
+                                                                              REFERENCE_FACES_SELECTION_GALLERY])
         preview_frame_forward_button.click(reference_frame_forward, inputs=preview_frame_slider,
-                                             outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
+                                           outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY,
+                                                    REFERENCE_FACES_SELECTION_GALLERY])
         preview_frame_slider.change(update_reference_frame_number_and_gallery, inputs=preview_frame_slider,
-                                    outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
+                                    outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY,
+                                             REFERENCE_FACES_SELECTION_GALLERY])
+        preview_frame_slider.release(update_reference_position_gallery, outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
 
 
 def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[
@@ -324,7 +330,7 @@ def update_reference_frame_number_and_gallery(reference_frame_number) -> Tuple[g
     return gradio.update(value=reference_frame_number), gradio.update(value=None), selection_gallery
 
 
-def extract_gallery_frames(reference_frame: Frame) -> List[Frame]:
+def extract_gallery_frames(reference_frame: VisionFrame) -> List[VisionFrame]:
     crop_frames = []
     faces = get_many_faces(reference_frame)
     global current_reference_faces

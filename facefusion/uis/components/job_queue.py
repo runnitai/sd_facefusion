@@ -5,6 +5,7 @@ from typing import Optional
 import gradio
 
 import facefusion.globals
+from facefusion.ff_status import FFStatus
 from facefusion.job_params import JobParams
 from facefusion.normalizer import normalize_output_path
 from facefusion.uis.core import get_ui_component, register_ui_component
@@ -78,7 +79,6 @@ def render() -> None:
                     elem_id="ff_enqueue"
                 )
             with gradio.Column():
-                # TODO: Toggle the enabled state of this when clicking/unclicking a row
                 REMOVE_LAST_BUTTON = gradio.Button(
                     value="Remove",
                     size='sm',
@@ -101,14 +101,14 @@ def render() -> None:
 
 
 def listen() -> None:
-    source_image = get_ui_component('source_image')
+    source_file = get_ui_component('source_file')
     target_file = get_ui_component('target_file')
     output_files = get_ui_component('output_files')
     output_video = get_ui_component('output_video')
     preview_image = get_ui_component('preview_image')
-    if source_image and target_file:
-        OUTPUT_ENQUEUE_BUTTON.click(enqueue, inputs=[], outputs=[JOB_QUEUE_TABLE, source_image, target_file])
-    CLEAR_QUEUE_BUTTON.click(clear, inputs=[], outputs=[JOB_QUEUE_TABLE, source_image, target_file])
+    if source_file and target_file:
+        OUTPUT_ENQUEUE_BUTTON.click(enqueue, inputs=[], outputs=[JOB_QUEUE_TABLE, source_file, target_file])
+    CLEAR_QUEUE_BUTTON.click(clear, inputs=[], outputs=[JOB_QUEUE_TABLE, source_file, target_file])
     REMOVE_LAST_BUTTON.click(remove_last, _js="get_selected_row", inputs=[LAST_ELEMENT], outputs=[JOB_QUEUE_TABLE])
     TOGGLE_REMOVE_BUTTON.click(toggle_remove, inputs=[TOGGLE_REMOVE_BUTTON],
                                outputs=[REMOVE_LAST_BUTTON, TOGGLE_REMOVE_BUTTON])
@@ -118,11 +118,11 @@ def listen() -> None:
 
 def update_status():
     from facefusion.uis.components.output import format_status
-    from facefusion.uis.components.output import STATUS
+    status = FFStatus()
     out_video = gradio.update()
     out_files = gradio.update()
-    if STATUS.preview_image:
-        out_image = gradio.update(value=STATUS.preview_image, visible=True)
+    if status.preview_image and os.path.exists(status.preview_image):
+        out_image = gradio.update(value=status.preview_image, visible=True)
     else:
         out_image = gradio.update(visible=False)
     return gradio.update(visible=True, value=format_status()), out_files, out_image, out_video

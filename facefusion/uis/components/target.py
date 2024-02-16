@@ -1,7 +1,6 @@
 import os.path
 import shutil
-import tempfile
-from typing import Any, IO, Tuple, Optional
+from typing import Any, IO, Tuple, Optional, List
 
 import gradio
 
@@ -9,13 +8,18 @@ import facefusion.globals
 from facefusion import wording
 from facefusion.download import download_video
 from facefusion.face_store import clear_reference_faces, clear_static_faces
-from facefusion.uis.core import register_ui_component
+from facefusion.ffmpeg import extract_audio_from_video
 from facefusion.filesystem import is_image, is_video, is_url, TEMP_DIRECTORY_PATH, clear_temp
+from facefusion.uis.core import register_ui_component, get_ui_component
+from facefusion.uis.components.source import update as source_update
+from facefusion.uis.typing import File
 
 TARGET_PATH: Optional[gradio.Text] = None
 TARGET_FILE: Optional[gradio.File] = None
 TARGET_IMAGE: Optional[gradio.Image] = None
 TARGET_VIDEO: Optional[gradio.Video] = None
+SYNC_VIDEO_LIP: Optional[gradio.Checkbox] = None
+SOURCE_FILES: Optional[gradio.File] = None
 
 
 def render() -> None:
@@ -23,6 +27,7 @@ def render() -> None:
     global TARGET_FILE
     global TARGET_IMAGE
     global TARGET_VIDEO
+    global SYNC_VIDEO_LIP
 
     is_target_path = is_url(facefusion.globals.target_path)
     is_target_image = is_image(facefusion.globals.target_path)
@@ -33,7 +38,7 @@ def render() -> None:
         elem_id='ff_target_path',
     )
     TARGET_FILE = gradio.File(
-        label=wording.get('target_file_label'),
+        label = wording.get('uis.target_file'),
         file_count='single',
         file_types=
         [
@@ -55,15 +60,27 @@ def render() -> None:
         visible=is_target_video,
         show_label=False
     )
+    SYNC_VIDEO_LIP = gradio.Checkbox(
+        label="Sync Lips to Audio",
+        value=facefusion.globals.sync_video_lip and is_target_video,
+        visible=is_target_video and "lip_syncer" in facefusion.globals.frame_processors,
+        elem_id='sync_video_lip'
+    )
     register_ui_component('target_image', TARGET_IMAGE)
     register_ui_component('target_video', TARGET_VIDEO)
     register_ui_component('target_file', TARGET_FILE)
+    register_ui_component('sync_video_lip', SYNC_VIDEO_LIP)
 
 
 def listen() -> None:
     TARGET_PATH.input(update_from_path, inputs=TARGET_PATH,
                       outputs=[TARGET_PATH, TARGET_FILE, TARGET_IMAGE, TARGET_VIDEO])
-    TARGET_FILE.change(update, inputs=TARGET_FILE, outputs=[TARGET_PATH, TARGET_IMAGE, TARGET_VIDEO])
+    TARGET_FILE.change(update, inputs=TARGET_FILE, outputs=[TARGET_PATH, TARGET_IMAGE, TARGET_VIDEO, SYNC_VIDEO_LIP])
+    source_audio = get_ui_component('source_audio')
+    source_image = get_ui_component('source_image')
+    global SOURCE_FILES
+    SOURCE_FILES = get_ui_component('source_file')
+    SYNC_VIDEO_LIP.change(update_sync_video_lip, inputs=[SYNC_VIDEO_LIP, SOURCE_FILES], outputs=[SOURCE_FILES])
 
 
 def update_from_path(path: str) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
@@ -128,15 +145,34 @@ def update(file: IO[Any]) -> Tuple[gradio.Image, gradio.Video]:
 
     if file_path and is_image(file_path):
         facefusion.globals.target_path = file_path
-        clear_temp()
-        return gradio.update(value=file_path, visible=False), gradio.update(value=file_path,
-                                                                            visible=True), gradio.update(value=None,
-                                                                                                         visible=False)
+        return (gradio.update(value=file_path, visible=False),
+                gradio.update(value=file_path, visible=True),
+                gradio.update(value=None, visible=False),
+                gradio.update(visible=False))
     if file_path and is_video(file_path):
         facefusion.globals.target_path = file_path
-        clear_temp()
-        return gradio.update(value=file_path, visible=False), gradio.update(value=None, visible=False), gradio.update(
-            value=file_path, visible=True)
+        return (gradio.update(value=file_path, visible=False),
+                gradio.update(value=None, visible=False),
+                gradio.update(value=file_path, visible=True),
+                gradio.update(visible=True))
     facefusion.globals.target_path = None
-    return gradio.update(value=None, visible=True), gradio.update(value=None, visible=False), gradio.update(value=None,
-                                                                                                            visible=False)
+    return (gradio.update(value=None, visible=True),
+            gradio.update(value=None, visible=False),
+            gradio.update(value=None, visible=False),
+            gradio.update(visible=False))
+
+
+def update_sync_video_lip(sync_video_lip: bool, files: List[File]) -> None:
+    facefusion.globals.sync_video_lip = sync_video_lip
+    if sync_video_lip:
+        target_video_path = facefusion.globals.target_path
+        if target_video_path and is_video(target_video_path) and os.path.exists(target_video_path):
+            file_names = [file.name for file in files] if files else []
+            target_video_extension = os.path.splitext(target_video_path)[1]
+            audio_path = target_video_path.replace(target_video_extension, '.mp3')
+            if not os.path.exists(audio_path):
+                audio_path = extract_audio_from_video(target_video_path)
+            if audio_path not in file_names:
+                file_names.append(audio_path)
+            return gradio.update(value=file_names)
+    return gradio.update()

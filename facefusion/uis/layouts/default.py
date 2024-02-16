@@ -3,7 +3,7 @@ import traceback
 import gradio
 
 from facefusion.uis.components import frame_processors, frame_processors_options, execution, \
-    execution_thread_count, temp_frame, output_options, source, \
+    temp_frame, output_options, source, \
     target, output, preview, trim_frame, face_analyser, face_selector, job_queue, job_queue_options, face_masker
 
 
@@ -73,4 +73,4 @@ def listen() -> None:
 
 
 def run(ui: gradio.Blocks) -> None:
-    ui.launch(show_api=False)
+    ui.launch(show_api=False, quiet=True)

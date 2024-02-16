@@ -1,3 +1,4 @@
+import os.path
 import time
 
 from facefusion.vision import count_video_frame_total, detect_fps
@@ -6,31 +7,27 @@ from facefusion.job_params import JobParams
 
 class FFStatus:
     _instance = None
-    queue_total = 0
-    queue_current = 0
-    job_total = 0
-    job_current = 0
-    status = ""
-    started = False
-    cancelled = False
-    time_start = None
-    preview_image = None
+    _is_initialized = False  # Ensure this is declared at the class level
 
-    def __init__(self):
-        self.queue_total = 0
-        self.queue_current = 0
-        self.job_total = 0
-        self.job_current = 0
-        self.status = ""
-        self.started = False
-        self.cancelled = False
-        self.time_start = None
-        self.preview_image = None
-
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(FFStatus, cls).__new__(cls)
         return cls._instance
+
+    def __init__(self, re_init=False):
+        # Check if this is the first time __init__ is called or if re-initialization is requested
+        if not self._is_initialized or re_init:
+            self.queue_total = 0
+            self.queue_current = 0
+            self.job_total = 0
+            self.job_current = 0
+            self.status = ""
+            self.started = False
+            self.cancelled = False
+            self.time_start = None
+            self.preview_image = None
+            # Mark as initialized to prevent reinitialization, unless explicitly requested
+            FFStatus._is_initialized = True
 
     def start(self, job_queue, status: str = None):
         print(f"Starting FFStatus with {len(job_queue)} jobs")
@@ -51,15 +48,21 @@ class FFStatus:
     def update(self, status: str):
         """Update the current job status"""
         print(status)
+        if self.preview_image and not os.path.exists(self.preview_image):
+            self.preview_image = None
         self.status = status
 
     def update_preview(self, image: str):
         """Update the current job preview image"""
+        if image and not os.path.exists(image):
+            image = None
         self.preview_image = image
 
     def step(self, num_steps=1):
         """Increment the current job progress by num_steps"""
         self.job_current += num_steps
+        if self.preview_image and not os.path.exists(self.preview_image):
+            self.preview_image = None
         if self.job_current > self.job_total:
             self.job_total = self.job_current
 
@@ -69,12 +72,16 @@ class FFStatus:
             self.queue_current += 1
         self.job_current = 0
         self.job_total = self._compute_total_steps(job)
+        if self.preview_image and not os.path.exists(self.preview_image):
+            self.preview_image = None
         self.status = status
 
     def cancel(self):
         """Cancel the current job"""
         self.cancelled = True
         self.started = False
+        if self.preview_image and not os.path.exists(self.preview_image):
+            self.preview_image = None
         self.status = f"Cancelled after {self.queue_current} jobs"
         self.queue_total = 0
         self.queue_current = 0

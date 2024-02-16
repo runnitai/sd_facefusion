@@ -6,16 +6,15 @@ import gradio
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.face_analyser import get_face_analyser
 from facefusion.face_store import clear_static_faces
+from facefusion.job_params import JobParams
 from facefusion.processors.frame.core import get_frame_processors_modules
-from facefusion.vision import count_video_frame_total
-from facefusion.core import limit_resources, conditional_process
+from facefusion.vision import count_video_frame_total, detect_video_resolution, detect_video_fps, pack_resolution
+from facefusion.core import conditional_process
+from facefusion.memory import limit_system_memory
 from facefusion.normalizer import normalize_output_path
 from facefusion.filesystem import clear_temp
 from facefusion.uis.core import get_ui_component
-from facefusion.ff_status import FFStatus
-from facefusion.job_params import JobParams
 
 BENCHMARK_RESULTS_DATAFRAME: Optional[gradio.Dataframe] = None
 BENCHMARK_START_BUTTON: Optional[gradio.Button] = None
@@ -38,7 +37,7 @@ def render() -> None:
     global BENCHMARK_CLEAR_BUTTON
 
     BENCHMARK_RESULTS_DATAFRAME = gradio.Dataframe(
-        label=wording.get('benchmark_results_dataframe_label'),
+        label = wording.get('uis.benchmark_results_dataframe'),
         headers=
         [
             'target_path',
@@ -59,12 +58,12 @@ def render() -> None:
         ]
     )
     BENCHMARK_START_BUTTON = gradio.Button(
-        value=wording.get('start_button_label'),
+        value = wording.get('uis.start_button'),
         variant='primary',
         size='sm'
     )
     BENCHMARK_CLEAR_BUTTON = gradio.Button(
-        value=wording.get('clear_button_label'),
+        value = wording.get('uis.clear_button'),
         size='sm'
     )
 
@@ -92,8 +91,8 @@ def start(benchmark_runs: List[str], benchmark_cycles: int) -> Generator[List[An
 
 
 def pre_process() -> None:
-    limit_resources()
-    get_face_analyser()
+    if facefusion.globals.system_memory_limit > 0:
+        limit_system_memory(facefusion.globals.system_memory_limit)
     for frame_processor_module in get_frame_processors_modules(facefusion.globals.frame_processors):
         frame_processor_module.get_frame_processor()
 
@@ -105,14 +104,16 @@ def post_process() -> None:
 def benchmark(target_path: str, benchmark_cycles: int) -> List[Any]:
     process_times = []
     total_fps = 0.0
-    for i in range(benchmark_cycles):
+    for index in range(benchmark_cycles):
         facefusion.globals.target_path = target_path
         facefusion.globals.output_path = normalize_output_path(facefusion.globals.source_paths, facefusion.globals.target_path, tempfile.gettempdir())
+        target_video_resolution = detect_video_resolution(facefusion.globals.target_path)
+        facefusion.globals.output_video_resolution = pack_resolution(target_video_resolution)
+        facefusion.globals.output_video_fps = detect_video_fps(facefusion.globals.target_path)
         video_frame_total = count_video_frame_total(facefusion.globals.target_path)
         start_time = time.perf_counter()
-        status = FFStatus()
         job = JobParams().from_dict(facefusion.globals.__dict__)
-        conditional_process(status, job)
+        conditional_process(job)
         end_time = time.perf_counter()
         process_time = end_time - start_time
         total_fps += video_frame_total / process_time

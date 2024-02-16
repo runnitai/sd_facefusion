@@ -1,6 +1,7 @@
 import gradio
 
-from facefusion.uis.components import frame_processors, frame_processors_options, execution, execution_thread_count, webcam_options, source, webcam
+from facefusion.uis.components import frame_processors, frame_processors_options, execution, execution_thread_count, \
+    webcam_options, source, webcam
 
 
 def pre_check() -> bool:
@@ -41,4 +42,4 @@ def listen() -> None:
 
 
 def run(ui: gradio.Blocks) -> None:
-    ui.queue(concurrency_count=2, api_open=False).launch(show_api=False)
+    ui.queue(2).launch(show_api=False, quiet=True)

@@ -8,8 +8,7 @@ import facefusion.globals
 from facefusion import logger
 from facefusion.filesystem import get_temp_frames_pattern, get_temp_output_video_path
 from facefusion.mytqdm import mytqdm
-from facefusion.typing import OutputVideoPreset, Fps
-from facefusion.vision import detect_fps
+from facefusion.typing import OutputVideoPreset, Fps, AudioBuffer
 
 TEMP_OUTPUT_VIDEO_NAME = 'temp.mp4'
 LAST_VIDEO_INFO = None
@@ -112,6 +111,24 @@ def merge_video(target_path: str, fps: float, status=None) -> bool:
     return run_ffmpeg(commands, status)
 
 
+def read_audio_buffer(target_path: str, sample_rate: int, channel_total: int) -> Optional[AudioBuffer]:
+    commands = ['-i', target_path, '-vn', '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', str(sample_rate), '-ac',
+                str(channel_total), '-']
+    process = open_ffmpeg(commands)
+    audio_buffer, error = process.communicate()
+    if process.returncode == 0:
+        return audio_buffer
+    return None
+
+
+def extract_audio_from_video(target_path: str) -> Optional[str]:
+    audio_path = target_path.replace('.mp4', '.wav')
+    commands = ['-i', target_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '2', '-y', audio_path]
+    if run_ffmpeg(commands):
+        return audio_path
+    return None
+
+
 def restore_audio(target_path: str, output_path: str, video_fps: Fps, status=None) -> bool:
     trim_frame_start = facefusion.globals.trim_frame_start
     trim_frame_end = facefusion.globals.trim_frame_end
@@ -125,6 +142,13 @@ def restore_audio(target_path: str, output_path: str, video_fps: Fps, status=Non
         commands.extend(['-to', str(end_time)])
     commands.extend(['-i', target_path, '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-y', output_path])
     return run_ffmpeg(commands, status)
+
+
+def replace_audio(target_path: str, audio_path: str, output_path: str) -> bool:
+    temp_output_path = get_temp_output_video_path(target_path)
+    commands = ['-hwaccel', 'auto', '-i', temp_output_path, '-i', audio_path, '-c:v', 'copy', '-af', 'apad',
+                '-shortest', '-map', '0:v:0', '-map', '1:a:0', '-y', output_path]
+    return run_ffmpeg(commands)
 
 
 def map_nvenc_preset(output_video_preset: OutputVideoPreset) -> Optional[str]:

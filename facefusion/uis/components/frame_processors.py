@@ -5,6 +5,7 @@ import gradio
 import facefusion.globals
 from facefusion import wording
 from facefusion.processors.frame.core import load_frame_processor_module, clear_frame_processors_modules
+from facefusion.filesystem import list_directory
 from facefusion.uis.core import register_ui_component
 
 FRAME_PROCESSORS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
@@ -14,7 +15,7 @@ def render() -> None:
     global FRAME_PROCESSORS_CHECKBOX_GROUP
 
     FRAME_PROCESSORS_CHECKBOX_GROUP = gradio.CheckboxGroup(
-        label=wording.get('frame_processors_checkbox_group_label'),
+        label=wording.get('uis.frame_processors_checkbox_group'),
         choices=sort_frame_processors(facefusion.globals.frame_processors),
         value=facefusion.globals.frame_processors,
         elem_id='frame_processors_checkbox_group'
@@ -38,6 +39,6 @@ def update_frame_processors(frame_processors: List[str]) -> gradio.CheckboxGroup
 
 
 def sort_frame_processors(frame_processors: List[str]) -> list[str]:
-    available_frame_processors = ["face_swapper", "face_enhancer", "frame_enhancer", "face_debugger"]
+    available_frame_processors = ["face_swapper", "face_enhancer", "frame_enhancer", "lip_syncer", "face_debugger"]
     return sorted(available_frame_processors, key=lambda frame_processor: frame_processors.index(
         frame_processor) if frame_processor in frame_processors else len(frame_processors))

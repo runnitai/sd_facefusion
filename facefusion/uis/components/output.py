@@ -6,7 +6,7 @@ import gradio
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.core import limit_resources, conditional_process
+from facefusion.core import limit_system_memory, conditional_process
 from facefusion.filesystem import is_image, is_video, clear_temp
 from facefusion.normalizer import normalize_output_path
 from facefusion.uis.components import job_queue
@@ -28,9 +28,6 @@ PROGRESS_CHECKS = 0
 
 OUTPUTS = []
 
-STATUS = FFStatus()
-
-
 def render() -> None:
     global OUTPUT_FILES
     global OUTPUT_IMAGE
@@ -40,7 +37,7 @@ def render() -> None:
 
     with gradio.Row():
         OUTPUT_START = gradio.Button(
-            value=wording.get('start_button_label'),
+            value=wording.get('uis.start_button'),
             variant='primary',
             size='sm',
             elem_id="ff_start"
@@ -57,12 +54,12 @@ def render() -> None:
         elem_class="output_element"
     )
     OUTPUT_IMAGE = gradio.Image(
-        label=wording.get('output_image_or_video_label'),
+        label=wording.get('uis.output_image_or_video'),
         visible=False,
         elem_class="output_element"
     )
     OUTPUT_VIDEO = gradio.Video(
-        label=wording.get('output_image_or_video_label'),
+        label=wording.get('uis.output_image_or_video'),
         visible=False,
         elem_class="output_element"
     )
@@ -75,11 +72,11 @@ def render() -> None:
 
 def listen() -> None:
     output_path_textbox = get_ui_component('output_path_textbox')
-    sourece_image = get_ui_component('source_image')
+    source_file = get_ui_component('source_file')
     # source_speaker = get_ui_component('source_speaker')
     target_file = get_ui_component('target_file')
     job_queue_table = get_ui_component('job_queue_table')
-    ctl_elements = [OUTPUT_FILES, OUTPUT_IMAGE, OUTPUT_VIDEO, sourece_image, target_file, job_queue_table]
+    ctl_elements = [OUTPUT_FILES, OUTPUT_IMAGE, OUTPUT_VIDEO, source_file, target_file, job_queue_table]
     if output_path_textbox:
         OUTPUT_START.click(start, _js="start_status", inputs=[output_path_textbox], outputs=ctl_elements,
                            show_progress=False)
@@ -88,7 +85,7 @@ def listen() -> None:
 
 def format_status():
     # Get status and progress
-    status = STATUS
+    status = FFStatus()
     if status.started and status.job_total > 0:
         progress = status.job_current / status.job_total
         progress = min(progress, 1)
@@ -140,16 +137,15 @@ def process_outputs() -> Tuple[gradio.update, gradio.update, gradio.update]:
 def start(output_path: str) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     """Start the FaceFusion process"""
     global OUTPUTS
-    global STATUS
     out_files = gradio.update(value=None, visible=False)
     out_image = gradio.update(value=None, visible=False)
     out_video = gradio.update(value=None, visible=False)
-    src_img = gradio.update(value=None)
+    src_files = gradio.update()
     tgt_file = gradio.update(visible=True, value=None)
     queue_table = gradio.update(visible=True, value=None)
     queue = job_queue.JOB_QUEUE
     completed_jobs = job_queue.COMPLETED_JOBS
-    status = STATUS
+    status = FFStatus(True)
     shared_model = sd_model
     if shared_model is not None:
         unload_model_weights()
@@ -163,7 +159,7 @@ def start(output_path: str) -> Tuple[gradio.update, gradio.update, gradio.update
             if status.cancelled:
                 print("Job cancelled")
                 reload_model_weights(sd_model)
-                return out_files, out_image, out_video, src_img, tgt_file
+                return out_files, out_image, out_video, src_files, tgt_file
 
             status.next(job, f"Starting job {job_idx} of {total_jobs}", job_idx == 1)
             for key in job.__dict__:
@@ -185,40 +181,47 @@ def start(output_path: str) -> Tuple[gradio.update, gradio.update, gradio.update
     job_queue.clear()
     out_files, out_image, out_video = process_outputs()
     clear_temp()
-    # # Clear facefusion.globals after processing
-    # params = JobParams()
-    # for key in params.__dict__:
-    #     if not key.startswith("__") and key in facefusion.globals.__dict__:
-    #         if key == "source_paths":
-    #             continue
-    #         facefusion.globals.__dict__[key] = params.__dict__[key]
+    current_target_path = facefusion.globals.target_path
+    if is_video(current_target_path):
+        current_target_ext = os.path.splitext(current_target_path)[1]
+        video_wav_path = current_target_path.replace(current_target_ext, ".wav")
+        if video_wav_path in facefusion.globals.source_paths:
+            facefusion.globals.source_paths.remove(video_wav_path)
+            src_files = gradio.update(value=facefusion.globals.source_paths)
+    facefusion.globals.target_path = ""
+    facefusion.globals.reference_face_dict = {}
+    facefusion.globals.mask_enabled_times = []
+    facefusion.globals.mask_disabled_times = [0]
+    facefusion.globals.trim_frame_start = None
+    facefusion.globals.trim_frame_end = None
+    facefusion.globals.output_path = os.path.join(script_path, "outputs", "facefusion")
     status.finish(f"Successfully processed {total_jobs} jobs.")
-    return out_files, out_image, out_video, src_img, tgt_file, queue_table
+    return out_files, out_image, out_video, src_files, tgt_file, queue_table
 
 
 def start_job(job: JobParams):
     out_path = os.path.join(script_path, "outputs", "facefusion")
     job.output_path = normalize_output_path(job.source_paths, job.target_path, out_path)
-    limit_resources()
-    conditional_process(STATUS, job)
+    limit_system_memory()
+    conditional_process(job)
     output_path = job.output_path
     return output_path
 
 
 def clear() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
-    status = STATUS
+    status = FFStatus()
     status.cancel()
-    src_img = gradio.update(value=None)
+    src_files = gradio.update(value=None)
     tgt_file = gradio.update(visible=True, value=None)
     queue_table = gradio.update(visible=True, value=None)
     if facefusion.globals.target_path:
         clear_temp()
     out_files, out_image, out_video = process_outputs()
-    return out_files, out_image, out_video, src_img, tgt_file, queue_table
+    return out_files, out_image, out_video, src_files, tgt_file, queue_table
 
 
 def calc_time_left(progress, threshold, label, force_display):
-    status = STATUS
+    status = FFStatus()
     if progress == 0:
         return ""
     else:

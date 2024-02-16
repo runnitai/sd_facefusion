@@ -53,6 +53,10 @@ def load_facefusion():
                 live_layout = load_ui_layout_module("webcam")
                 live_layout.render()
                 live_layout.listen()
+            with gr.Tab(label="Benchmark"):
+                bench_layout = load_ui_layout_module("benchmark")
+                bench_layout.render()
+                bench_layout.listen()
         return ((ff_ui, "RD FaceFusion", "ff_ui_clean"),)
 
 

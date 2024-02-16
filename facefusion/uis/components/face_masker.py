@@ -40,13 +40,13 @@ def render() -> None:
     has_box_mask = 'box' in facefusion.globals.face_mask_types
     has_region_mask = 'region' in facefusion.globals.face_mask_types
     FACE_MASK_TYPES_CHECKBOX_GROUP = gradio.CheckboxGroup(
-        label=wording.get('face_mask_types_checkbox_group_label'),
+        label=wording.get('uis.face_mask_types_checkbox_group'),
         choices=facefusion.choices.face_mask_types,
         value=facefusion.globals.face_mask_types
     )
     with gradio.Group(visible=has_box_mask) as FACE_MASK_BOX_GROUP:
         FACE_MASK_BLUR_SLIDER = gradio.Slider(
-            label=wording.get('face_mask_blur_slider_label'),
+            label=wording.get('uis.face_mask_blur_slider'),
             step=facefusion.choices.face_mask_blur_range[1] - facefusion.choices.face_mask_blur_range[0],
             minimum=facefusion.choices.face_mask_blur_range[0],
             maximum=facefusion.choices.face_mask_blur_range[-1],
@@ -59,14 +59,14 @@ def render() -> None:
             BOTTOM_MASK_POSITIONS = gradio.HTML(value=generate_frame_html(True))
         with gradio.Row():
             FACE_MASK_PADDING_TOP_SLIDER = gradio.Slider(
-                label=wording.get('face_mask_padding_top_slider_label'),
+                label=wording.get('uis.face_mask_padding_top_slider'),
                 step=facefusion.choices.face_mask_padding_range[1] - facefusion.choices.face_mask_padding_range[0],
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
                 value=facefusion.globals.face_mask_padding[0]
             )
             FACE_MASK_PADDING_RIGHT_SLIDER = gradio.Slider(
-                label=wording.get('face_mask_padding_right_slider_label'),
+                label=wording.get('uis.face_mask_padding_right_slider'),
                 step=facefusion.choices.face_mask_padding_range[1] - facefusion.choices.face_mask_padding_range[0],
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
@@ -74,14 +74,14 @@ def render() -> None:
             )
         with gradio.Row():
             FACE_MASK_PADDING_BOTTOM_SLIDER = gradio.Slider(
-                label=wording.get('face_mask_padding_bottom_slider_label'),
+                label=wording.get('uis.face_mask_padding_bottom_slider'),
                 step=facefusion.choices.face_mask_padding_range[1] - facefusion.choices.face_mask_padding_range[0],
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
                 value=facefusion.globals.face_mask_padding[2]
             )
             FACE_MASK_PADDING_LEFT_SLIDER = gradio.Slider(
-                label=wording.get('face_mask_padding_left_slider_label'),
+                label=wording.get('uis.face_mask_padding_left_slider'),
                 step=facefusion.choices.face_mask_padding_range[1] - facefusion.choices.face_mask_padding_range[0],
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
@@ -89,7 +89,7 @@ def render() -> None:
             )
     with gradio.Row():
         FACE_MASK_REGION_CHECKBOX_GROUP = gradio.CheckboxGroup(
-            label=wording.get('face_mask_region_checkbox_group_label'),
+            label=wording.get('uis.face_mask_region_checkbox_group'),
             choices=facefusion.choices.face_mask_regions,
             value=facefusion.globals.face_mask_regions,
             visible=has_region_mask
@@ -113,7 +113,8 @@ def listen() -> None:
                                           outputs=[FACE_MASK_TYPES_CHECKBOX_GROUP, FACE_MASK_BOX_GROUP,
                                                    FACE_MASK_REGION_CHECKBOX_GROUP])
     FACE_MASK_BLUR_SLIDER.change(update_face_mask_blur, inputs=FACE_MASK_BLUR_SLIDER)
-    FACE_MASK_REGION_CHECKBOX_GROUP.change(update_face_mask_regions, inputs=FACE_MASK_REGION_CHECKBOX_GROUP)
+    FACE_MASK_REGION_CHECKBOX_GROUP.change(update_face_mask_regions, inputs=FACE_MASK_REGION_CHECKBOX_GROUP,
+                                           outputs=FACE_MASK_REGION_CHECKBOX_GROUP)
     face_mask_padding_sliders = [FACE_MASK_PADDING_TOP_SLIDER, FACE_MASK_PADDING_RIGHT_SLIDER,
                                  FACE_MASK_PADDING_BOTTOM_SLIDER, FACE_MASK_PADDING_LEFT_SLIDER]
     preview_frame_slider = get_ui_component("preview_frame_slider")
@@ -169,9 +170,9 @@ def set_enable_mask_time(preview_frame_slider: gradio.Slider) -> gradio.update:
 
 
 def clear_mask_times() -> gradio.update:
-    facefusion.globals.mask_disabled_times = []
-    facefusion.globals.mask_enabled_times = [0]
-    show_enable_btn, show_disable_btn = update_mask_buttons(-1)
+    facefusion.globals.mask_disabled_times = [0]
+    facefusion.globals.mask_enabled_times = []
+    show_enable_btn, show_disable_btn = update_mask_buttons(0)
     return generate_frame_html(), show_enable_btn, show_disable_btn
 
 
@@ -191,7 +192,8 @@ def update_mask_buttons(frame_number) -> (gradio.update, gradio.update):
     latest_enabled_frame = max([frame for frame in enabled_times if frame <= frame_number], default=None)
 
     # Determine if the current frame number is within a padding interval
-    if latest_disabled_frame is not None and (latest_enabled_frame is None or latest_disabled_frame > latest_enabled_frame):
+    if latest_disabled_frame is not None and (
+            latest_enabled_frame is None or latest_disabled_frame > latest_enabled_frame):
         # We are currently disabled, so show the enable button, hide the disable button
         print(f"Current frame {frame_number} is within a padding interval, showing enable_mask_button")
         return gradio.update(visible=True), gradio.update(visible=False)
@@ -221,4 +223,7 @@ def update_face_mask_padding(face_mask_padding_top: int, face_mask_padding_right
 
 
 def update_face_mask_regions(face_mask_regions: List[FaceMaskRegion]) -> None:
+    if not face_mask_regions:
+        face_mask_regions = facefusion.choices.face_mask_regions
     facefusion.globals.face_mask_regions = face_mask_regions
+    return gradio.update(value=face_mask_regions)
