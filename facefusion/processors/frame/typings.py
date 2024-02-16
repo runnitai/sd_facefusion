@@ -13,7 +13,8 @@ LipSyncerModel = Literal['wav2lip_gan']
 FaceDebuggerInputs = TypedDict('FaceDebuggerInputs',
                                {
                                    'reference_faces': FaceSet,
-                                   'target_vision_frame': VisionFrame
+                                   'target_vision_frame': VisionFrame,
+                                      'target_frame_number': int
                                })
 FaceEnhancerInputs = TypedDict('FaceEnhancerInputs',
                                {

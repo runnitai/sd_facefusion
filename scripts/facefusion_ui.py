@@ -4,9 +4,11 @@ import os
 import pkgutil
 
 import gradio as gr
+import torch
 
-from facefusion import face_analyser
+from facefusion import face_analyser, globals
 from facefusion.download import conditional_download
+from facefusion.memory import tune_performance
 from facefusion.uis.core import load_ui_layout_module
 from modules import script_callbacks
 
@@ -43,6 +45,7 @@ def load_facefusion():
     import facefusion
     run_pre_checks(facefusion)
     face_analyser.pre_check()
+    tune_performance()
     with gr.Blocks() as ff_ui:
         with gr.Tabs():
             with gr.Tab(label="File"):

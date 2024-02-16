@@ -38,7 +38,16 @@ def update_frame_processors(frame_processors: List[str]) -> gradio.CheckboxGroup
     return gradio.update(value=frame_processors, choices=sort_frame_processors(frame_processors))
 
 
-def sort_frame_processors(frame_processors: List[str]) -> list[str]:
+def sort_frame_processors(frame_processors: List[str]) -> List[str]:
     available_frame_processors = ["face_swapper", "face_enhancer", "frame_enhancer", "lip_syncer", "face_debugger"]
-    return sorted(available_frame_processors, key=lambda frame_processor: frame_processors.index(
-        frame_processor) if frame_processor in frame_processors else len(frame_processors))
+
+    # Sort the processors, ensuring 'face_debugger' is always last if present
+    sorted_processors = sorted(
+        available_frame_processors,
+        key=lambda fp: (
+            frame_processors.index(fp) if fp in frame_processors else len(frame_processors),
+            fp == "face_debugger"  # This ensures 'face_debugger' is always last
+        )
+    )
+
+    return sorted_processors

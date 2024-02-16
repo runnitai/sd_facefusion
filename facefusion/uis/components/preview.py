@@ -210,7 +210,10 @@ def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
 
 
 def update_preview_image(frame_number: int = 0) -> gradio.Image:
-    for frame_processor in facefusion.globals.frame_processors:
+    global_processors = facefusion.globals.frame_processors
+    from facefusion.uis.components.frame_processors import sort_frame_processors
+    global_processors = sort_frame_processors(global_processors)
+    for frame_processor in global_processors:
         frame_processor_module = load_frame_processor_module(frame_processor)
         while not frame_processor_module.post_check():
             logger.disable()
@@ -221,8 +224,7 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
     source_face = get_average_face(source_frames)
     source_audio_path = get_first(filter_audio_paths(facefusion.globals.source_paths))
     if source_audio_path and facefusion.globals.output_video_fps:
-        source_audio_frame = get_audio_frame(source_audio_path, None, facefusion.globals.output_video_fps,
-                                             facefusion.globals.reference_frame_number)
+        source_audio_frame = get_audio_frame(source_audio_path, facefusion.globals.output_video_fps, frame_number)
     else:
         source_audio_frame = None
 
@@ -285,7 +287,18 @@ def process_preview_frame(reference_faces: FaceSet, source_face: Face, source_au
     target_vision_frame = resize_frame_resolution(target_vision_frame, 640, 640)
     if analyse_frame(target_vision_frame):
         return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
-    for frame_processor in facefusion.globals.frame_processors:
+    global_processors = facefusion.globals.frame_processors
+    # Sort global_processors so 'face_debugger' is last if it's in global_processors
+    global_processors = sorted(
+        global_processors,
+        key=lambda fp: (
+            global_processors.index(fp) if fp in global_processors else len(global_processors),
+            fp == "face_debugger"
+        )
+    )
+    source_frame = target_vision_frame.copy()
+    for frame_processor in global_processors:
+        print("Processing with frame processor: ", frame_processor)
         frame_processor_module = load_frame_processor_module(frame_processor)
         logger.disable()
         if frame_processor_module.pre_process('preview'):
@@ -296,7 +309,8 @@ def process_preview_frame(reference_faces: FaceSet, source_face: Face, source_au
                     'source_face': source_face,
                     'source_audio_frame': source_audio_frame,
                     'target_vision_frame': target_vision_frame,
-                    'target_frame_number': frame_number
+                    'target_frame_number': frame_number,
+                    'source_frame': source_frame,
                 })
         # Apply overlay to temp_frame
 
