@@ -332,7 +332,7 @@ def conditional_process(job: JobParams) -> None:
                         normed_embedding_list.append(face.normed_embedding)
                 first_face = get_first(reference_faces)
                 average_face = Face(
-                    bounding_box=first_face.bbox,
+                    bounding_box=first_face.bounding_box,
                     landmark=first_face.landmark,
                     score=first_face.score,
                     embedding=numpy.mean(embedding_list, axis=0),

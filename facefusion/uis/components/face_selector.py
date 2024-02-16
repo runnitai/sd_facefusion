@@ -337,7 +337,7 @@ def extract_gallery_frames(reference_frame: VisionFrame) -> List[VisionFrame]:
     global current_reference_frames
     current_reference_faces = faces
     for face in faces:
-        start_x, start_y, end_x, end_y = map(int, face.bbox)
+        start_x, start_y, end_x, end_y = map(int, face.bounding_box)
         padding_x = int((end_x - start_x) * 0.25)
         padding_y = int((end_y - start_y) * 0.25)
         start_x = max(0, start_x - padding_x)
