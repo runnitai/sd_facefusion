@@ -330,7 +330,7 @@ def conditional_process(job: JobParams) -> None:
                         all_faces.append(face)
                         embedding_list.append(face.embedding)
                         normed_embedding_list.append(face.normed_embedding)
-                first_face = get_first(reference_faces)
+                first_face = all_faces[0]
                 average_face = Face(
                     bounding_box=first_face.bounding_box,
                     landmark=first_face.landmark,

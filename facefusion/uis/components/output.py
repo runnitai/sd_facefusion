@@ -200,6 +200,9 @@ def start(output_path: str) -> Tuple[gradio.update, gradio.update, gradio.update
 
 
 def start_job(job: JobParams):
+    for key in job.__dict__:
+        if not key.startswith("__") and key in facefusion.globals.__dict__:
+            facefusion.globals.__dict__[key] = job.__dict__[key]
     out_path = os.path.join(script_path, "outputs", "facefusion")
     job.output_path = normalize_output_path(job.source_paths, job.target_path, out_path)
     limit_system_memory()

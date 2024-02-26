@@ -146,5 +146,8 @@ def read_image(image_path: str) -> Optional[VisionFrame]:
 
 def write_image(image_path: str, frame: VisionFrame) -> bool:
     if image_path:
-        return cv2.imwrite(image_path, frame)
+        try:
+            return cv2.imwrite(image_path, frame)
+        except:
+            return False
     return False
