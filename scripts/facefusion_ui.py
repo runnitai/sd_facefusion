@@ -81,14 +81,12 @@ def process_internal(is_ff_enabled, image, source_paths: List[str], face_selecto
                      face_swapper_model="inswapper_128_fp16", face_enhancer_model="gfpgan_1.4",
                      frame_enhancer_model="real_esrgan_x4plus"):
     if not is_ff_enabled:
-        print("FaceFusion is disabled")
         return
 
     if not len(source_paths):
         print("No source images provided")
         return
 
-    print("FaceFusion is enabled")
     temp_dir = TEMP_DIRECTORY_PATH
     # Ensure the image is in RGB format
     if not isinstance(image, Image.Image):
@@ -102,10 +100,6 @@ def process_internal(is_ff_enabled, image, source_paths: List[str], face_selecto
     temp_name = f"facefusion_{time.time()}"
     temp_file = os.path.join(temp_dir, f"{temp_name}.jpg")
     image.save(temp_file)
-    print(f"FaceFusion processing image: {temp_file}")
-    print("Source images:", source_paths)
-    print("Frame processors:", frame_processors)
-
     ff_params = JobParams.from_globals()
     ff_params.target_path = temp_file
     ff_params.source_paths = source_paths
@@ -120,7 +114,6 @@ def process_internal(is_ff_enabled, image, source_paths: List[str], face_selecto
 
     # Handle the output from FaceFusion
     if out_path and os.path.exists(out_path):
-        print(f"FaceFusion output: {out_path}")
         with Image.open(out_path) as img:
             result_image = img.copy()
         os.remove(temp_file)
@@ -335,7 +328,6 @@ def ui_internal(script_cls: Union[FaceFusionScript, FaceFusionPostProcessing]):
         file_names = [file.name for file in files] if files else []
         setattr(script_cls, "sources", file_names)
         if len(file_names):
-            print(f"FaceFusion sources: {file_names}")
             return gr.update(value=file_names[0], visible=True)
         return gr.update(value=None, visible=False)
 

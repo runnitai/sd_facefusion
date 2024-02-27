@@ -47,7 +47,6 @@ class FFStatus:
 
     def update(self, status: str):
         """Update the current job status"""
-        print(status)
         if self.preview_image and not os.path.exists(self.preview_image):
             self.preview_image = None
         self.status = status

@@ -179,7 +179,6 @@ def clear_mask_times() -> gradio.update:
 def update_mask_buttons(frame_number) -> (gradio.update, gradio.update):
     """Returns a tuple of (show_enable_btn, show_disable_btn)"""""
     if frame_number == -1:
-        print("No frame number...")
         return gradio.update(visible=True), gradio.update(visible=False)
 
     disabled_times = facefusion.globals.mask_disabled_times

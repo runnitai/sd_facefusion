@@ -28,7 +28,6 @@ def run_ffmpeg(args: List[str], status=None) -> bool:
             if res.stderr:
                 print(res.stderr.decode('utf-8'))
                 return False
-        print(f"Successfully ran ffmpeg with args: {args}")
         return True
     except subprocess.CalledProcessError as exception:
         logger.debug(exception.stderr.decode().strip(), 'FACEFUSION.FFMPEG')

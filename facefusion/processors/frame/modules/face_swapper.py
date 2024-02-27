@@ -225,7 +225,6 @@ def post_process() -> None:
 
 def update_padding(padding: Padding, frame_number: int) -> Padding:
     if frame_number == -1:
-        print("No frame number...")
         return padding
 
     disabled_times = facefusion.globals.mask_disabled_times

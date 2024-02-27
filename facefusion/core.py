@@ -398,7 +398,7 @@ def process_image(start_time: float, job: JobParams) -> None:
     # validate image
     if is_image(job.target_path):
         seconds = '{:.2f}'.format((time.time() - start_time) % 60)
-        status_str = wording.get('processing_image_succeed')
+        status_str = "Processing completed in " + seconds + " seconds."
     else:
         status_str = wording.get('processing_image_failed')
     status.update(status_str)
