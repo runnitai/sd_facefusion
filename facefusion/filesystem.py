@@ -125,8 +125,9 @@ def filter_image_paths(paths: List[str]) -> List[str]:
 
 
 def resolve_relative_path(path: str) -> str:
+
     model_name = os.path.basename(path)
-    if model_name == "":
+    if model_name == "" or path.endswith("models"):
         return os.path.join(models_path, 'facefusion')
     return os.path.join(models_path, 'facefusion', model_name)
 
