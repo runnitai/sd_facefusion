@@ -40,6 +40,7 @@ def run_pre_checks(package):
                 if hasattr(module, "MODELS"):
                     for model in module.MODELS:
                         model_path = os.path.dirname(module.MODELS[model]["path"])
+                        print(f"Checking for model: {model} at {model_path}")
                         model_url = module.MODELS[model]["url"]
                         conditional_download(model_path, [model_url])
                 # Recursively check for submodules
