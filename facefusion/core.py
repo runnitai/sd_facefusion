@@ -354,20 +354,25 @@ def conditional_append_reference_faces(job=None) -> None:
     if 'reference' in job.face_selector_mode and not get_reference_faces():
         source_frames = read_static_images(job.source_paths)
         source_face = get_average_face(source_frames)
+        source_frames_2 = read_static_images(job.source_paths_2)
+        source_face_2 = get_average_face(source_frames_2)
         if is_video(job.target_path):
             reference_frame = get_video_frame(job.target_path, job.reference_frame_number)
         else:
             reference_frame = read_image(job.target_path)
         reference_face = get_one_face(reference_frame, job.reference_face_position)
         append_reference_face('origin', reference_face)
-        if source_face and reference_face:
+        append_reference_face('origin', reference_face, True)
+        if reference_face and (source_face or source_face_2):
             for frame_processor_module in get_frame_processors_modules(job.frame_processors):
-                abstract_reference_frame = frame_processor_module.get_reference_frame(source_face, reference_face,
-                                                                                      reference_frame)
-                if numpy.any(abstract_reference_frame):
-                    reference_frame = abstract_reference_frame
-                    reference_face = get_one_face(reference_frame, job.reference_face_position)
-                    append_reference_face(frame_processor_module.__name__, reference_face)
+                for src_face, is_second in [(source_face, False), (source_face_2, True)]:  # source_face, source_face_2
+                    if src_face:
+                        abstract_reference_frame = frame_processor_module.get_reference_frame(src_face, reference_face,
+                                                                                              reference_frame)
+                        if numpy.any(abstract_reference_frame):
+                            reference_frame = abstract_reference_frame
+                            reference_face = get_one_face(reference_frame, job.reference_face_position)
+                            append_reference_face(frame_processor_module.__name__, reference_face, is_second)
 
 
 def process_image(start_time: float, job: JobParams) -> None:
@@ -384,7 +389,7 @@ def process_image(start_time: float, job: JobParams) -> None:
             print("Interrupted")
             break
         status.update(f"{wording.get('processing')} {frame_processor_module.NAME}")
-        frame_processor_module.process_image(job.source_paths, job.output_path, job.output_path)
+        frame_processor_module.process_image(job.source_paths, job.source_paths_2, job.output_path, job.output_path)
         frame_processor_module.post_process()
         status.step()
     # compress image
@@ -434,7 +439,7 @@ def process_video(start_time, job) -> None:
             # Replace "_" with spaces and title case it
             module_name = module_name.replace("_", " ").title()
             status.update(f"Processing with {module_name}")
-            frame_processor_module.process_video(job.source_paths, temp_frame_paths)
+            frame_processor_module.process_video(job.source_paths, job.source_paths_2, temp_frame_paths)
             frame_processor_module.post_process()
     else:
         status.update(wording.get('temp_frames_not_found'))

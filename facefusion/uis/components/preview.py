@@ -51,9 +51,11 @@ def render() -> None:
             'visible': False
         }
     conditional_append_reference_faces()
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     source_frames = read_static_images(facefusion.globals.source_paths)
     source_face = get_average_face(source_frames)
+    source_frames_2 = read_static_images(facefusion.globals.source_paths_2)
+    source_face_2 = get_average_face(source_frames_2)
     source_audio_path = get_first(filter_audio_paths(facefusion.globals.source_paths))
     if source_audio_path and facefusion.globals.output_video_fps:
         source_audio_frame = get_audio_frame(source_audio_path, facefusion.globals.output_video_fps,
@@ -62,12 +64,12 @@ def render() -> None:
         source_audio_frame = None
     if is_image(facefusion.globals.target_path):
         target_frame = read_static_image(facefusion.globals.target_path)
-        preview_frame = process_preview_frame(reference_faces, source_face, source_audio_frame, target_frame, -1)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, target_frame, -1)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
     if is_video(facefusion.globals.target_path):
         frame_number = facefusion.globals.reference_frame_number
         temp_frame = get_video_frame(facefusion.globals.target_path, frame_number)
-        preview_frame = process_preview_frame(reference_faces, source_face, source_audio_frame, temp_frame, frame_number)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, temp_frame, frame_number)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
         preview_image_args['visible'] = True
         preview_frame_slider_args['value'] = facefusion.globals.reference_frame_number
@@ -129,6 +131,7 @@ def listen() -> None:
         [
             'source_audio',
             'source_image',
+            'source_image_2',
             'target_image',
             'target_video'
         ]
@@ -222,6 +225,8 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
     conditional_append_reference_faces()
     source_frames = read_static_images(facefusion.globals.source_paths)
     source_face = get_average_face(source_frames)
+    source_frames_2 = read_static_images(facefusion.globals.source_paths_2)
+    source_face_2 = get_average_face(source_frames_2)
     source_audio_path = get_first(filter_audio_paths(facefusion.globals.source_paths))
     if source_audio_path and facefusion.globals.output_video_fps:
         source_audio_frame = get_audio_frame(source_audio_path, facefusion.globals.output_video_fps, frame_number)
@@ -229,15 +234,15 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
         source_audio_frame = None
 
     enable_button, disable_button = update_mask_buttons(frame_number)
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     if is_image(facefusion.globals.target_path):
         target_frame = read_static_image(facefusion.globals.target_path)
-        preview_frame = process_preview_frame(reference_faces, source_face, source_audio_frame, target_frame, -1)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, target_frame, -1)
         preview_frame = normalize_frame_color(preview_frame)
         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
     if is_video(facefusion.globals.target_path):
         temp_frame = get_video_frame(facefusion.globals.target_path, frame_number)
-        preview_frame = process_preview_frame(reference_faces, source_face, source_audio_frame, temp_frame, frame_number)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, temp_frame, frame_number)
         preview_frame = normalize_frame_color(preview_frame)
         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
     return gradio.update(value=None, visible=True), enable_button, disable_button
@@ -282,19 +287,18 @@ def update_preview_frame_slider() -> gradio.update:
         visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
 
-def process_preview_frame(reference_faces: FaceSet, source_face: Face, source_audio_frame: AudioFrame,
+def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face, source_audio_frame: AudioFrame,
                           target_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
     target_vision_frame = resize_frame_resolution(target_vision_frame, 640, 640)
     if analyse_frame(target_vision_frame):
         return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
     global_processors = facefusion.globals.frame_processors
-    # Sort global_processors so 'face_debugger' is last if it's in global_processors
+    priority_order = ['face_swapper', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
+
+    # Sort global_processors based on the priority_order
     global_processors = sorted(
         global_processors,
-        key=lambda fp: (
-            global_processors.index(fp) if fp in global_processors else len(global_processors),
-            fp == "face_debugger"
-        )
+        key=lambda fp: priority_order.index(fp) if fp in priority_order else len(priority_order)
     )
     source_frame = target_vision_frame.copy()
     for frame_processor in global_processors:
@@ -306,7 +310,9 @@ def process_preview_frame(reference_faces: FaceSet, source_face: Face, source_au
             target_vision_frame = frame_processor_module.process_frame(
                 {
                     'reference_faces': reference_faces,
+                    'reference_faces_2': reference_faces_2,
                     'source_face': source_face,
+                    'source_face_2': source_face_2,
                     'source_audio_frame': source_audio_frame,
                     'target_vision_frame': target_vision_frame,
                     'target_frame_number': frame_number,

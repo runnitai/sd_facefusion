@@ -51,12 +51,18 @@
     min-width: 0 !important;
 }
 
-#ff_reference_face_position_gallery, #ff_reference_faces_selection_gallery {
+#ff_reference_face_position_gallery {
+    width: 100% !important;
+    max-height: 85px;
+    height: 85px;
+}
+
+#ff_reference_faces_selection_gallery {
     max-height: 85px;
     width: calc(100% - 2.2em);
 }
 
-#ff_add_reference_face_button, #ff_remove_reference_faces_button {
+#ff_add_reference_face_button, .remove_reference_faces_button {
     flex: none;
     max-width: 2.2em;
     min-width: 2.2em !important;
@@ -83,3 +89,26 @@
     min-height: 0 !important;
 }
 
+.remove_reference_faces_button {
+    top: 25%;
+    position: relative;
+}
+
+.maskBtn {
+    max-width: 9.35em;
+    min-width: 8em !important;
+    border-radius: 10px !important;
+    margin: 5px 5px !important;
+}
+
+#bottom_mask_positions {
+    margin: 5px;
+    padding: 4px;
+    overflow: hidden;
+}
+
+#bottom_mask_positions p {
+    margin: 0;
+    padding: 0;
+    line-height: 1.2;
+}

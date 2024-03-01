@@ -54,10 +54,18 @@ def load_frame_processor_module(frame_processor: str) -> Any:
 def get_frame_processors_modules(frame_processors: List[str]) -> List[ModuleType]:
     global FRAME_PROCESSORS_MODULES
 
+    # Priority list defining the order
+    priority_order = ['face_swapper', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
+
+    # Sort the frame_processors list based on the priority_order
+    ordered_processors = sorted(frame_processors,
+                                key=lambda x: priority_order.index(x) if x in priority_order else len(priority_order))
+
     if not FRAME_PROCESSORS_MODULES:
-        for frame_processor in frame_processors:
+        for frame_processor in ordered_processors:
             frame_processor_module = load_frame_processor_module(frame_processor)
             FRAME_PROCESSORS_MODULES.append(frame_processor_module)
+
     return FRAME_PROCESSORS_MODULES
 
 
@@ -69,7 +77,7 @@ def clear_frame_processors_modules() -> None:
     FRAME_PROCESSORS_MODULES = []
 
 
-def multi_process_frames(source_paths: List[str], temp_frame_paths: List[str], process_frames: Process_Frames) -> None:
+def multi_process_frames(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str], process_frames: Process_Frames) -> None:
     queue_payloads = create_queue_payloads(temp_frame_paths)
     with tqdm(total=len(queue_payloads), desc=wording.get('processing'), unit='frame', ascii=' =',
               disable=facefusion.globals.log_level in ['warn', 'error']) as progress:
@@ -83,7 +91,6 @@ def multi_process_frames(source_paths: List[str], temp_frame_paths: List[str], p
 
         def update_progress(preview_image=None) -> None:
             progress.update()
-            status.step()
             if preview_image is not None:
                 current_step = status.job_current
                 if current_step % 30 == 0 or current_step == status.job_total:
@@ -96,7 +103,7 @@ def multi_process_frames(source_paths: List[str], temp_frame_paths: List[str], p
                 len(queue_payloads) // facefusion.globals.execution_thread_count * facefusion.globals.execution_queue_count,
                 1)
             while not queue.empty():
-                future = executor.submit(process_frames, source_paths, pick_queue(queue, queue_per_future),
+                future = executor.submit(process_frames, source_paths, source_paths_2, pick_queue(queue, queue_per_future),
                                          update_progress)
                 futures.append(future)
             for future_done in as_completed(futures):

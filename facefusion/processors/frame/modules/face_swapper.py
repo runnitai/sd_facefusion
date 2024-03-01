@@ -248,7 +248,8 @@ def update_padding(padding: Padding, frame_number: int) -> Padding:
 def swap_face(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
     model_template = get_options('model').get('template')
     model_size = get_options('model').get('size')
-    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark['5/68'], model_template, model_size)
+    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark['5/68'],
+                                                                    model_template, model_size)
     padding = facefusion.globals.face_mask_padding
     padding = update_padding(padding, frame_number)
     crop_mask_list = []
@@ -269,7 +270,7 @@ def swap_face(source_face: Face, target_face: Face, temp_vision_frame: VisionFra
     return temp_vision_frame
 
 
-def apply_swap(source_face : Face, crop_vision_frame : VisionFrame) -> VisionFrame:
+def apply_swap(source_face: Face, crop_vision_frame: VisionFrame) -> VisionFrame:
     frame_processor = get_frame_processor()
     model_type = get_options('model').get('type')
     frame_processor_inputs = {}
@@ -290,12 +291,14 @@ def prepare_source_frame(source_face: Face) -> VisionFrame:
     model_type = get_options('model').get('type')
     source_vision_frame = read_static_image(facefusion.globals.source_paths[0])
     if model_type == 'blendswap':
-        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark['5/68'], 'arcface_112_v2', (112, 112))
+        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark['5/68'],
+                                                              'arcface_112_v2', (112, 112))
     if model_type == 'uniface':
-        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark['5/68'], 'ffhq_512', (256, 256))
+        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark['5/68'],
+                                                              'ffhq_512', (256, 256))
     source_vision_frame = source_vision_frame[:, :, ::-1] / 255.0
     source_vision_frame = source_vision_frame.transpose(2, 0, 1)
-    source_vision_frame = numpy.expand_dims(source_vision_frame, axis = 0).astype(numpy.float32)
+    source_vision_frame = numpy.expand_dims(source_vision_frame, axis=0).astype(numpy.float32)
     return source_vision_frame
 
 
@@ -310,38 +313,43 @@ def prepare_source_embedding(source_face: Face) -> Embedding:
     return source_embedding
 
 
-def prepare_crop_frame(crop_vision_frame : VisionFrame) -> VisionFrame:
+def prepare_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
     model_mean = get_options('model').get('mean')
     model_standard_deviation = get_options('model').get('standard_deviation')
     crop_vision_frame = crop_vision_frame[:, :, ::-1] / 255.0
     crop_vision_frame = (crop_vision_frame - model_mean) / model_standard_deviation
     crop_vision_frame = crop_vision_frame.transpose(2, 0, 1)
-    crop_vision_frame = numpy.expand_dims(crop_vision_frame, axis = 0).astype(numpy.float32)
+    crop_vision_frame = numpy.expand_dims(crop_vision_frame, axis=0).astype(numpy.float32)
     return crop_vision_frame
 
 
-def normalize_crop_frame(crop_vision_frame : VisionFrame) -> VisionFrame:
+def normalize_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
     crop_vision_frame = crop_vision_frame.transpose(1, 2, 0)
     crop_vision_frame = (crop_vision_frame * 255.0).round()
     crop_vision_frame = crop_vision_frame[:, :, ::-1]
     return crop_vision_frame
 
 
-def get_reference_frame(source_face : Face, target_face : Face, temp_vision_frame : VisionFrame) -> VisionFrame:
+def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
     return swap_face(source_face, target_face, temp_vision_frame)
 
 
 def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
     reference_faces = inputs['reference_faces']
+    reference_faces_2 = inputs['reference_faces_2']
     source_face = inputs['source_face']
+    source_face_2 = inputs['source_face_2']
     target_vision_frame = inputs['target_vision_frame']
     frame_number = inputs['target_frame_number']
 
     if 'reference' in facefusion.globals.face_selector_mode:
-        similar_faces = find_similar_faces(reference_faces, target_vision_frame, facefusion.globals.reference_face_distance)
-        if similar_faces:
-            for similar_face in similar_faces:
-                target_vision_frame = swap_face(source_face, similar_face, target_vision_frame, frame_number)
+        for ref_faces, src_face in [(reference_faces, source_face), (reference_faces_2, source_face_2)]:
+            similar_faces = find_similar_faces(ref_faces, target_vision_frame,
+                                               facefusion.globals.reference_face_distance)
+            if similar_faces and src_face:
+                for similar_face in similar_faces:
+                    target_vision_frame = swap_face(src_face, similar_face, target_vision_frame, frame_number)
+
     if 'one' in facefusion.globals.face_selector_mode:
         target_face = get_one_face(target_vision_frame)
         if target_face:
@@ -354,11 +362,13 @@ def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
     return target_vision_frame
 
 
-def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload],
+def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload],
                    update_progress: Update_Process) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     source_frames = read_static_images(source_paths)
     source_face = get_average_face(source_frames)
+    source_frames_2 = read_static_images(source_paths_2)
+    source_face_2 = get_average_face(source_frames_2)
 
     for queue_payload in queue_payloads:
         target_vision_path = queue_payload['frame_path']
@@ -368,7 +378,9 @@ def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload],
         result_frame = process_frame(
             {
                 'reference_faces': reference_faces,
+                'reference_faces_2': reference_faces_2,
                 'source_face': source_face,
+                'source_face_2': source_face_2,
                 'target_vision_frame': target_vision_frame,
                 'target_frame_number': target_frame_number
             })
@@ -377,7 +389,7 @@ def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload],
 
 
 def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     source_frames = read_static_images(source_paths)
     source_face = get_average_face(source_frames)
     target_vision_frame = read_static_image(target_path)
@@ -391,5 +403,5 @@ def process_image(source_paths: List[str], target_path: str, output_path: str) -
     write_image(output_path, result_frame)
 
 
-def process_video(source_paths: List[str], temp_frame_paths: List[str]) -> None:
-    frame_processors.multi_process_frames(source_paths, temp_frame_paths, process_frames)
+def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
+    frame_processors.multi_process_frames(source_paths, source_paths_2, temp_frame_paths, process_frames)

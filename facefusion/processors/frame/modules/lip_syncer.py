@@ -211,7 +211,7 @@ def process_frame(inputs : LipSyncerInputs) -> VisionFrame:
 
 
 def process_frames(source_paths : List[str], queue_payloads : List[QueuePayload], update_progress : Update_Process) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     source_audio_path = get_first(filter_audio_paths(source_paths))
     target_video_fps = facefusion.globals.output_video_fps
 
@@ -231,7 +231,7 @@ def process_frames(source_paths : List[str], queue_payloads : List[QueuePayload]
 
 
 def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     source_audio_path = get_first(filter_audio_paths(source_paths))
     source_audio_frame = get_audio_frame(source_audio_path, 25)
     target_vision_frame = read_static_image(target_path)
@@ -245,4 +245,4 @@ def process_image(source_paths: List[str], target_path: str, output_path: str) -
 
 
 def process_video(source_paths: List[str], temp_frame_paths: List[str]) -> None:
-    frame_processors.multi_process_frames(source_paths, temp_frame_paths, process_frames)
+    frame_processors.multi_process_frames(source_paths, None, temp_frame_paths, process_frames)

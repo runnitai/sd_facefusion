@@ -7,6 +7,7 @@ ComponentName = Literal \
     [
     'source_audio',
     'source_image',
+    'source_image_2',
     'target_image',
     'target_video',
     'preview_frame_slider',

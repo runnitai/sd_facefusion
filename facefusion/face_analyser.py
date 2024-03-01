@@ -402,6 +402,9 @@ def get_many_faces(vision_frame: VisionFrame) -> List[Face]:
                 faces = create_faces(vision_frame, bounding_box_list, face_landmark5_list, score_list)
             if faces:
                 set_static_faces(vision_frame, faces)
+                set_static_faces(vision_frame, faces, True)
+
+        # TODO: Add separate globals/settings for faces_2
         if facefusion.globals.face_analyser_order:
             faces = sort_by_order(faces, facefusion.globals.face_analyser_order)
         if facefusion.globals.face_analyser_age:

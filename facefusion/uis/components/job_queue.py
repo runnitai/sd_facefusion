@@ -102,13 +102,14 @@ def render() -> None:
 
 def listen() -> None:
     source_file = get_ui_component('source_file')
+    source_file_2 = get_ui_component('source_file_2')
     target_file = get_ui_component('target_file')
     output_files = get_ui_component('output_files')
     output_video = get_ui_component('output_video')
     preview_image = get_ui_component('preview_image')
     if source_file and target_file:
-        OUTPUT_ENQUEUE_BUTTON.click(enqueue, inputs=[], outputs=[JOB_QUEUE_TABLE, source_file, target_file])
-    CLEAR_QUEUE_BUTTON.click(clear, inputs=[], outputs=[JOB_QUEUE_TABLE, source_file, target_file])
+        OUTPUT_ENQUEUE_BUTTON.click(enqueue, inputs=[], outputs=[JOB_QUEUE_TABLE, target_file, source_file, source_file_2])
+    CLEAR_QUEUE_BUTTON.click(clear, inputs=[], outputs=[JOB_QUEUE_TABLE, target_file, source_file, source_file_2])
     REMOVE_LAST_BUTTON.click(remove_last, _js="get_selected_row", inputs=[LAST_ELEMENT], outputs=[JOB_QUEUE_TABLE])
     TOGGLE_REMOVE_BUTTON.click(toggle_remove, inputs=[TOGGLE_REMOVE_BUTTON],
                                outputs=[REMOVE_LAST_BUTTON, TOGGLE_REMOVE_BUTTON])
@@ -149,7 +150,8 @@ def clear() -> gradio.update:
     queue_table = gradio.update(value=queue_to_table(), visible=True)
     target_file = gradio.update(value=None)
     source_image = gradio.update(value=None)
-    return queue_table, target_file, source_image
+    source_image_2 = gradio.update(value=None)
+    return queue_table, target_file, source_image, source_image_2
 
 
 def remove_last(last_value) -> gradio.update:
@@ -183,7 +185,7 @@ def enqueue() -> gradio.update:
     for key in facefusion.globals.__dict__:
         if not key.startswith("__"):
             global_dict[key] = facefusion.globals.__dict__[key]
-    required_keys = ["output_path", "target_path", "source_paths"]
+    required_keys = ["output_path", "target_path", "source_paths", "source_paths_2"]
     # If any of the required keys are missing, don't add the job to the queue
     if any(key not in global_dict for key in required_keys):
         print(f"Missing required key in facefusion.globals")
@@ -201,11 +203,12 @@ def enqueue() -> gradio.update:
     new_job.output_path = normalize_output_path(new_job.source_paths, new_job.target_path, new_job.output_path)
     target_file = gradio.update()
     source_image = gradio.update()
+    source_image_2 = gradio.update()
     # If the global dict (without id) is already in the job queue, don't add it again
     for job in JOB_QUEUE:
         if new_job.compare(job):
             print(f"Job already in queue")
-            return gradio.update(), target_file, source_image
+            return gradio.update(), target_file, source_image, source_image_2
     new_job.id = len(JOB_QUEUE) + len(COMPLETED_JOBS) + 1  # Add ID field
     temp_test_dir = os.path.join(os.path.dirname(new_job.output_path), "ff_debug")
     if not os.path.exists(temp_test_dir):
@@ -220,5 +223,6 @@ def enqueue() -> gradio.update:
     target_file = gradio.update(value=None)
     if CLEAR_SOURCE:
         source_image = gradio.update(value=None)
+        source_image_2 = gradio.update(value=None)
 
-    return gradio.update(value=queue_to_table(), visible=True), target_file, source_image
+    return gradio.update(value=queue_to_table(), visible=True), target_file, source_image, source_image_2

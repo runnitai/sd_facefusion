@@ -18,19 +18,27 @@ from facefusion.vision import get_video_frame, read_static_image, normalize_fram
 
 FACE_SELECTOR_MODE_DROPDOWN: Optional[gradio.Dropdown] = None
 REFERENCE_FACE_POSITION_GALLERY: Optional[gradio.Gallery] = None
+REFERENCE_FACE_POSITION_GALLERY_2: Optional[gradio.Gallery] = None
 REFERENCE_FACE_DISTANCE_SLIDER: Optional[gradio.Slider] = None
 ADD_REFERENCE_FACE_BUTTON: Optional[gradio.Button] = None
 REMOVE_REFERENCE_FACE_BUTTON: Optional[gradio.Button] = None
 REFERENCE_FACES_SELECTION_GALLERY: Optional[gradio.Gallery] = None
+ADD_REFERENCE_FACE_BUTTON_2: Optional[gradio.Button] = None
+REMOVE_REFERENCE_FACE_BUTTON_2: Optional[gradio.Button] = None
+REFERENCE_FACES_SELECTION_GALLERY_2: Optional[gradio.Gallery] = None
 
-# Stores face data for current reference frame
+# Reference frame and faces
 current_reference_faces = []
-# Stores the actual images
 current_reference_frames = []
+
 # Stores the selected reference face data
 current_selected_faces = []
-# The selected face in the gallery
+current_selected_faces_2 = []
+
+# Indices for the face selector and selections
+selector_face_index = -1
 selected_face_index = -1
+selected_face_index_2 = -1
 
 
 def render() -> None:
@@ -40,10 +48,13 @@ def render() -> None:
     global REFERENCE_FACES_SELECTION_GALLERY
     global ADD_REFERENCE_FACE_BUTTON
     global REMOVE_REFERENCE_FACE_BUTTON
+    global REFERENCE_FACES_SELECTION_GALLERY_2
+    global ADD_REFERENCE_FACE_BUTTON_2
+    global REMOVE_REFERENCE_FACE_BUTTON_2
 
     reference_face_gallery_args: Dict[str, Any] = \
         {
-            'label': wording.get('uis.reference_face_gallery'),
+            'label': "Face Selection",
             'object_fit': 'cover',
             'columns': 8,
             'allow_preview': False,
@@ -62,20 +73,42 @@ def render() -> None:
         elem_id='ff_face_recognition_dropdown',
     )
     with gradio.Row():
-        ADD_REFERENCE_FACE_BUTTON = gradio.Button(
-            value="+",
-            elem_id='ff_add_reference_face_button'
-        )
-        REFERENCE_FACE_POSITION_GALLERY = gradio.Gallery(**reference_face_gallery_args,
-                                                         elem_id='ff_reference_face_position_gallery')
+        with gradio.Column(scale=0.0001, min_width="33"):
+            ADD_REFERENCE_FACE_BUTTON = gradio.Button(
+                value="+1",
+                elem_id='ff_add_reference_face_button'
+            )
+            ADD_REFERENCE_FACE_BUTTON_2 = gradio.Button(
+                value="+2",
+                elem_id='ff_add_reference_face_button'
+            )
+        with gradio.Column():
+            REFERENCE_FACE_POSITION_GALLERY = gradio.Gallery(**reference_face_gallery_args,
+                                                             elem_id='ff_reference_face_position_gallery')
     with gradio.Row():
         REMOVE_REFERENCE_FACE_BUTTON = gradio.Button(
             value="-",
             variant='secondary',
-            elem_id='ff_remove_reference_faces_button'
+            elem_id='ff_remove_reference_faces_button',
+            elem_classes=['remove_reference_faces_button']
         )
         REFERENCE_FACES_SELECTION_GALLERY = gradio.Gallery(
-            label="Selected Reference Faces",
+            label="Selected Faces (Source 1)",
+            object_fit='cover',
+            columns=8,
+            allow_preview=False,
+            visible='reference' in facefusion.globals.face_selector_mode,
+            elem_id='ff_reference_faces_selection_gallery'
+        )
+    with gradio.Row():
+        REMOVE_REFERENCE_FACE_BUTTON_2 = gradio.Button(
+            value="-",
+            variant='secondary',
+            elem_id='ff_remove_reference_faces_button_2',
+            elem_classes=['remove_reference_faces_button']
+        )
+        REFERENCE_FACES_SELECTION_GALLERY_2 = gradio.Gallery(
+            label="Selected Faces (Source 2)",
             object_fit='cover',
             columns=8,
             allow_preview=False,
@@ -97,6 +130,8 @@ def render() -> None:
     register_ui_component('reference_face_distance_slider', REFERENCE_FACE_DISTANCE_SLIDER)
     register_ui_component('add_reference_face_button', ADD_REFERENCE_FACE_BUTTON)
     register_ui_component('remove_reference_faces_button', REMOVE_REFERENCE_FACE_BUTTON)
+    register_ui_component('reference_faces_selection_gallery', REFERENCE_FACES_SELECTION_GALLERY)
+    register_ui_component('add_reference_face_button_2', ADD_REFERENCE_FACE_BUTTON_2)
 
 
 def listen() -> None:
@@ -106,8 +141,9 @@ def listen() -> None:
                                        outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
                                                 REFERENCE_FACE_DISTANCE_SLIDER, ADD_REFERENCE_FACE_BUTTON,
                                                 REMOVE_REFERENCE_FACE_BUTTON])
-    REFERENCE_FACE_POSITION_GALLERY.select(update_selected_face_index)
+    REFERENCE_FACE_POSITION_GALLERY.select(update_selector_face_index)
     REFERENCE_FACES_SELECTION_GALLERY.select(update_selected_face_index)
+    REFERENCE_FACES_SELECTION_GALLERY_2.select(update_selected_face_index_2)
     REFERENCE_FACE_DISTANCE_SLIDER.change(update_reference_face_distance, inputs=REFERENCE_FACE_DISTANCE_SLIDER)
     multi_component_names: List[ComponentName] = \
         [
@@ -136,7 +172,8 @@ def listen() -> None:
             'face_detector_size_dropdown',
             'face_detector_score_slider'
         ]
-    galleries_plus = [REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY, bottom_mask_positions]
+    galleries_plus = [REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
+                      REFERENCE_FACES_SELECTION_GALLERY_2, bottom_mask_positions]
     for component_name in change_two_component_names:
         component = get_ui_component(component_name)
         if component:
@@ -149,15 +186,27 @@ def listen() -> None:
     preview_image = get_ui_component('preview_image')
     if preview_frame_slider:
         # update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE
+
         ADD_REFERENCE_FACE_BUTTON.click(add_reference_face,
                                         inputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
                                                 preview_frame_slider],
                                         outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image, mask_enable_button,
                                                  mask_disable_button])
+        ADD_REFERENCE_FACE_BUTTON_2.click(add_reference_face_2,
+                                          inputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY_2,
+                                                  preview_frame_slider],
+                                          outputs=[REFERENCE_FACES_SELECTION_GALLERY_2, preview_image,
+                                                   mask_enable_button,
+                                                   mask_disable_button])
         REMOVE_REFERENCE_FACE_BUTTON.click(fn=remove_reference_face,
                                            inputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_frame_slider],
                                            outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image,
                                                     mask_enable_button, mask_disable_button])
+
+        REMOVE_REFERENCE_FACE_BUTTON_2.click(fn=remove_reference_face_2,
+                                             inputs=[REFERENCE_FACES_SELECTION_GALLERY_2, preview_frame_slider],
+                                             outputs=[REFERENCE_FACES_SELECTION_GALLERY_2, preview_image,
+                                                      mask_enable_button, mask_disable_button])
 
         preview_frame_back_button.click(reference_frame_back,
                                         inputs=preview_frame_slider, outputs=[preview_frame_slider,
@@ -168,8 +217,9 @@ def listen() -> None:
                                                     REFERENCE_FACES_SELECTION_GALLERY])
         preview_frame_slider.change(update_reference_frame_number_and_gallery, inputs=preview_frame_slider,
                                     outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY,
-                                             REFERENCE_FACES_SELECTION_GALLERY])
-        preview_frame_slider.release(update_reference_position_gallery, outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY])
+                                             REFERENCE_FACES_SELECTION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY_2])
+        preview_frame_slider.release(update_reference_position_gallery,
+                                     outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY_2])
 
 
 def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[
@@ -180,10 +230,22 @@ def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[
         visible=visible), gradio.update(visible=visible), gradio.update(visible=visible)
 
 
+def update_selector_face_index(event: gradio.SelectData) -> None:
+    global selector_face_index
+    print("Index changed...")
+    selector_face_index = event.index
+
+
 def update_selected_face_index(event: gradio.SelectData) -> None:
     global selected_face_index
     print("Index changed...")
     selected_face_index = event.index
+
+
+def update_selected_face_index_2(event: gradio.SelectData) -> None:
+    global selected_face_index_2
+    print("Index 23 changed...")
+    selected_face_index_2 = event.index
 
 
 def clear_and_update_reference_face_position(event: gradio.SelectData) -> gradio.Gallery:
@@ -195,15 +257,17 @@ def clear_and_update_reference_face_position(event: gradio.SelectData) -> gradio
 
 def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gradio.Gallery:
     global selected_face_index
+    global current_selected_faces
+    global selector_face_index
     dest_items = [item["name"] for item in dest_gallery]
     if src_gallery is not None and any(src_gallery):
         # If the number of items in gallery is less than selected_face_index, then the selected_face_index is invalid
-        if len(src_gallery) <= selected_face_index:
-            selected_face_index = -1
+        if len(src_gallery) <= selector_face_index:
+            selector_face_index = -1
             print("Invalid index")
             return gradio.update()
-        selected_item = src_gallery[selected_face_index]
-        face_data = current_reference_faces[selected_face_index]
+        selected_item = src_gallery[selector_face_index]
+        face_data = current_reference_faces[selector_face_index]
         if reference_frame_number not in facefusion.globals.reference_face_dict:
             facefusion.globals.reference_face_dict[reference_frame_number] = []
         found = False
@@ -225,7 +289,7 @@ def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gra
 
 
 def remove_reference_face(gallery: gradio.Gallery, preview_frame_number) -> gradio.Gallery:
-    global selected_face_index
+    global selected_face_index, current_selected_faces
     if len(gallery) <= selected_face_index or len(current_selected_faces) <= selected_face_index:
         selected_face_index = -1
         print("Invalid index")
@@ -255,6 +319,73 @@ def remove_reference_face(gallery: gradio.Gallery, preview_frame_number) -> grad
 
     facefusion.globals.reference_face_dict = global_reference_faces
     current_selected_faces.pop(selected_face_index)
+    from facefusion.uis.components.preview import update_preview_image
+    preview_image, enable_button, disable_button = update_preview_image(preview_frame_number)
+    return gradio.update(value=new_items), preview_image, enable_button, disable_button
+
+
+def add_reference_face_2(src_gallery, dest_gallery, reference_frame_number) -> gradio.Gallery:
+    global selector_face_index, current_selected_faces_2
+    dest_items = [item["name"] for item in dest_gallery]
+    if src_gallery is not None and any(src_gallery):
+        # If the number of items in gallery is less than selected_face_index, then the selected_face_index is invalid
+        if len(src_gallery) <= selector_face_index:
+            selector_face_index = -1
+            print("Invalid index")
+            return gradio.update()
+        selected_item = src_gallery[selector_face_index]
+        face_data = current_reference_faces[selector_face_index]
+        if reference_frame_number not in facefusion.globals.reference_face_dict_2:
+            facefusion.globals.reference_face_dict_2[reference_frame_number] = []
+        found = False
+        for existing_face_data in facefusion.globals.reference_face_dict_2[reference_frame_number]:
+            if np.array_equal(face_data, existing_face_data):
+                found = True
+                break
+
+        if not found:
+            facefusion.globals.reference_face_dict_2[reference_frame_number].append(face_data)
+            current_selected_faces_2.append(face_data)
+            dest_items.append(selected_item["name"])
+        from facefusion.uis.components.preview import update_preview_image
+
+        out_preview, enable_button, disable_button = update_preview_image(reference_frame_number)
+        return gradio.update(value=dest_items), out_preview, enable_button, disable_button
+    else:
+        return gradio.update(), gradio.update(), gradio.update(), gradio.update()  # Return the original gallery if no item is selected or if it's empty
+
+
+def remove_reference_face_2(gallery: gradio.Gallery, preview_frame_number) -> gradio.Gallery:
+    global selected_face_index_2, current_selected_faces_2
+    if len(gallery) <= selected_face_index_2 or len(current_selected_faces) <= selected_face_index_2:
+        selected_face_index_2 = -1
+        print("Invalid index")
+        return gradio.update()
+
+    # Remove the selected item from the gallery
+    new_items = []
+    gallery_index = 0
+    for item in gallery:
+        if gallery_index != selected_face_index_2:
+            new_items.append(item["name"])
+        gallery_index += 1
+    global_reference_faces = facefusion.globals.reference_face_dict_2
+    face_to_remove = current_selected_faces[selected_face_index_2]
+    found = False
+    for frame_no, faces in global_reference_faces.items():
+        cleaned_faces = []
+        for existing_face_data in faces:
+            if np.array_equal(face_to_remove, existing_face_data):
+                print("Found face to remove")
+                found = True
+                continue
+            cleaned_faces.append(existing_face_data)
+        global_reference_faces[frame_no] = cleaned_faces
+        if found:
+            break
+
+    facefusion.globals.reference_face_dict_2 = global_reference_faces
+    current_selected_faces_2.pop(selected_face_index_2)
     from facefusion.uis.components.preview import update_preview_image
     preview_image, enable_button, disable_button = update_preview_image(preview_frame_number)
     return gradio.update(value=new_items), preview_image, enable_button, disable_button
@@ -294,6 +425,7 @@ def clear_and_update_reference_position_gallery() -> gradio.update:
 def update_reference_position_gallery() -> Tuple[gradio.update, gradio.update]:
     gallery_frames = []
     selection_gallery = gradio.update()
+    selection_gallery_2 = gradio.update()
     if is_image(facefusion.globals.target_path):
         reference_frame = read_static_image(facefusion.globals.target_path)
         gallery_frames = extract_gallery_frames(reference_frame)
@@ -302,18 +434,20 @@ def update_reference_position_gallery() -> Tuple[gradio.update, gradio.update]:
         gallery_frames = extract_gallery_frames(reference_frame)
     else:
         selection_gallery = gradio.update(value=None)
+        selection_gallery_2 = gradio.update(value=None)
         facefusion.globals.reference_face_dict = {}
         global current_selected_faces
         current_selected_faces = []
     if gallery_frames:
-        return gradio.update(value=gallery_frames), selection_gallery
-    return gradio.update(value=None), selection_gallery
+        return gradio.update(value=gallery_frames), selection_gallery, selection_gallery_2
+    return gradio.update(value=None), selection_gallery, selection_gallery_2
 
 
 def update_reference_frame_number_and_gallery(reference_frame_number) -> Tuple[gradio.update, gradio.update]:
     gallery_frames = []
     facefusion.globals.reference_frame_number = reference_frame_number
     selection_gallery = gradio.update()
+    selection_gallery_2 = gradio.update()
     if is_image(facefusion.globals.target_path):
         reference_frame = read_static_image(facefusion.globals.target_path)
         gallery_frames = extract_gallery_frames(reference_frame)
@@ -322,12 +456,13 @@ def update_reference_frame_number_and_gallery(reference_frame_number) -> Tuple[g
         gallery_frames = extract_gallery_frames(reference_frame)
     else:
         selection_gallery = gradio.update(value=None)
+        selection_gallery_2 = gradio.update(value=None)
         facefusion.globals.reference_face_dict = {}
         global current_selected_faces
         current_selected_faces = []
     if gallery_frames:
-        return gradio.update(value=reference_frame_number), gradio.update(value=gallery_frames), selection_gallery
-    return gradio.update(value=reference_frame_number), gradio.update(value=None), selection_gallery
+        return gradio.update(value=reference_frame_number), gradio.update(value=gallery_frames), selection_gallery, selection_gallery_2
+    return gradio.update(value=reference_frame_number), gradio.update(value=None), selection_gallery, selection_gallery_2
 
 
 def extract_gallery_frames(reference_frame: VisionFrame) -> List[VisionFrame]:

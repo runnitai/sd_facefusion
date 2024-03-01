@@ -76,8 +76,6 @@ def listen() -> None:
     TARGET_PATH.input(update_from_path, inputs=TARGET_PATH,
                       outputs=[TARGET_PATH, TARGET_FILE, TARGET_IMAGE, TARGET_VIDEO])
     TARGET_FILE.change(update, inputs=TARGET_FILE, outputs=[TARGET_PATH, TARGET_IMAGE, TARGET_VIDEO, SYNC_VIDEO_LIP])
-    source_audio = get_ui_component('source_audio')
-    source_image = get_ui_component('source_image')
     global SOURCE_FILES
     SOURCE_FILES = get_ui_component('source_file')
     SYNC_VIDEO_LIP.change(update_sync_video_lip, inputs=[SYNC_VIDEO_LIP, SOURCE_FILES], outputs=[SOURCE_FILES])

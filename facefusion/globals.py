@@ -9,6 +9,7 @@ from modules.paths_internal import script_path
 
 # general
 source_paths: Optional[List[str]] = None
+source_paths_2: Optional[List[str]] = None
 target_path: Optional[str] = None
 restricted_path: Optional[str] = None
 output_path: Optional[str] = os.path.join(script_path, "outputs", "facefusion")
@@ -37,6 +38,7 @@ reference_face_position: Optional[int] = 0
 reference_face_distance: Optional[float] = 0.75
 reference_frame_number: Optional[int] = 0
 reference_face_dict: Optional[dict] = {}
+reference_face_dict_2: Optional[dict] = {}
 # face mask
 face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
 mask_enabled_times: Optional[List[int]] = []

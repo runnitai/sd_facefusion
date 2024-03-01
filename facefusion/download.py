@@ -119,7 +119,7 @@ def download_convert_ts_to_mp4(ts_url, output_path):
 def get_video_filename(title: str) -> str:
     # Replace spaces with underscores and remove disallowed characters for filenames
     safe_title = title.replace(" ", "_").translate({ord(i): None for i in r'\/:*?"<>|'})
-    return f"{safe_title}.mp4"
+    return f"{safe_title}"
 
 
 def download_video(target_url: str) -> str:
@@ -134,14 +134,25 @@ def download_video(target_url: str) -> str:
 
     if video_title:
         video_filename = get_video_filename(video_title)
-        video_path = os.path.join(TEMP_DIRECTORY_PATH, video_filename)
+        video_path = os.path.join(TEMP_DIRECTORY_PATH, f"{video_filename}.mp4")
+        video_path = ydl.prepare_filename(info_dict, dir_type='', outtmpl=video_path)
 
         if not os.path.exists(video_path):  # Download only if the file doesn't exist
             ydl_opts['skip_download'] = False  # Now, proceed to download
             ydl_opts['outtmpl'] = video_path
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([target_url])
+                # Get the extension of the downloaded file
                 print(f"Downloaded video to {video_path}")
+                if not os.path.exists(video_path):
+                    print("Can't find the downloaded video, trying to find it in the temp directory.")
+                    video_without_extension = os.path.splitext(video_path)[0]
+                    for file in os.listdir(TEMP_DIRECTORY_PATH):
+                        full_path = os.path.join(TEMP_DIRECTORY_PATH, file)
+                        if full_path.startswith(video_without_extension):
+                            video_path = full_path
+                            print(f"Found video in temp directory: {video_path}")
+                            break
         else:
             print(f"Video already exists: {video_path}")
 

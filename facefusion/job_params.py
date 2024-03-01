@@ -18,6 +18,7 @@ class JobParams:
         self.id = 0
         # Set default values
         self.source_paths: Optional[List[str]] = None
+        self.source_paths_2: Optional[List[str]] = None
         self.source_speaker_path: Optional[str] = None
         self.target_path: Optional[str] = None
         self.restricted_path: Optional[str] = None
@@ -95,7 +96,7 @@ class JobParams:
             value = self.__dict__[key]
             # Ensure that the value is JSON serializable
             if isinstance(value, (list, dict, str, int, float, bool, type(None))):
-                if key == "reference_face_dict":
+                if key == "reference_face_dict" or key == "reference_face_dict_2":
                     continue
                 out_params[key] = self.__dict__[key]
             else:

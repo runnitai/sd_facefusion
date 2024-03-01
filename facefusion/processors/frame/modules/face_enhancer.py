@@ -173,15 +173,17 @@ def post_process() -> None:
         clear_face_occluder()
 
 
-def enhance_face(target_face: Face, temp_vision_frame : VisionFrame) -> VisionFrame:
+def enhance_face(target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
     model_template = get_options('model').get('template')
     model_size = get_options('model').get('size')
-    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark['5/68'], model_template, model_size)
-    box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], facefusion.globals.face_mask_blur, (0, 0, 0, 0))
-    crop_mask_list =\
-    [
-        box_mask
-    ]
+    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark['5/68'],
+                                                                    model_template, model_size)
+    box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], facefusion.globals.face_mask_blur,
+                                      (0, 0, 0, 0))
+    crop_mask_list = \
+        [
+            box_mask
+        ]
 
     if 'occlusion' in facefusion.globals.face_mask_types:
         occlusion_mask = create_occlusion_mask(crop_vision_frame)
@@ -195,7 +197,7 @@ def enhance_face(target_face: Face, temp_vision_frame : VisionFrame) -> VisionFr
     return temp_vision_frame
 
 
-def apply_enhance(crop_vision_frame : VisionFrame) -> VisionFrame:
+def apply_enhance(crop_vision_frame: VisionFrame) -> VisionFrame:
     frame_processor = get_frame_processor()
     frame_processor_inputs = {}
 
@@ -203,21 +205,21 @@ def apply_enhance(crop_vision_frame : VisionFrame) -> VisionFrame:
         if frame_processor_input.name == 'input':
             frame_processor_inputs[frame_processor_input.name] = crop_vision_frame
         if frame_processor_input.name == 'weight':
-            weight = numpy.array([ 1 ], dtype = numpy.double)
+            weight = numpy.array([1], dtype=numpy.double)
             frame_processor_inputs[frame_processor_input.name] = weight
     with THREAD_SEMAPHORE:
         crop_vision_frame = frame_processor.run(None, frame_processor_inputs)[0][0]
     return crop_vision_frame
 
 
-def prepare_crop_frame(crop_vision_frame : VisionFrame) -> VisionFrame:
+def prepare_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
     crop_vision_frame = crop_vision_frame[:, :, ::-1] / 255.0
     crop_vision_frame = (crop_vision_frame - 0.5) / 0.5
-    crop_vision_frame = numpy.expand_dims(crop_vision_frame.transpose(2, 0, 1), axis = 0).astype(numpy.float32)
+    crop_vision_frame = numpy.expand_dims(crop_vision_frame.transpose(2, 0, 1), axis=0).astype(numpy.float32)
     return crop_vision_frame
 
 
-def normalize_crop_frame(crop_vision_frame : VisionFrame) -> VisionFrame:
+def normalize_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
     crop_vision_frame = numpy.clip(crop_vision_frame, -1, 1)
     crop_vision_frame = (crop_vision_frame + 1) / 2
     crop_vision_frame = crop_vision_frame.transpose(1, 2, 0)
@@ -226,25 +228,30 @@ def normalize_crop_frame(crop_vision_frame : VisionFrame) -> VisionFrame:
     return crop_vision_frame
 
 
-def blend_frame(temp_vision_frame : VisionFrame, paste_vision_frame : VisionFrame) -> VisionFrame:
+def blend_frame(temp_vision_frame: VisionFrame, paste_vision_frame: VisionFrame) -> VisionFrame:
     face_enhancer_blend = 1 - (frame_processors_globals.face_enhancer_blend / 100)
-    temp_vision_frame = cv2.addWeighted(temp_vision_frame, face_enhancer_blend, paste_vision_frame, 1 - face_enhancer_blend, 0)
+    temp_vision_frame = cv2.addWeighted(temp_vision_frame, face_enhancer_blend, paste_vision_frame,
+                                        1 - face_enhancer_blend, 0)
     return temp_vision_frame
 
 
-def get_reference_frame(source_face : Face, target_face : Face, temp_vision_frame : VisionFrame) -> VisionFrame:
+def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
     return enhance_face(target_face, temp_vision_frame)
 
 
-def process_frame(inputs : FaceEnhancerInputs) -> VisionFrame:
+def process_frame(inputs: FaceEnhancerInputs) -> VisionFrame:
     reference_faces = inputs['reference_faces']
+    reference_faces_2 = inputs['reference_faces_2']
     target_vision_frame = inputs['target_vision_frame']
 
     if 'reference' in facefusion.globals.face_selector_mode:
-        similar_faces = find_similar_faces(reference_faces, target_vision_frame, facefusion.globals.reference_face_distance)
-        if similar_faces:
-            for similar_face in similar_faces:
-                target_vision_frame = enhance_face(similar_face, target_vision_frame)
+        for ref_faces in [reference_faces, reference_faces_2]:
+            similar_faces = find_similar_faces(ref_faces, target_vision_frame,
+                                               facefusion.globals.reference_face_distance)
+            if similar_faces:
+                for similar_face in similar_faces:
+                    target_vision_frame = enhance_face(similar_face, target_vision_frame)
+
     if 'one' in facefusion.globals.face_selector_mode:
         target_face = get_one_face(target_vision_frame)
         if target_face:
@@ -257,31 +264,32 @@ def process_frame(inputs : FaceEnhancerInputs) -> VisionFrame:
     return target_vision_frame
 
 
-def process_frames(source_path : List[str], queue_payloads : List[QueuePayload], update_progress : Update_Process) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+def process_frames(source_path: List[str], source_path_2: List[str], queue_payloads: List[QueuePayload], update_progress: Update_Process) -> None:
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
 
     for queue_payload in queue_payloads:
         target_vision_path = queue_payload['frame_path']
         target_vision_frame = read_image(target_vision_path)
         result_frame = process_frame(
-        {
-            'reference_faces': reference_faces,
-            'target_vision_frame': target_vision_frame
-        })
+            {
+                'reference_faces': reference_faces,
+                'reference_faces_2': reference_faces_2,
+                'target_vision_frame': target_vision_frame
+            })
         write_image(target_vision_path, result_frame)
         update_progress(target_vision_path)
 
 
-def process_image(source_path : str, target_path : str, output_path : str) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+def process_image(source_path: str, source_path_2: str, target_path: str, output_path: str) -> None:
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     target_vision_frame = read_static_image(target_path)
     result_frame = process_frame(
-    {
-        'reference_faces': reference_faces,
-        'target_vision_frame': target_vision_frame
-    })
+        {
+            'reference_faces': reference_faces,
+            'target_vision_frame': target_vision_frame
+        })
     write_image(output_path, result_frame)
 
 
-def process_video(source_paths : List[str], temp_frame_paths : List[str]) -> None:
-    frame_processors.multi_process_frames(None, temp_frame_paths, process_frames)
+def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
+    frame_processors.multi_process_frames(None, None, temp_frame_paths, process_frames)

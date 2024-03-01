@@ -146,15 +146,18 @@ def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame:
 
 def process_frame(inputs: FaceDebuggerInputs) -> VisionFrame:
     reference_faces = inputs['reference_faces']
+    reference_faces_2 = inputs.get('reference_faces_2', None)
     target_vision_frame = inputs['target_vision_frame']
     source_frame = inputs.get('source_frame', target_vision_frame)
     target_frame_number = inputs['target_frame_number']
 
     if 'reference' in facefusion.globals.face_selector_mode:
-        similar_faces = find_similar_faces(reference_faces, source_frame, facefusion.globals.reference_face_distance)
-        if similar_faces:
-            for similar_face in similar_faces:
-                target_vision_frame = debug_face(similar_face, target_vision_frame, target_frame_number)
+        for ref_faces in [reference_faces, reference_faces_2]:
+            similar_faces = find_similar_faces(ref_faces, source_frame,
+                                               facefusion.globals.reference_face_distance)
+            if similar_faces:
+                for similar_face in similar_faces:
+                    target_vision_frame = debug_face(similar_face, target_vision_frame, target_frame_number)
         else:
             print("No similar face found in the reference frame")
     if 'one' in facefusion.globals.face_selector_mode:
@@ -169,9 +172,9 @@ def process_frame(inputs: FaceDebuggerInputs) -> VisionFrame:
     return target_vision_frame
 
 
-def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload],
+def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload],
                    update_progress: Update_Process) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
 
     for queue_payload in queue_payloads:
         target_vision_path = queue_payload['frame_path']
@@ -179,6 +182,7 @@ def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload],
         result_frame = process_frame(
             {
                 'reference_faces': reference_faces,
+                'reference_faces_2': reference_faces_2,
                 'target_vision_frame': target_vision_frame,
                 'target_frame_number': queue_payload['frame_number']
             })
@@ -186,8 +190,8 @@ def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload],
         update_progress(target_vision_path)
 
 
-def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
-    reference_faces = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
     target_vision_frame = read_static_image(target_path)
     result_frame = process_frame(
         {
@@ -197,5 +201,5 @@ def process_image(source_paths: List[str], target_path: str, output_path: str) -
     write_image(output_path, result_frame)
 
 
-def process_video(source_paths: List[str], temp_frame_paths: List[str]) -> None:
-    frame_processors.multi_process_frames(source_paths, temp_frame_paths, process_frames)
+def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
+    frame_processors.multi_process_frames(source_paths, source_paths_2, temp_frame_paths, process_frames)
