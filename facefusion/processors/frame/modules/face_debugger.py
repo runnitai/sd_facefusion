@@ -174,7 +174,7 @@ def process_frame(inputs: FaceDebuggerInputs) -> VisionFrame:
 
 def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload],
                    update_progress: Update_Process) -> None:
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
 
     for queue_payload in queue_payloads:
         target_vision_path = queue_payload['frame_path']
@@ -191,7 +191,7 @@ def process_frames(source_paths: List[str], source_paths_2: List[str], queue_pay
 
 
 def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
     target_vision_frame = read_static_image(target_path)
     result_frame = process_frame(
         {

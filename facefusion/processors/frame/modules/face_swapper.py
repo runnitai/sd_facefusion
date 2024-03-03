@@ -364,7 +364,7 @@ def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
 
 def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload],
                    update_progress: Update_Process) -> None:
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
     source_frames = read_static_images(source_paths)
     source_face = get_average_face(source_frames)
     source_frames_2 = read_static_images(source_paths_2)
@@ -388,15 +388,18 @@ def process_frames(source_paths: List[str], source_paths_2: List[str], queue_pay
         update_progress(target_vision_path)
 
 
-def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
     source_frames = read_static_images(source_paths)
     source_face = get_average_face(source_frames)
+    source_face_2 = get_average_face(read_static_images(source_paths_2))
     target_vision_frame = read_static_image(target_path)
     result_frame = process_frame(
         {
             'reference_faces': reference_faces,
+            'reference_faces_2': reference_faces_2,
             'source_face': source_face,
+            'source_face_2': source_face_2,
             'target_vision_frame': target_vision_frame,
             'target_frame_number': -1
         })
