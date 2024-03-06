@@ -73,7 +73,7 @@ def render() -> None:
         elem_id='ff_face_recognition_dropdown',
     )
     with gradio.Row():
-        with gradio.Column(scale=0.0001, min_width="33"):
+        with gradio.Column(scale=0, min_width="33"):
             ADD_REFERENCE_FACE_BUTTON = gradio.Button(
                 value="+1",
                 elem_id='ff_add_reference_face_button'

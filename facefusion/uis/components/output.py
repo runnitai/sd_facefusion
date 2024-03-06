@@ -16,7 +16,6 @@ from facefusion.ff_status import FFStatus
 from facefusion.job_params import JobParams
 from modules.paths_internal import script_path
 from modules.sd_models import unload_model_weights, reload_model_weights
-from modules.shared import sd_model
 
 START_BUTTON: Optional[gradio.Button] = None
 END_BUTTON: Optional[gradio.Button] = None
@@ -145,6 +144,8 @@ def process_outputs() -> Tuple[gradio.update, gradio.update, gradio.update]:
 
 def start(output_path: str) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update,
 gradio.update, gradio.update, gradio.update]:
+    from modules.shared import sd_model
+
     """Start the FaceFusion process"""
     global OUTPUTS
     out_files = gradio.update(value=None, visible=False)

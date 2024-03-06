@@ -16,7 +16,6 @@ from facefusion.download import conditional_download
 from facefusion.filesystem import TEMP_DIRECTORY_PATH
 from facefusion.job_params import JobParams
 from facefusion.memory import tune_performance
-from facefusion.uis.components.output import start_job
 from facefusion.uis.core import load_ui_layout_module
 from modules import script_callbacks, scripts, scripts_postprocessing, ui_components
 
@@ -113,6 +112,8 @@ def process_internal(is_ff_enabled, image, source_paths: List[str], face_selecto
     frame_processors_globals.face_swapper_model = face_swapper_model
     frame_processors_globals.face_enhancer_model = face_enhancer_model
     frame_processors_globals.frame_enhancer_model = frame_enhancer_model
+    from facefusion.uis.components.output import start_job
+
     out_path = start_job(ff_params)
 
     # Handle the output from FaceFusion
