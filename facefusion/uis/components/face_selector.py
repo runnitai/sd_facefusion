@@ -14,7 +14,7 @@ from facefusion.uis.components.face_masker import clear_mask_times
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import ComponentName
 from facefusion.vision import get_video_frame, read_static_image, normalize_frame_color, count_video_frame_total, \
-    detect_fps
+    detect_video_fps
 
 FACE_SELECTOR_MODE_DROPDOWN: Optional[gradio.Dropdown] = None
 REFERENCE_FACE_POSITION_GALLERY: Optional[gradio.Gallery] = None
@@ -173,7 +173,7 @@ def listen() -> None:
             'face_detector_score_slider'
         ]
     galleries_plus = [REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
-                      REFERENCE_FACES_SELECTION_GALLERY_2, bottom_mask_positions]
+                      REFERENCE_FACES_SELECTION_GALLERY_2]
     for component_name in change_two_component_names:
         component = get_ui_component(component_name)
         if component:
@@ -222,8 +222,7 @@ def listen() -> None:
                                      outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY_2])
 
 
-def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[
-    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     facefusion.globals.face_selector_mode = face_selector_mode
     visible = 'reference' in face_selector_mode
     return gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(
@@ -404,13 +403,13 @@ def update_reference_frame_number(reference_frame_number: int) -> None:
 
 
 def reference_frame_back(reference_frame_number: int) -> None:
-    frames_per_second = int(detect_fps(facefusion.globals.target_path))
+    frames_per_second = int(detect_video_fps(facefusion.globals.target_path))
     reference_frame_number = max(0, reference_frame_number - frames_per_second)
     return update_reference_frame_number_and_gallery(reference_frame_number)
 
 
 def reference_frame_forward(reference_frame_number: int) -> None:
-    frames_per_second = int(detect_fps(facefusion.globals.target_path))
+    frames_per_second = int(detect_video_fps(facefusion.globals.target_path))
     reference_frame_number = min(reference_frame_number + frames_per_second, count_video_frame_total(
         facefusion.globals.target_path))
     return update_reference_frame_number_and_gallery(reference_frame_number)
@@ -419,6 +418,7 @@ def reference_frame_forward(reference_frame_number: int) -> None:
 def clear_and_update_reference_position_gallery() -> gradio.update:
     clear_reference_faces()
     clear_static_faces()
+
     return update_reference_position_gallery()
 
 

@@ -19,7 +19,7 @@ from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import ComponentName
 from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, \
-    read_static_image, read_static_images, detect_fps, resize_frame_resolution
+    read_static_image, read_static_images, detect_video_fps, resize_frame_resolution
 
 PREVIEW_IMAGE: Optional[gradio.Image] = None
 PREVIEW_FRAME_SLIDER: Optional[gradio.Slider] = None
@@ -249,14 +249,14 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
 
 
 def preview_back(reference_frame_number: int = 0) -> gradio.update:
-    frames_per_second = int(detect_fps(facefusion.globals.target_path))
+    frames_per_second = int(detect_video_fps(facefusion.globals.target_path))
     reference_frame_number = max(0, reference_frame_number - frames_per_second)
     preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
     return gradio.update(value=reference_frame_number), preview, enable_btn, disable_btn
 
 
 def preview_forward(reference_frame_number: int = 0) -> gradio.update:
-    frames_per_second = int(detect_fps(facefusion.globals.target_path))
+    frames_per_second = int(detect_video_fps(facefusion.globals.target_path))
     reference_frame_number = min(reference_frame_number + frames_per_second,
                                  count_video_frame_total(facefusion.globals.target_path))
     preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
@@ -264,14 +264,14 @@ def preview_forward(reference_frame_number: int = 0) -> gradio.update:
 
 
 def preview_back_five(reference_frame_number: int = 0) -> gradio.update:
-    frames_per_second = int(detect_fps(facefusion.globals.target_path)) * 5
+    frames_per_second = int(detect_video_fps(facefusion.globals.target_path)) * 5
     reference_frame_number = max(0, reference_frame_number - frames_per_second)
     preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
     return gradio.update(value=reference_frame_number), preview, enable_btn, disable_btn
 
 
 def preview_forward_five(reference_frame_number: int = 0) -> gradio.update:
-    frames_per_second = int(detect_fps(facefusion.globals.target_path)) * 5
+    frames_per_second = int(detect_video_fps(facefusion.globals.target_path)) * 5
     reference_frame_number = min(reference_frame_number + frames_per_second,
                                  count_video_frame_total(facefusion.globals.target_path))
     preview, enable_btn, disable_btn = update_preview_image(reference_frame_number)
@@ -289,7 +289,7 @@ def update_preview_frame_slider() -> gradio.update:
 
 def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face, source_audio_frame: AudioFrame,
                           target_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
-    target_vision_frame = resize_frame_resolution(target_vision_frame, 640, 640)
+    target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
     if analyse_frame(target_vision_frame):
         return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
     global_processors = facefusion.globals.frame_processors

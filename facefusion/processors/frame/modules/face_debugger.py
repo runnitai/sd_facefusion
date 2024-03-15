@@ -14,7 +14,7 @@ from facefusion.face_helper import warp_face_by_face_landmark_5, categorize_age,
 from facefusion.face_store import get_reference_faces
 from facefusion.content_analyser import clear_content_analyser
 from facefusion.processors.frame.modules.face_swapper import update_padding
-from facefusion.typing import Face, VisionFrame, Update_Process, ProcessMode, QueuePayload
+from facefusion.typing import Face, VisionFrame, UpdateProcess, ProcessMode, QueuePayload
 from facefusion.vision import read_image, read_static_image, write_image
 from facefusion.processors.frame.typings import FaceDebuggerInputs
 from facefusion.processors.frame import globals as frame_processors_globals, choices as frame_processors_choices
@@ -41,7 +41,8 @@ def set_options(key: Literal['model'], value: Any) -> None:
 def register_args(program: ArgumentParser) -> None:
     program.add_argument('--face-debugger-items', help=wording.get('help.face_debugger_items').format(
         choices=', '.join(frame_processors_choices.face_debugger_items)),
-                         default=config.get_str_list('frame_processors.face_debugger_items', 'landmark-5 face-mask'),
+                         default=config.get_str_list('frame_processors.face_debugger_items',
+                                                     'face-landmark-5 face-mask'),
                          choices=frame_processors_choices.face_debugger_items, nargs='+', metavar='FACE_DEBUGGER_ITEMS')
 
 
@@ -76,14 +77,17 @@ def post_process() -> None:
 def debug_face(target_face: Face, temp_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
     primary_color = (0, 0, 255)
     secondary_color = (0, 255, 0)
+    tertiary_color = (255, 255, 0)
     bounding_box = target_face.bounding_box.astype(numpy.int32)
     temp_vision_frame = temp_vision_frame.copy()
+    has_face_landmark_5_fallback = numpy.array_equal(target_face.landmarks.get('5'), target_face.landmarks.get('5/68'))
 
     if 'bounding-box' in frame_processors_globals.face_debugger_items:
         cv2.rectangle(temp_vision_frame, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]),
-                      secondary_color, 2)
+                      primary_color, 2)
     if 'face-mask' in frame_processors_globals.face_debugger_items:
-        crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark['5/68'],
+        crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
+                                                                        target_face.landmarks.get('5/68'),
                                                                         'arcface_128_v2', (512, 512))
         inverse_matrix = cv2.invertAffineTransform(affine_matrix)
         temp_size = temp_vision_frame.shape[:2][::-1]
@@ -106,37 +110,46 @@ def debug_face(target_face: Face, temp_vision_frame: VisionFrame, frame_number=-
         inverse_vision_frame = cv2.threshold(inverse_vision_frame, 100, 255, cv2.THRESH_BINARY)[1]
         inverse_vision_frame[inverse_vision_frame > 0] = 255
         inverse_contours = cv2.findContours(inverse_vision_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)[0]
-        cv2.drawContours(temp_vision_frame, inverse_contours, -1, primary_color, 2)
-    if bounding_box[3] - bounding_box[1] > 60 and bounding_box[2] - bounding_box[0] > 60:
+        cv2.drawContours(temp_vision_frame, inverse_contours, -1,
+                         tertiary_color if has_face_landmark_5_fallback else secondary_color, 2)
+    if 'face-landmark-5' in frame_processors_globals.face_debugger_items and numpy.any(target_face.landmarks.get('5')):
+        face_landmark_5 = target_face.landmarks.get('5').astype(numpy.int32)
+        for index in range(face_landmark_5.shape[0]):
+            cv2.circle(temp_vision_frame, (face_landmark_5[index][0], face_landmark_5[index][1]), 3, primary_color, -1)
+    if 'face-landmark-5/68' in frame_processors_globals.face_debugger_items and numpy.any(
+        target_face.landmarks.get('5/68')):
+        face_landmark_5_68 = target_face.landmarks.get('5/68').astype(numpy.int32)
+        for index in range(face_landmark_5_68.shape[0]):
+            cv2.circle(temp_vision_frame, (face_landmark_5_68[index][0], face_landmark_5_68[index][1]), 3,
+                       tertiary_color if has_face_landmark_5_fallback else secondary_color, -1)
+    if 'face-landmark-68' in frame_processors_globals.face_debugger_items and numpy.any(
+        target_face.landmarks.get('68')):
+        face_landmark_68 = target_face.landmarks.get('68').astype(numpy.int32)
+        for index in range(face_landmark_68.shape[0]):
+            cv2.circle(temp_vision_frame, (face_landmark_68[index][0], face_landmark_68[index][1]), 3, secondary_color,
+                       -1)
+    if bounding_box[3] - bounding_box[1] > 50 and bounding_box[2] - bounding_box[0] > 50:
         top = bounding_box[1]
-        left = bounding_box[0] + 20
-        if 'landmark-5' in frame_processors_globals.face_debugger_items:
-            face_landmark_5 = target_face.landmark['5/68'].astype(numpy.int32)
-            for index in range(face_landmark_5.shape[0]):
-                cv2.circle(temp_vision_frame, (face_landmark_5[index][0], face_landmark_5[index][1]), 3, primary_color,
-                           -1)
-        if 'landmark-68' in frame_processors_globals.face_debugger_items:
-            face_landmark_68 = target_face.landmark['68'].astype(numpy.int32)
-            for index in range(face_landmark_68.shape[0]):
-                cv2.circle(temp_vision_frame, (face_landmark_68[index][0], face_landmark_68[index][1]), 3,
-                           secondary_color, -1)
-        if 'score' in frame_processors_globals.face_debugger_items:
-            face_score_text = str(round(target_face.score, 2))
+        left = bounding_box[0] - 20
+        if 'face-detector-score' in frame_processors_globals.face_debugger_items:
+            face_score_text = str(round(target_face.scores.get('detector'), 2))
             top = top + 20
-            cv2.putText(temp_vision_frame, face_score_text, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, secondary_color,
+            cv2.putText(temp_vision_frame, face_score_text, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, primary_color,
                         2)
+        if 'face-landmarker-score' in frame_processors_globals.face_debugger_items:
+            face_score_text = str(round(target_face.scores.get('landmarker'), 2))
+            top = top + 20
+            cv2.putText(temp_vision_frame, face_score_text, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        tertiary_color if has_face_landmark_5_fallback else secondary_color, 2)
         if 'age' in frame_processors_globals.face_debugger_items:
             face_age_text = categorize_age(target_face.age)
             top = top + 20
-            cv2.putText(temp_vision_frame, face_age_text, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, secondary_color,
-                        2)
+            cv2.putText(temp_vision_frame, face_age_text, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, primary_color, 2)
         if 'gender' in frame_processors_globals.face_debugger_items:
             face_gender_text = categorize_gender(target_face.gender)
             top = top + 20
-            cv2.putText(temp_vision_frame, face_gender_text, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        secondary_color, 2)
-    else:
-        print(f"Face too small to debug: {bounding_box[3] - bounding_box[1]}x{bounding_box[2] - bounding_box[0]}")
+            cv2.putText(temp_vision_frame, face_gender_text, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, primary_color,
+                        2)
     return temp_vision_frame
 
 
@@ -173,7 +186,7 @@ def process_frame(inputs: FaceDebuggerInputs) -> VisionFrame:
 
 
 def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload],
-                   update_progress: Update_Process) -> None:
+                   update_progress: UpdateProcess) -> None:
     reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
 
     for queue_payload in queue_payloads:

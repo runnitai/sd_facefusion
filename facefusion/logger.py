@@ -1,5 +1,5 @@
-from typing import Dict
 from logging import basicConfig, getLogger, Logger, DEBUG, INFO, WARNING, ERROR
+from typing import Dict
 
 from facefusion.typing import LogLevel
 
@@ -39,9 +39,9 @@ def disable() -> None:
 
 def get_log_levels() -> Dict[LogLevel, int]:
     return \
-    {
-        'error': ERROR,
-        'warn': WARNING,
-        'info': INFO,
-        'debug': DEBUG
-    }
+        {
+            'error': ERROR,
+            'warn': WARNING,
+            'info': INFO,
+            'debug': DEBUG
+        }

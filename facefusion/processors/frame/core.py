@@ -7,10 +7,10 @@ from typing import Any, List
 
 import facefusion.globals
 from facefusion import logger, wording
-from facefusion.execution_helper import encode_execution_providers
+from facefusion.execution import encode_execution_providers
 from facefusion.ff_status import FFStatus
 from facefusion.mytqdm import mytqdm as tqdm
-from facefusion.typing import Process_Frames, QueuePayload
+from facefusion.typing import ProcessFrames, QueuePayload
 
 FRAME_PROCESSORS_MODULES: List[ModuleType] = []
 FRAME_PROCESSORS_METHODS = \
@@ -77,7 +77,7 @@ def clear_frame_processors_modules() -> None:
     FRAME_PROCESSORS_MODULES = []
 
 
-def multi_process_frames(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str], process_frames: Process_Frames) -> None:
+def multi_process_frames(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str], process_frames: ProcessFrames) -> None:
     queue_payloads = create_queue_payloads(temp_frame_paths)
     with tqdm(total=len(queue_payloads), desc=wording.get('processing'), unit='frame', ascii=' =',
               disable=facefusion.globals.log_level in ['warn', 'error']) as progress:
@@ -89,7 +89,7 @@ def multi_process_frames(source_paths: List[str], source_paths_2: List[str], tem
             })
         status = FFStatus()
 
-        def update_progress(preview_image=None) -> None:
+        def update_progress(preview_image: str = None) -> None:
             progress.update()
             if preview_image is not None:
                 current_step = status.job_current

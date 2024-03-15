@@ -41,6 +41,7 @@ class JobParams:
         self.face_detector_model: Optional[FaceDetectorModel] = 'yoloface'
         self.face_detector_size: Optional[str] = "640x640"
         self.face_detector_score: Optional[float] = 0.4
+        self.face_landmarker_score: Optional[float] = 0.4
         self.face_recognizer_model: Optional[FaceRecognizerModel] = 'arcface_inswapper'
         # face selector
         self.face_selector_mode: Optional[FaceSelectorMode] = 'reference'
@@ -48,10 +49,11 @@ class JobParams:
         self.reference_face_distance: Optional[float] = 0.75
         self.reference_frame_number: Optional[int] = 0
         self.reference_face_dict: Optional[dict] = {}
+        self.reference_face_dict_2: Optional[dict] = {}
         # face mask
+        self.face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
         self.mask_enabled_times: Optional[List[int]] = []
         self.mask_disabled_times: Optional[List[int]] = [0]
-        self.face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
         self.face_mask_blur: Optional[float] = 0.3
         self.face_mask_padding: Optional[Padding] = (0, 0, 0, 0)
         self.face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
@@ -63,7 +65,9 @@ class JobParams:
         self.keep_temp: Optional[bool] = False
         # output creation
         self.output_image_quality: Optional[int] = 60
+        self.output_image_resolution: Optional[str] = None
         self.output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
+        self.output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
         self.output_video_quality: Optional[int] = 60
         self.output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
         self.output_video_resolution: Optional[str] = None

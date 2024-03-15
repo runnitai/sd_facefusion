@@ -185,15 +185,15 @@ def enqueue() -> gradio.update:
     for key in facefusion.globals.__dict__:
         if not key.startswith("__"):
             global_dict[key] = facefusion.globals.__dict__[key]
-    required_keys = ["output_path", "target_path", "source_paths", "source_paths_2"]
+    required_keys = ["output_path", "target_path", "source_paths"]
     # If any of the required keys are missing, don't add the job to the queue
     if any(key not in global_dict for key in required_keys):
         print(f"Missing required key in facefusion.globals")
-        return gradio.update(), gradio.update(), gradio.update()
+        return gradio.update(), gradio.update(), gradio.update(), gradio.update()
     # Make sure the required_keys have values
     if any(not global_dict[key] for key in required_keys):
         print(f"Missing required value in facefusion.globals")
-        return gradio.update(), gradio.update(), gradio.update()
+        return gradio.update(), gradio.update(), gradio.update(), gradio.update()
     new_job = JobParams().from_dict(global_dict)
 
     processors = new_job.frame_processors
@@ -217,7 +217,6 @@ def enqueue() -> gradio.update:
     with open(job_json_path, "w") as job_json_file:
         job_json_file.write(new_job.to_json())
 
-    print(f"Adding job to queue: {new_job.to_dict()}")
     JOB_QUEUE.append(new_job)
     from facefusion.uis.components.job_queue_options import CLEAR_SOURCE
     target_file = gradio.update(value=None)

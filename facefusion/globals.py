@@ -22,15 +22,17 @@ execution_providers: List[str] = ['CUDAExecutionProvider']
 
 execution_thread_count: Optional[int] = 32
 execution_queue_count: Optional[int] = 2
+# memory
 video_memory_strategy: Optional[VideoMemoryStrategy] = "tolerant"
 system_memory_limit: Optional[int] = None
 # face analyser
 face_analyser_order: Optional[FaceAnalyserOrder] = 'best-worst'
 face_analyser_age: Optional[FaceAnalyserAge] = None
 face_analyser_gender: Optional[FaceAnalyserGender] = None
-face_detector_model: Optional[FaceDetectorModel] = 'yoloface'
+face_detector_model: Optional[FaceDetectorModel] = 'many'
 face_detector_size: Optional[str] = "640x640"
-face_detector_score: Optional[float] = 0.4
+face_detector_score: Optional[float] = 0.35
+face_landmarker_score: Optional[float] = 0.35
 face_recognizer_model: Optional[FaceRecognizerModel] = 'arcface_inswapper'
 # face selector
 face_selector_mode: Optional[FaceSelectorMode] = 'reference'
@@ -54,6 +56,7 @@ temp_frame_quality: Optional[int] = 100
 keep_temp: Optional[bool] = False
 # output creation
 output_image_quality: Optional[int] = 60
+output_image_resolution: Optional[str] = None
 output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
 output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
 output_video_quality: Optional[int] = 60

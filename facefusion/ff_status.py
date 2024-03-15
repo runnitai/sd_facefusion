@@ -1,7 +1,7 @@
 import os.path
 import time
 
-from facefusion.vision import count_video_frame_total, detect_fps
+from facefusion.vision import count_video_frame_total, detect_video_fps
 from facefusion.job_params import JobParams
 
 
@@ -111,7 +111,7 @@ class FFStatus:
         trim_frame_end = job.trim_frame_end
         from facefusion.filesystem import is_video, is_image
         if is_video(target_path):
-            original_fps = detect_fps(target_path)
+            original_fps = detect_video_fps(target_path)
             keep_fps = job.keep_fps
             fps = 25 if not keep_fps else original_fps
             video_frame_total = count_video_frame_total(target_path)

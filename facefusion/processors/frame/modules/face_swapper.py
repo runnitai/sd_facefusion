@@ -9,7 +9,7 @@ from onnx import numpy_helper
 import facefusion.globals
 import facefusion.processors.frame.core as frame_processors
 from facefusion import config, logger, wording
-from facefusion.execution_helper import apply_execution_provider_options
+from facefusion.execution import apply_execution_provider_options
 from facefusion.face_analyser import get_one_face, get_average_face, get_many_faces, find_similar_faces, \
     clear_face_analyser
 from facefusion.face_masker import create_static_box_mask, create_occlusion_mask, create_region_mask, \
@@ -17,7 +17,7 @@ from facefusion.face_masker import create_static_box_mask, create_occlusion_mask
 from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
 from facefusion.face_store import get_reference_faces
 from facefusion.content_analyser import clear_content_analyser
-from facefusion.typing import Face, Embedding, VisionFrame, Update_Process, ProcessMode, ModelSet, OptionsWithModel, \
+from facefusion.typing import Face, Embedding, VisionFrame, UpdateProcess, ProcessMode, ModelSet, OptionsWithModel, \
     QueuePayload, Padding
 from facefusion.filesystem import is_file, is_image, has_image, is_video, filter_image_paths, resolve_relative_path
 from facefusion.download import conditional_download, is_download_done
@@ -248,7 +248,7 @@ def update_padding(padding: Padding, frame_number: int) -> Padding:
 def swap_face(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
     model_template = get_options('model').get('template')
     model_size = get_options('model').get('size')
-    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark['5/68'],
+    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmarks['5/68'],
                                                                     model_template, model_size)
     padding = facefusion.globals.face_mask_padding
     padding = update_padding(padding, frame_number)
@@ -291,10 +291,10 @@ def prepare_source_frame(source_face: Face) -> VisionFrame:
     model_type = get_options('model').get('type')
     source_vision_frame = read_static_image(facefusion.globals.source_paths[0])
     if model_type == 'blendswap':
-        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark['5/68'],
+        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmarks['5/68'],
                                                               'arcface_112_v2', (112, 112))
     if model_type == 'uniface':
-        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark['5/68'],
+        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmarks['5/68'],
                                                               'ffhq_512', (256, 256))
     source_vision_frame = source_vision_frame[:, :, ::-1] / 255.0
     source_vision_frame = source_vision_frame.transpose(2, 0, 1)
@@ -343,12 +343,20 @@ def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
     frame_number = inputs['target_frame_number']
 
     if 'reference' in facefusion.globals.face_selector_mode:
-        for ref_faces, src_face in [(reference_faces, source_face), (reference_faces_2, source_face_2)]:
-            similar_faces = find_similar_faces(ref_faces, target_vision_frame,
-                                               facefusion.globals.reference_face_distance)
-            if similar_faces and src_face:
+        # if reference_faces is a tuple, get the first element
+        reference_faces = reference_faces[0] if isinstance(reference_faces, tuple) else reference_faces
+        similar_faces = find_similar_faces(reference_faces, target_vision_frame, facefusion.globals.reference_face_distance)
+        if similar_faces and source_face:
+            for similar_face in similar_faces:
+                target_vision_frame = swap_face(source_face, similar_face, target_vision_frame, frame_number)
+
+        if reference_faces_2:
+            if isinstance(reference_faces_2, tuple):
+                reference_faces_2 = reference_faces_2[0]
+            similar_faces = find_similar_faces(reference_faces_2, target_vision_frame, facefusion.globals.reference_face_distance)
+            if similar_faces and source_face_2:
                 for similar_face in similar_faces:
-                    target_vision_frame = swap_face(src_face, similar_face, target_vision_frame, frame_number)
+                    target_vision_frame = swap_face(source_face_2, similar_face, target_vision_frame, frame_number)
 
     if 'one' in facefusion.globals.face_selector_mode:
         target_face = get_one_face(target_vision_frame)
@@ -363,8 +371,9 @@ def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
 
 
 def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload],
-                   update_progress: Update_Process) -> None:
+                   update_progress: UpdateProcess) -> None:
     reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
+
     source_frames = read_static_images(source_paths)
     source_face = get_average_face(source_frames)
     source_frames_2 = read_static_images(source_paths_2)

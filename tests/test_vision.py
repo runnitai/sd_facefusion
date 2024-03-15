@@ -4,7 +4,7 @@ import pytest
 
 import facefusion.globals
 from facefusion.utilities import conditional_download
-from facefusion.vision import get_video_frame, detect_fps, count_video_frame_total
+from facefusion.vision import get_video_frame, detect_video_fps, count_video_frame_total
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -39,11 +39,11 @@ def test_get_video_frame() -> None:
     assert get_video_frame('invalid') is None
 
 
-def test_detect_fps() -> None:
-    assert detect_fps('.assets/examples/target-240p-25fps.mp4') == 25.0
-    assert detect_fps('.assets/examples/target-240p-30fps.mp4') == 30.0
-    assert detect_fps('.assets/examples/target-240p-60fps.mp4') == 60.0
-    assert detect_fps('invalid') is None
+def test_detect_video_fps() -> None:
+    assert detect_video_fps('.assets/examples/target-240p-25fps.mp4') == 25.0
+    assert detect_video_fps('.assets/examples/target-240p-30fps.mp4') == 30.0
+    assert detect_video_fps('.assets/examples/target-240p-60fps.mp4') == 60.0
+    assert detect_video_fps('invalid') is None
 
 
 def test_count_video_frame_total() -> None:

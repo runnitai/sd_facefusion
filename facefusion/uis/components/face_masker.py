@@ -120,7 +120,7 @@ def listen() -> None:
     preview_frame_slider = get_ui_component("preview_frame_slider")
     mask_elements = [BOTTOM_MASK_POSITIONS, MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON]
     MASK_DISABLE_BUTTON.click(set_disable_mask_time, inputs=preview_frame_slider, outputs=mask_elements)
-    MASK_ENABLE_BUTTON.click(set_enable_mask_time, inputs=preview_frame_slider, outputs=BOTTOM_MASK_POSITIONS)
+    MASK_ENABLE_BUTTON.click(set_enable_mask_time, inputs=preview_frame_slider, outputs=mask_elements)
     MASK_CLEAR_BUTTON.click(clear_mask_times, outputs=mask_elements)
     for face_mask_padding_slider in face_mask_padding_sliders:
         face_mask_padding_slider.change(update_face_mask_padding, inputs=face_mask_padding_sliders)
@@ -165,7 +165,8 @@ def set_enable_mask_time(preview_frame_slider: gradio.Slider) -> gradio.update:
         disabled_times.sort()
     facefusion.globals.mask_disabled_times = disabled_times
     facefusion.globals.mask_enabled_times = enabled_times
-    return generate_frame_html()
+    show_enable_btn, show_disable_btn = update_mask_buttons(current_frame)
+    return generate_frame_html(), show_enable_btn, show_disable_btn
 
 
 def clear_mask_times() -> (gradio.update, gradio.update, gradio.update):

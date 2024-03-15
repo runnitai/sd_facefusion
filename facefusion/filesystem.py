@@ -60,6 +60,7 @@ def move_temp(target_path: str, output_path: str) -> None:
     if is_file(temp_output_video_path):
         if is_file(output_path):
             os.remove(output_path)
+        print(f"Moving {temp_output_video_path} to {output_path}")
         shutil.move(temp_output_video_path, output_path)
 
 

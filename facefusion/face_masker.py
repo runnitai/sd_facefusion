@@ -1,16 +1,17 @@
-from typing import Any, Dict, List
-from cv2.typing import Size
-from functools import lru_cache
 import threading
+from functools import lru_cache
+from typing import Any, Dict, List
+
 import cv2
 import numpy
 import onnxruntime
+from cv2.typing import Size
 
 import facefusion.globals
-from facefusion.typing import FaceLandmark68, VisionFrame, Mask, Padding, FaceMaskRegion, ModelSet
-from facefusion.execution_helper import apply_execution_provider_options
-from facefusion.filesystem import resolve_relative_path
 from facefusion.download import conditional_download
+from facefusion.execution import apply_execution_provider_options
+from facefusion.filesystem import resolve_relative_path
+from facefusion.typing import FaceLandmark68, VisionFrame, Mask, Padding, FaceMaskRegion, ModelSet
 
 FACE_OCCLUDER = None
 FACE_PARSER = None

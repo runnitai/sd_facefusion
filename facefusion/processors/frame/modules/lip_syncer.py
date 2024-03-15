@@ -1,43 +1,48 @@
-from typing import Any, List, Literal, Optional
-from argparse import ArgumentParser
 import threading
+from argparse import ArgumentParser
+from typing import Any, List, Literal, Optional
+
 import cv2
 import numpy
 import onnxruntime
 
 import facefusion.globals
 import facefusion.processors.frame.core as frame_processors
-from facefusion import config, logger, wording
-from facefusion.execution_helper import apply_execution_provider_options
-from facefusion.face_analyser import get_one_face, get_many_faces, find_similar_faces, clear_face_analyser
-from facefusion.face_masker import create_static_box_mask, create_occlusion_mask, create_mouth_mask, clear_face_occluder, clear_face_parser
-from facefusion.face_helper import warp_face_by_face_landmark_5, warp_face_by_bounding_box, paste_back, create_bounding_box_from_landmark
-from facefusion.face_store import get_reference_faces
-from facefusion.content_analyser import clear_content_analyser
-from facefusion.typing import Face, VisionFrame, Update_Process, ProcessMode, ModelSet, OptionsWithModel, AudioFrame, QueuePayload
-from facefusion.filesystem import is_file, has_audio, resolve_relative_path
-from facefusion.download import conditional_download, is_download_done
-from facefusion.audio import read_static_audio, get_audio_frame
-from facefusion.filesystem import is_image, is_video, filter_audio_paths
+from facefusion import config, process_manager, logger, wording
+from facefusion.audio import read_static_audio, get_audio_frame, create_empty_audio_frame
 from facefusion.common_helper import get_first
-from facefusion.vision import read_image, write_image, read_static_image
-from facefusion.processors.frame.typings import LipSyncerInputs
-from facefusion.processors.frame import globals as frame_processors_globals
+from facefusion.content_analyser import clear_content_analyser
+from facefusion.download import conditional_download, is_download_done
+from facefusion.execution import apply_execution_provider_options
+from facefusion.face_analyser import get_one_face, get_many_faces, find_similar_faces, clear_face_analyser
+from facefusion.face_helper import warp_face_by_face_landmark_5, warp_face_by_bounding_box, paste_back, \
+    create_bounding_box_from_face_landmark_68
+from facefusion.face_masker import create_static_box_mask, create_occlusion_mask, create_mouth_mask, \
+    clear_face_occluder, clear_face_parser
+from facefusion.face_store import get_reference_faces
+from facefusion.filesystem import is_file, has_audio, resolve_relative_path
+from facefusion.filesystem import is_image, is_video, filter_audio_paths
+from facefusion.normalizer import normalize_output_path
 from facefusion.processors.frame import choices as frame_processors_choices
+from facefusion.processors.frame import globals as frame_processors_globals
+from facefusion.processors.frame.typings import LipSyncerInputs
+from facefusion.typing import Face, VisionFrame, UpdateProcess, ProcessMode, ModelSet, OptionsWithModel, AudioFrame, \
+    QueuePayload
+from facefusion.vision import read_image, write_image, read_static_image
 
 FRAME_PROCESSOR = None
 MODEL_MATRIX = None
 THREAD_LOCK : threading.Lock = threading.Lock()
 NAME = __name__.upper()
 MODELS : ModelSet =\
-{
-    'wav2lip_gan':
     {
-        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/wav2lip_gan.onnx',
-        'path': resolve_relative_path('../.assets/models/wav2lip_gan.onnx'),
+        'wav2lip_gan':
+            {
+                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/wav2lip_gan.onnx',
+                'path': resolve_relative_path('../.assets/models/wav2lip_gan.onnx'),
+            }
     }
-}
-OPTIONS : Optional[OptionsWithModel] = None
+OPTIONS: Optional[OptionsWithModel] = None
 
 
 def get_frame_processor() -> Any:
@@ -46,7 +51,8 @@ def get_frame_processor() -> Any:
     with THREAD_LOCK:
         if FRAME_PROCESSOR is None:
             model_path = get_options('model').get('path')
-            FRAME_PROCESSOR = onnxruntime.InferenceSession(model_path, providers = apply_execution_provider_options(facefusion.globals.execution_providers))
+            FRAME_PROCESSOR = onnxruntime.InferenceSession(model_path, providers=apply_execution_provider_options(
+                facefusion.globals.execution_providers))
     return FRAME_PROCESSOR
 
 
@@ -61,9 +67,9 @@ def get_options(key : Literal['model']) -> Any:
 
     if OPTIONS is None:
         OPTIONS =\
-        {
-            'model': MODELS[frame_processors_globals.lip_syncer_model]
-        }
+            {
+                'model': MODELS[frame_processors_globals.lip_syncer_model]
+            }
     return OPTIONS.get(key)
 
 
@@ -74,7 +80,9 @@ def set_options(key : Literal['model'], value : Any) -> None:
 
 
 def register_args(program : ArgumentParser) -> None:
-    program.add_argument('--lip-syncer-model', help = wording.get('help.lip_syncer_model'), default = config.get_str_value('frame_processors.lip_syncer_model', 'wav2lip_gan'), choices = frame_processors_choices.lip_syncer_models)
+    program.add_argument('--lip-syncer-model', help=wording.get('help.lip_syncer_model'),
+                         default=config.get_str_value('frame_processors.lip_syncer_model', 'wav2lip_gan'),
+                         choices=frame_processors_choices.lip_syncer_models)
 
 
 def apply_args(program : ArgumentParser) -> None:
@@ -106,7 +114,8 @@ def pre_process(mode : ProcessMode) -> bool:
     if not has_audio(facefusion.globals.source_paths):
         logger.error(wording.get('select_audio_source') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode in [ 'output', 'preview' ] and not is_image(facefusion.globals.target_path) and not is_video(facefusion.globals.target_path):
+    if mode in ['output', 'preview'] and not is_image(facefusion.globals.target_path) and not is_video(
+        facefusion.globals.target_path):
         logger.error(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
         return False
     if mode == 'output' and not facefusion.globals.output_path:
@@ -129,31 +138,37 @@ def post_process() -> None:
 
 def sync_lip(target_face : Face, temp_audio_frame : AudioFrame, temp_vision_frame : VisionFrame) -> VisionFrame:
     frame_processor = get_frame_processor()
+    crop_mask_list = []
     temp_audio_frame = prepare_audio_frame(temp_audio_frame)
-    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark['5/68'], 'ffhq_512', (512, 512))
-    face_landmark_68 = cv2.transform(target_face.landmark['68'].reshape(1, -1, 2), affine_matrix).reshape(-1, 2)
-    bounding_box = create_bounding_box_from_landmark(face_landmark_68)
-    bounding_box[1] -= numpy.abs(bounding_box[3] - bounding_box[1]) * 0.125
-    mouth_mask = create_mouth_mask(face_landmark_68)
-    box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], facefusion.globals.face_mask_blur, facefusion.globals.face_mask_padding)
-    crop_mask_list =\
-    [
-        mouth_mask,
-        box_mask
-    ]
+    crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
+                                                                    target_face.landmarks.get('5/68'), 'ffhq_512',
+                                                                    (512, 512))
+    if numpy.any(target_face.landmarks.get('68')):
+        face_landmark_68 = cv2.transform(target_face.landmarks.get('68').reshape(1, -1, 2), affine_matrix).reshape(-1,
+                                                                                                                   2)
+        bounding_box = create_bounding_box_from_face_landmark_68(face_landmark_68)
+        bounding_box[1] -= numpy.abs(bounding_box[3] - bounding_box[1]) * 0.125
+        mouth_mask = create_mouth_mask(face_landmark_68)
+        crop_mask_list.append(mouth_mask)
+    else:
+        bounding_box = target_face.bounding_box
+    box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], facefusion.globals.face_mask_blur,
+                                      facefusion.globals.face_mask_padding)
+    crop_mask_list.append(box_mask)
 
     if 'occlusion' in facefusion.globals.face_mask_types:
         occlusion_mask = create_occlusion_mask(crop_vision_frame)
         crop_mask_list.append(occlusion_mask)
-    close_vision_frame, closeup_matrix = warp_face_by_bounding_box(crop_vision_frame, bounding_box, (96, 96))
+    close_vision_frame, close_matrix = warp_face_by_bounding_box(crop_vision_frame, bounding_box, (96, 96))
     close_vision_frame = prepare_crop_frame(close_vision_frame)
     close_vision_frame = frame_processor.run(None,
-    {
-        'source': temp_audio_frame,
-        'target': close_vision_frame
-    })[0]
+                                             {
+                                                 'source': temp_audio_frame,
+                                                 'target': close_vision_frame
+                                             })[0]
     crop_vision_frame = normalize_crop_frame(close_vision_frame)
-    crop_vision_frame = cv2.warpAffine(crop_vision_frame, cv2.invertAffineTransform(closeup_matrix), (512, 512), borderMode = cv2.BORDER_REPLICATE)
+    crop_vision_frame = cv2.warpAffine(crop_vision_frame, cv2.invertAffineTransform(close_matrix), (512, 512),
+                                       borderMode=cv2.BORDER_REPLICATE)
     crop_mask = numpy.minimum.reduce(crop_mask_list)
     paste_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
     return paste_vision_frame
@@ -210,7 +225,7 @@ def process_frame(inputs : LipSyncerInputs) -> VisionFrame:
     return target_vision_frame
 
 
-def process_frames(source_paths : List[str], queue_payloads : List[QueuePayload], update_progress : Update_Process) -> None:
+def process_frames(source_paths : List[str], queue_payloads : List[QueuePayload], update_progress : UpdateProcess) -> None:
     reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
     source_audio_path = get_first(filter_audio_paths(source_paths))
     target_video_fps = facefusion.globals.output_video_fps
