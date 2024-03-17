@@ -1,24 +1,26 @@
-from typing import Optional, Generator, Deque, List
+import cv2
+import gradio
 import os
 import platform
 import subprocess
-import cv2
-import gradio
-from time import sleep
-from concurrent.futures import ThreadPoolExecutor
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+from tqdm import tqdm
+from typing import Optional, Generator, Deque, List
 
 import facefusion.globals
 from facefusion import logger, wording
+from facefusion.audio import create_empty_audio_frame
 from facefusion.content_analyser import analyse_stream
-from facefusion.typing import VisionFrame, Face, Fps
 from facefusion.face_analyser import get_average_face
-from facefusion.processors.frame.core import get_frame_processors_modules, load_frame_processor_module
 from facefusion.ffmpeg import open_ffmpeg
-from facefusion.mytqdm import mytqdm as tqdm
-from facefusion.vision import normalize_frame_color, read_static_images, unpack_resolution
-from facefusion.uis.typing import StreamMode, WebcamMode, ComponentName
+from facefusion.filesystem import filter_image_paths
+from facefusion.processors.frame.core import get_frame_processors_modules, load_frame_processor_module
+from facefusion.typing import VisionFrame, Face, Fps
 from facefusion.uis.core import get_ui_component
+from facefusion.uis.typing import StreamMode, WebcamMode, ComponentName
+from facefusion.vision import normalize_frame_color, read_static_images, unpack_resolution
 
 WEBCAM_CAPTURE: Optional[cv2.VideoCapture] = None
 WEBCAM_IMAGE: Optional[gradio.Image] = None
@@ -72,17 +74,18 @@ def listen() -> None:
     webcam_resolution_dropdown = get_ui_component('webcam_resolution_dropdown')
     webcam_fps_slider = get_ui_component('webcam_fps_slider')
     if webcam_mode_radio and webcam_resolution_dropdown and webcam_fps_slider:
-        start_event = WEBCAM_START_BUTTON.click(start, inputs = [ webcam_mode_radio, webcam_resolution_dropdown, webcam_fps_slider ], outputs = WEBCAM_IMAGE)
+        start_event = WEBCAM_START_BUTTON.click(start, inputs=[webcam_mode_radio, webcam_resolution_dropdown,
+                                                               webcam_fps_slider], outputs=WEBCAM_IMAGE)
     WEBCAM_STOP_BUTTON.click(stop, cancels=start_event)
     change_two_component_names: List[ComponentName] = \
-    [
-        'frame_processors_checkbox_group',
-        'face_swapper_model_dropdown',
-        'face_enhancer_model_dropdown',
-        'frame_enhancer_model_dropdown',
-        'lip_syncer_model_dropdown',
-        'source_image'
-    ]
+        [
+            'frame_processors_checkbox_group',
+            'face_swapper_model_dropdown',
+            'face_enhancer_model_dropdown',
+            'frame_enhancer_model_dropdown',
+            'lip_syncer_model_dropdown',
+            'source_image'
+        ]
     for component_name in change_two_component_names:
         component = get_ui_component(component_name)
         if component:
@@ -92,7 +95,8 @@ def listen() -> None:
 def start(webcam_mode: WebcamMode, webcam_resolution: str, webcam_fps: Fps) -> Generator[VisionFrame, None, None]:
     facefusion.globals.face_selector_mode = 'one'
     facefusion.globals.face_analyser_order = 'large-small'
-    source_frames = read_static_images(facefusion.globals.source_paths)
+    source_image_paths = filter_image_paths(facefusion.globals.source_paths)
+    source_frames = read_static_images(source_image_paths)
     source_face = get_average_face(source_frames)
     stream = None
     if webcam_mode in ['udp', 'v4l2']:
@@ -115,8 +119,10 @@ def start(webcam_mode: WebcamMode, webcam_resolution: str, webcam_fps: Fps) -> G
                 yield None
 
 
-def multi_process_capture(source_face : Face, webcam_capture : cv2.VideoCapture, webcam_fps : Fps) -> Generator[VisionFrame, None, None]:
-    with tqdm(desc = wording.get('processing'), unit = 'frame', ascii = ' =', disable = facefusion.globals.log_level in [ 'warn', 'error' ]) as progress:
+def multi_process_capture(source_face: Face, webcam_capture: cv2.VideoCapture, webcam_fps: Fps) -> Generator[
+    VisionFrame, None, None]:
+    with tqdm(desc=wording.get('processing'), unit='frame', ascii=' =',
+              disable=facefusion.globals.log_level in ['warn', 'error']) as progress:
         with ThreadPoolExecutor(max_workers=facefusion.globals.execution_thread_count) as executor:
             futures = []
             deque_capture_frames: Deque[VisionFrame] = deque()
@@ -150,6 +156,7 @@ def stop() -> gradio.Image:
 
 
 def process_stream_frame(source_face : Face, target_vision_frame : VisionFrame) -> VisionFrame:
+    source_audio_frame = create_empty_audio_frame()
     for frame_processor_module in get_frame_processors_modules(facefusion.globals.frame_processors):
         logger.disable()
         if frame_processor_module.pre_process('stream'):

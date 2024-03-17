@@ -1,12 +1,11 @@
-from functools import lru_cache
-from typing import Any, Tuple, List
-
 import cv2
 import numpy
 from cv2.typing import Size
+from functools import lru_cache
 
 from facefusion.typing import BoundingBox, FaceLandmark5, FaceLandmark68, VisionFrame, Mask, Matrix, Translation, \
     WarpTemplate, WarpTemplateSet, FaceAnalyserAge, FaceAnalyserGender
+from typing import Any, Tuple, List
 
 WARP_TEMPLATES: WarpTemplateSet = \
     {

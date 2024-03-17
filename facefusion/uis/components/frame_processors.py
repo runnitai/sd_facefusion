@@ -1,11 +1,10 @@
-from typing import List, Optional
-
 import gradio
+from typing import List, Optional
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.processors.frame.core import load_frame_processor_module, clear_frame_processors_modules
 from facefusion.filesystem import list_directory
+from facefusion.processors.frame.core import load_frame_processor_module, clear_frame_processors_modules
 from facefusion.uis.core import register_ui_component
 
 FRAME_PROCESSORS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None

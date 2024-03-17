@@ -9,6 +9,7 @@ from onnx import numpy_helper
 import facefusion.globals
 import facefusion.processors.frame.core as frame_processors
 from facefusion import config, logger, wording
+from facefusion.common_helper import create_metavar, extract_major_version
 from facefusion.execution import apply_execution_provider_options
 from facefusion.face_analyser import get_one_face, get_average_face, get_many_faces, find_similar_faces, \
     clear_face_analyser
@@ -17,6 +18,7 @@ from facefusion.face_masker import create_static_box_mask, create_occlusion_mask
 from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
 from facefusion.face_store import get_reference_faces
 from facefusion.content_analyser import clear_content_analyser
+from facefusion.normalizer import normalize_output_path
 from facefusion.typing import Face, Embedding, VisionFrame, UpdateProcess, ProcessMode, ModelSet, OptionsWithModel, \
     QueuePayload, Padding
 from facefusion.filesystem import is_file, is_image, has_image, is_video, filter_image_paths, resolve_relative_path
@@ -85,13 +87,13 @@ MODELS: ModelSet = \
         'uniface_256':
             {
                 'type': 'uniface',
-                'url': 'https://huggingface.co/netrunner-exe/Insight-Swap-models-onnx/resolve/main/uniface_256.onnx',
+                'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/uniface_256.onnx',
                 'path': resolve_relative_path('../.assets/models/uniface_256.onnx'),
                 'template': 'ffhq_512',
                 'size': (256, 256),
                 'mean': [0.0, 0.0, 0.0],
                 'standard_deviation': [1.0, 1.0, 1.0]
-            },
+            }
     }
 OPTIONS: Optional[OptionsWithModel] = None
 
@@ -148,7 +150,8 @@ def set_options(key: Literal['model'], value: Any) -> None:
 
 
 def register_args(program: ArgumentParser) -> None:
-    if onnxruntime.__version__ == '1.17.0':
+    onnxruntime_version = extract_major_version(onnxruntime.__version__)
+    if onnxruntime_version > (1, 16):
         face_swapper_model_fallback = 'inswapper_128'
     else:
         face_swapper_model_fallback = 'inswapper_128_fp16'
@@ -156,11 +159,16 @@ def register_args(program: ArgumentParser) -> None:
                          default=config.get_str_value('frame_processors.face_swapper_model',
                                                       face_swapper_model_fallback),
                          choices=frame_processors_choices.face_swapper_models)
+    program.add_argument('--face-swapper-weight', help=wording.get('face_swapper_weight'), type=float,
+                         default=config.get_float_value('frame_processors.face_swapper_weight', '1.0'),
+                         choices=frame_processors_choices.face_swapper_weight_range,
+                         metavar=create_metavar(frame_processors_choices.face_swapper_weight_range))
 
 
 def apply_args(program: ArgumentParser) -> None:
     args = program.parse_args()
     frame_processors_globals.face_swapper_model = args.face_swapper_model
+    frame_processors_globals.face_swapper_weight = args.face_swapper_weight
     if args.face_swapper_model == 'blendswap_256':
         facefusion.globals.face_recognizer_model = 'arcface_blendswap'
     if args.face_swapper_model == 'inswapper_128' or args.face_swapper_model == 'inswapper_128_fp16':
@@ -202,10 +210,10 @@ def pre_process(mode: ProcessMode) -> bool:
             logger.error(wording.get('no_source_face_detected') + wording.get('exclamation_mark'), NAME)
             return False
     if mode in ['output', 'preview'] and not is_image(facefusion.globals.target_path) and not is_video(
-            facefusion.globals.target_path):
+        facefusion.globals.target_path):
         logger.error(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode == 'output' and not facefusion.globals.output_path:
+    if mode == 'output' and not normalize_output_path(facefusion.globals.target_path, facefusion.globals.output_path):
         logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True
@@ -259,9 +267,15 @@ def swap_face(source_face: Face, target_face: Face, temp_vision_frame: VisionFra
     if 'occlusion' in facefusion.globals.face_mask_types:
         occlusion_mask = create_occlusion_mask(crop_vision_frame)
         crop_mask_list.append(occlusion_mask)
-    crop_vision_frame = prepare_crop_frame(crop_vision_frame)
-    crop_vision_frame = apply_swap(source_face, crop_vision_frame)
-    crop_vision_frame = normalize_crop_frame(crop_vision_frame)
+    swap_iterations = int(numpy.ceil(frame_processors_globals.face_swapper_weight))
+    for swap_iteration in range(swap_iterations):
+        before_vision_frame = crop_vision_frame.copy()
+        crop_vision_frame = prepare_crop_frame(crop_vision_frame)
+        crop_vision_frame = apply_swap(source_face, crop_vision_frame)
+        crop_vision_frame = normalize_crop_frame(crop_vision_frame)
+    face_swapper_weight = frame_processors_globals.face_swapper_weight % 1.0
+    if face_swapper_weight > 0:
+        crop_vision_frame = before_vision_frame * (1 - face_swapper_weight) + crop_vision_frame * face_swapper_weight
     if 'region' in facefusion.globals.face_mask_types:
         region_mask = create_region_mask(crop_vision_frame, facefusion.globals.face_mask_regions)
         crop_mask_list.append(region_mask)
@@ -281,6 +295,8 @@ def apply_swap(source_face: Face, crop_vision_frame: VisionFrame) -> VisionFrame
                 frame_processor_inputs[frame_processor_input.name] = prepare_source_frame(source_face)
             else:
                 frame_processor_inputs[frame_processor_input.name] = prepare_source_embedding(source_face)
+        if frame_processor_input.name == 'source_embedding':
+            frame_processor_inputs[frame_processor_input.name] = prepare_source_embedding(source_face)
         if frame_processor_input.name == 'target':
             frame_processor_inputs[frame_processor_input.name] = crop_vision_frame
     crop_vision_frame = frame_processor.run(None, frame_processor_inputs)[0][0]
@@ -291,10 +307,10 @@ def prepare_source_frame(source_face: Face) -> VisionFrame:
     model_type = get_options('model').get('type')
     source_vision_frame = read_static_image(facefusion.globals.source_paths[0])
     if model_type == 'blendswap':
-        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmarks['5/68'],
+        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmarks.get('5/68'),
                                                               'arcface_112_v2', (112, 112))
     if model_type == 'uniface':
-        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmarks['5/68'],
+        source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmarks.get('5/68'),
                                                               'ffhq_512', (256, 256))
     source_vision_frame = source_vision_frame[:, :, ::-1] / 255.0
     source_vision_frame = source_vision_frame.transpose(2, 0, 1)
@@ -314,6 +330,7 @@ def prepare_source_embedding(source_face: Face) -> Embedding:
 
 
 def prepare_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
+    model_type = get_options('model').get('type')
     model_mean = get_options('model').get('mean')
     model_standard_deviation = get_options('model').get('standard_deviation')
     crop_vision_frame = crop_vision_frame[:, :, ::-1] / 255.0
@@ -324,6 +341,7 @@ def prepare_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
 
 
 def normalize_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
+    model_template = get_options('model').get('name')
     crop_vision_frame = crop_vision_frame.transpose(1, 2, 0)
     crop_vision_frame = (crop_vision_frame * 255.0).round()
     crop_vision_frame = crop_vision_frame[:, :, ::-1]

@@ -1,5 +1,5 @@
-from typing import Optional
 import gradio
+from typing import Optional
 
 from facefusion import wording
 from facefusion.uis import choices as uis_choices

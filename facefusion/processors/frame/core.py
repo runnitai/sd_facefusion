@@ -129,8 +129,7 @@ def create_queue_payloads(temp_frame_paths: List[str]) -> List[QueuePayload]:
     queue_payloads = []
     temp_frame_paths = sorted(temp_frame_paths, key=os.path.basename)
 
-    for frame_path in temp_frame_paths:
-        frame_number = int(os.path.basename(frame_path).split('.')[0])
+    for frame_number, frame_path in enumerate(temp_frame_paths):
         frame_payload: QueuePayload = \
             {
                 'frame_number': frame_number,

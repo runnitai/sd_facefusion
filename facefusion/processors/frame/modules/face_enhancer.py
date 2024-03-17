@@ -14,6 +14,7 @@ from facefusion.face_helper import warp_face_by_face_landmark_5, paste_back
 from facefusion.execution import apply_execution_provider_options
 from facefusion.content_analyser import clear_content_analyser
 from facefusion.face_store import get_reference_faces
+from facefusion.normalizer import normalize_output_path
 from facefusion.typing import Face, VisionFrame, UpdateProcess, ProcessMode, ModelSet, OptionsWithModel, QueuePayload
 from facefusion.common_helper import create_metavar
 from facefusion.filesystem import is_file, is_image, is_video, resolve_relative_path
@@ -157,7 +158,7 @@ def pre_process(mode: ProcessMode) -> bool:
             facefusion.globals.target_path):
         logger.error(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode == 'output' and not facefusion.globals.output_path:
+    if mode == 'output' and not normalize_output_path(facefusion.globals.target_path, facefusion.globals.output_path):
         logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True
@@ -244,7 +245,16 @@ def process_frame(inputs: FaceEnhancerInputs) -> VisionFrame:
     reference_faces_2 = inputs['reference_faces_2']
     target_vision_frame = inputs['target_vision_frame']
 
-    if 'reference' in facefusion.globals.face_selector_mode:
+    if facefusion.globals.face_selector_mode == 'many':
+        many_faces = get_many_faces(target_vision_frame)
+        if many_faces:
+            for target_face in many_faces:
+                target_vision_frame = enhance_face(target_face, target_vision_frame)
+    if facefusion.globals.face_selector_mode == 'one':
+        target_face = get_one_face(target_vision_frame)
+        if target_face:
+            target_vision_frame = enhance_face(target_face, target_vision_frame)
+    if facefusion.globals.face_selector_mode == 'reference':
         for ref_faces in [reference_faces, reference_faces_2]:
             similar_faces = find_similar_faces(ref_faces, target_vision_frame,
                                                facefusion.globals.reference_face_distance)
@@ -252,15 +262,6 @@ def process_frame(inputs: FaceEnhancerInputs) -> VisionFrame:
                 for similar_face in similar_faces:
                     target_vision_frame = enhance_face(similar_face, target_vision_frame)
 
-    if 'one' in facefusion.globals.face_selector_mode:
-        target_face = get_one_face(target_vision_frame)
-        if target_face:
-            target_vision_frame = enhance_face(target_face, target_vision_frame)
-    if 'many' in facefusion.globals.face_selector_mode:
-        many_faces = get_many_faces(target_vision_frame)
-        if many_faces:
-            for target_face in many_faces:
-                target_vision_frame = enhance_face(target_face, target_vision_frame)
     return target_vision_frame
 
 
@@ -283,12 +284,12 @@ def process_frames(source_path: List[str], source_path_2: List[str], queue_paylo
 def process_image(source_path: str, source_path_2: str, target_path: str, output_path: str) -> None:
     reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None, None
     target_vision_frame = read_static_image(target_path)
-    result_frame = process_frame(
+    output_vision_frame = process_frame(
         {
             'reference_faces': reference_faces,
             'target_vision_frame': target_vision_frame
         })
-    write_image(output_path, result_frame)
+    write_image(output_path, output_vision_frame)
 
 
 def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:

@@ -1,6 +1,5 @@
-from typing import Generator, List
-
 from facefusion.typing import QueuePayload, ProcessState
+from typing import Generator, List
 
 PROCESS_STATE: ProcessState = 'pending'
 

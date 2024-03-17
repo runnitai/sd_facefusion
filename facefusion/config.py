@@ -1,7 +1,7 @@
 from configparser import ConfigParser
-from typing import Any, Optional, List
 
 from facefusion.filesystem import resolve_relative_path
+from typing import Any, Optional, List
 
 CONFIG = None
 

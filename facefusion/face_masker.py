@@ -1,17 +1,16 @@
-import threading
-from functools import lru_cache
-from typing import Any, Dict, List
-
 import cv2
 import numpy
 import onnxruntime
+import threading
 from cv2.typing import Size
+from functools import lru_cache
 
 import facefusion.globals
 from facefusion.download import conditional_download
 from facefusion.execution import apply_execution_provider_options
 from facefusion.filesystem import resolve_relative_path
 from facefusion.typing import FaceLandmark68, VisionFrame, Mask, Padding, FaceMaskRegion, ModelSet
+from typing import Any, Dict, List
 
 FACE_OCCLUDER = None
 FACE_PARSER = None
@@ -74,17 +73,19 @@ def clear_face_occluder() -> None:
 
 def clear_face_parser() -> None:
     global FACE_PARSER
+
     FACE_PARSER = None
 
 
 def pre_check() -> bool:
-    download_directory_path = resolve_relative_path('../.assets/models')
-    model_urls = \
-        [
-            MODELS.get('face_occluder').get('url'),
-            MODELS.get('face_parser').get('url'),
-        ]
-    conditional_download(download_directory_path, model_urls)
+    if not facefusion.globals.skip_download:
+        download_directory_path = resolve_relative_path('../.assets/models')
+        model_urls = \
+            [
+                MODELS.get('face_occluder').get('url'),
+                MODELS.get('face_parser').get('url'),
+            ]
+        conditional_download(download_directory_path, model_urls)
     return True
 
 

@@ -1,11 +1,10 @@
-from typing import Any, Dict
-
 import numpy
 
 import facefusion.globals
 from facefusion import logger
 from facefusion.face_store import FACE_STORE
 from facefusion.typing import FaceSet
+from typing import Any, Dict
 
 
 def create_statistics(static_faces: FaceSet) -> Dict[str, Any]:

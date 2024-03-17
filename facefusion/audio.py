@@ -1,12 +1,11 @@
-from functools import lru_cache
-from typing import Optional, Any, List
-
 import numpy
 import scipy
+from functools import lru_cache
 
 from facefusion.ffmpeg import read_audio_buffer
 from facefusion.filesystem import is_audio
 from facefusion.typing import Fps, Audio, Spectrogram, AudioFrame
+from typing import Optional, Any, List
 
 
 def get_audio_frame(audio_path: str, fps: Fps, frame_number: int = 0) -> Optional[AudioFrame]:

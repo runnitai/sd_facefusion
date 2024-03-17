@@ -1,8 +1,8 @@
-from typing import Optional
 import gradio
+from typing import Optional
 
-import facefusion.globals
 import facefusion.choices
+import facefusion.globals
 from facefusion import wording
 
 EXECUTION_THREAD_COUNT_SLIDER: Optional[gradio.Slider] = None

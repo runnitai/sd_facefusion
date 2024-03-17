@@ -1,13 +1,13 @@
+import filetype
 import glob
 import os
 import shutil
 from pathlib import Path
-from typing import List, Optional
-
-import filetype
 
 import facefusion.globals
-from modules.paths_internal import models_path, script_path
+from typing import List, Optional
+
+from modules.paths_internal import script_path
 
 output_dir = os.path.join(script_path, 'outputs')
 TEMP_DIRECTORY_PATH = os.path.join(output_dir, 'facefusion', 'temp')
@@ -29,22 +29,6 @@ def get_temp_directory_path(target_path: str) -> str:
     return os.path.join(TEMP_DIRECTORY_PATH, target_name)
 
 
-def get_temp_input_path(target_path: str) -> str:
-    target_name = os.path.basename(target_path)
-    if not os.path.exists(os.path.join(TEMP_DIRECTORY_PATH, 'input')):
-        os.makedirs(os.path.join(TEMP_DIRECTORY_PATH, 'input'))
-    return os.path.join(TEMP_DIRECTORY_PATH, 'input', target_name)
-
-
-def get_temp_input_video_name(target_path: str) -> str:
-    # Remove all the non-path characters from the target path
-    target_path = ''.join([char for char in target_path if char.isalnum() or char in ['.', '_', '-', ' ']])
-    # Replace spaces
-    target_path = target_path.replace(' ', '_')
-    target_path += '.mp4'
-    return target_path
-
-
 def get_temp_output_video_path(target_path: str) -> str:
     temp_directory_path = get_temp_directory_path(target_path)
     return os.path.join(temp_directory_path, TEMP_OUTPUT_VIDEO_NAME)
@@ -60,7 +44,6 @@ def move_temp(target_path: str, output_path: str) -> None:
     if is_file(temp_output_video_path):
         if is_file(output_path):
             os.remove(output_path)
-        print(f"Moving {temp_output_video_path} to {output_path}")
         shutil.move(temp_output_video_path, output_path)
 
 
@@ -126,26 +109,30 @@ def filter_image_paths(paths: List[str]) -> List[str]:
 
 
 def resolve_relative_path(path: str) -> str:
+    try:
+        from modules.paths_internal import models_path
+        return resolve_relative_path_auto(path)
+    except:
+        pass
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), path))
 
+
+def list_directory(directory_path: str) -> Optional[List[str]]:
+    if is_directory(directory_path):
+        files = os.listdir(directory_path)
+        return sorted([Path(file).stem for file in files if not Path(file).stem.startswith(('.', '__'))])
+    return None
+
+
+def is_url(video_path: str) -> bool:
+    return bool(video_path and video_path.startswith('http'))
+
+
+def resolve_relative_path_auto(path: str) -> str:
+    from modules.paths_internal import models_path
     model_name = os.path.basename(path)
     if model_name == "" or path.endswith("models"):
         return os.path.join(models_path, 'facefusion')
     return os.path.join(models_path, 'facefusion', model_name)
 
 
-def list_module_names(path: str) -> Optional[List[str]]:
-    if os.path.exists(path):
-        files = os.listdir(path)
-        return [Path(file).stem for file in files if not Path(file).stem.startswith(('.', '__'))]
-    return None
-
-
-def list_directory(directory_path: str) -> Optional[List[str]]:
-    if is_directory(directory_path):
-        files = os.listdir(directory_path)
-        return [Path(file).stem for file in files if not Path(file).stem.startswith(('.', '__'))]
-    return None
-
-
-def is_url(video_path: str) -> bool:
-    return bool(video_path and video_path.startswith('http'))

@@ -1,7 +1,7 @@
 from logging import basicConfig, getLogger, Logger, DEBUG, INFO, WARNING, ERROR
-from typing import Dict
 
 from facefusion.typing import LogLevel
+from typing import Dict
 
 
 def init(log_level: LogLevel) -> None:

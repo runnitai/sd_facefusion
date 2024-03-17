@@ -1,4 +1,8 @@
 import os
+import signal
+from _xxsubinterpreters import destroy
+
+from facefusion.statistics import conditional_log_statistics
 
 os.environ['OMP_NUM_THREADS'] = '1'
 import shutil
@@ -21,7 +25,7 @@ from facefusion.execution import decode_execution_providers, encode_execution_pr
 from facefusion.face_analyser import get_one_face, get_average_face
 from facefusion.face_store import get_reference_faces, append_reference_face
 from facefusion.ff_status import FFStatus
-from facefusion.ffmpeg import compress_image, extract_frames, merge_video, restore_audio, replace_audio
+from facefusion.ffmpeg import extract_frames, merge_video, restore_audio, replace_audio, finalize_image
 from facefusion.filesystem import is_image, is_video, create_temp, get_temp_frame_paths, clear_temp, move_temp, \
     list_directory, filter_audio_paths
 from facefusion.job_params import JobParams
@@ -148,12 +152,8 @@ def cli() -> None:
     group_frame_extraction.add_argument('--trim-frame-end', help=wording.get('help.trim_frame_end'), type=int,
                                         default=facefusion.config.get_int_value('frame_extraction.trim_frame_end'))
     group_frame_extraction.add_argument('--temp-frame-format', help=wording.get('help.temp_frame_format'),
-                                        default=config.get_str_value('frame_extraction.temp_frame_format', 'jpg'),
+                                        default=config.get_str_value('frame_extraction.temp_frame_format', 'png'),
                                         choices=facefusion.choices.temp_frame_formats)
-    group_frame_extraction.add_argument('--temp-frame-quality', help=wording.get('help.temp_frame_quality'), type=int,
-                                        default=config.get_int_value('frame_extraction.temp_frame_quality', '100'),
-                                        choices=facefusion.choices.temp_frame_quality_range,
-                                        metavar=create_metavar(facefusion.choices.temp_frame_quality_range))
     group_frame_extraction.add_argument('--keep-temp', help=wording.get('help.keep_temp'), action='store_true',
                                         default=config.get_bool_value('frame_extraction.keep_temp'))
     # output creation
@@ -205,8 +205,7 @@ def apply_args(program: ArgumentParser) -> None:
     # general
     facefusion.globals.source_paths = args.source_paths
     facefusion.globals.target_path = args.target_path
-    facefusion.globals.output_path = normalize_output_path(facefusion.globals.source_paths,
-                                                           facefusion.globals.target_path, args.output_path)
+    facefusion.globals.output_path = normalize_output_path(facefusion.globals.target_path, args.output_path)
     # misc
     facefusion.globals.skip_download = args.skip_download
     facefusion.globals.headless = args.headless
@@ -228,6 +227,7 @@ def apply_args(program: ArgumentParser) -> None:
     else:
         facefusion.globals.face_detector_size = '640x640'
     facefusion.globals.face_detector_score = args.face_detector_score
+    facefusion.globals.face_landmarker_score = args.face_landmarker_score
     # face selector
     facefusion.globals.face_selector_mode = args.face_selector_mode
     facefusion.globals.reference_face_position = args.reference_face_position
@@ -242,7 +242,6 @@ def apply_args(program: ArgumentParser) -> None:
     facefusion.globals.trim_frame_start = args.trim_frame_start
     facefusion.globals.trim_frame_end = args.trim_frame_end
     facefusion.globals.temp_frame_format = args.temp_frame_format
-    facefusion.globals.temp_frame_quality = args.temp_frame_quality
     facefusion.globals.keep_temp = args.keep_temp
     # output creation
     facefusion.globals.output_image_quality = args.output_image_quality
@@ -398,6 +397,7 @@ def process_image(start_time: float, job: JobParams) -> None:
         status.update("Naughty naughty!!")
         status.cancel()
         return
+    normed_output_path = job.output_path
     shutil.copy2(job.target_path, job.output_path)
     # process frame
     frame_processor_modules = get_frame_processors_modules(job.frame_processors)
@@ -414,13 +414,18 @@ def process_image(start_time: float, job: JobParams) -> None:
     if status.cancelled:
         print("Interrupted")
         return
-    if not compress_image(job.output_path):
-        status_str = wording.get('compressing_image_failed')
-        status.update(status_str)
+    logger.info(wording.get('finalizing_image').format(resolution=facefusion.globals.output_image_resolution),
+                __name__.upper())
+    if finalize_image(normed_output_path, facefusion.globals.output_image_resolution):
+        logger.debug(wording.get('finalizing_image_succeed'), __name__.upper())
+    else:
+        logger.warn(wording.get('finalizing_image_skipped'), __name__.upper())
     # validate image
-    if is_image(job.target_path):
+    if is_image(normed_output_path):
         seconds = '{:.2f}'.format((time.time() - start_time) % 60)
-        status_str = "Processing completed in " + seconds + " seconds."
+        status_str = wording.get('processing_image_succeed').format(seconds=seconds), __name__.upper()
+        logger.info(wording.get('processing_image_succeed').format(seconds=seconds), __name__.upper())
+        conditional_log_statistics()
     else:
         status_str = wording.get('processing_image_failed')
     status.update(status_str)
@@ -435,7 +440,7 @@ def process_video(start_time, job) -> None:
         status.cancel()
         return
     status.update("Processing facefusion video.")
-    fps = detect_video_fps(job.target_path) if job.keep_fps else 25.0
+    fps = job.output_video_fps
     # create temp
     create_temp(job.target_path)
 

@@ -1,7 +1,7 @@
-from collections import namedtuple
-from typing import Any, Literal, Callable, List, Tuple, Dict, TypedDict, Union
-
 import numpy
+from collections import namedtuple
+
+from typing import Any, Literal, Callable, List, Tuple, Dict, TypedDict
 
 BoundingBox = numpy.ndarray[Any, Any]
 FaceLandmark5 = numpy.ndarray[Any, Any]
@@ -56,7 +56,7 @@ QueuePayload = TypedDict('QueuePayload',
                              'frame_number': int,
                              'frame_path': str
                          })
-UpdateProcess = Callable[[], Union[None, Any]]
+UpdateProcess = Callable[[], None]
 ProcessFrames = Callable[[List[str], List[QueuePayload], UpdateProcess], None]
 
 WarpTemplate = Literal['arcface_112_v1', 'arcface_112_v2', 'arcface_128_v2', 'ffhq_512']
@@ -72,12 +72,13 @@ FaceAnalyserAge = Literal['child', 'teen', 'adult', 'senior']
 FaceAnalyserGender = Literal['female', 'male']
 FaceDetectorModel = Literal['many', 'retinaface', 'scrfd', 'yoloface', 'yunet']
 FaceDetectorTweak = Literal['low-luminance', 'high-luminance']
-FaceRecognizerModel = Literal['arcface_blendswap', 'arcface_inswapper', 'arcface_simswap', 'arcface_uniface']
+FaceRecognizerModel = Literal[
+    'arcface_blendswap', 'arcface_ghost', 'arcface_inswapper', 'arcface_simswap', 'arcface_uniface']
 FaceMaskType = Literal['box', 'occlusion', 'region']
 FaceMaskRegion = Literal[
     'skin', 'left-eyebrow', 'right-eyebrow', 'left-eye', 'right-eye', 'eye-glasses', 'nose', 'mouth', 'upper-lip', 'lower-lip']
 TempFrameFormat = Literal['jpg', 'png', 'bmp']
-OutputVideoEncoder = Literal['libx264', 'libx265', 'libvpx-vp9', 'h264_nvenc', 'hevc_nvenc']
+OutputVideoEncoder = Literal['libx264', 'libx265', 'libvpx-vp9', 'h264_nvenc', 'hevc_nvenc', 'h264_amf', 'hevc_amf']
 OutputVideoPreset = Literal[
     'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 

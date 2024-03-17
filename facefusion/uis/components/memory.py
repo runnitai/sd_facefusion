@@ -1,10 +1,10 @@
-from typing import Optional
 import gradio
+from typing import Optional
 
-import facefusion.globals
 import facefusion.choices
-from facefusion.typing import VideoMemoryStrategy
+import facefusion.globals
 from facefusion import wording
+from facefusion.typing import VideoMemoryStrategy
 
 VIDEO_MEMORY_STRATEGY: Optional[gradio.Dropdown] = None
 SYSTEM_MEMORY_LIMIT_SLIDER: Optional[gradio.Slider] = None

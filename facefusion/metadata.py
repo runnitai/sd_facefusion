@@ -1,12 +1,12 @@
 METADATA = \
-{
-    'name': 'RD FaceFusion',
-    'description': 'Next generation face swapper and enhancer',
-    'version': '2.3.0',
-    'license': 'MIT',
-    'author': 'Henry Ruhs',
-    'url': 'https://facefusion.io'
-}
+    {
+        'name': 'FaceFusion',
+        'description': 'Next generation face swapper and enhancer',
+        'version': '2.4.0',
+        'license': 'MIT',
+        'author': 'Henry Ruhs',
+        'url': 'https://facefusion.io'
+    }
 
 
 def get(key: str) -> str:

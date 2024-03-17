@@ -1,11 +1,10 @@
-from typing import List, Optional, Tuple
-
 import gradio
+from typing import List, Optional, Tuple
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.processors.frame.core import load_frame_processor_module
 from facefusion.processors.frame import globals as frame_processors_globals, choices as frame_processors_choices
+from facefusion.processors.frame.core import load_frame_processor_module
 from facefusion.processors.frame.typings import FaceDebuggerItem, FaceEnhancerModel, FaceSwapperModel, \
     FrameEnhancerModel, LipSyncerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
@@ -14,6 +13,7 @@ FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
 FACE_ENHANCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FACE_ENHANCER_BLEND_SLIDER: Optional[gradio.Slider] = None
 FACE_SWAPPER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
+FACE_SWAPPER_WEIGHT_SLIDER: Optional[gradio.Slider] = None
 FRAME_ENHANCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FRAME_ENHANCER_BLEND_SLIDER: Optional[gradio.Slider] = None
 LIP_SYNCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
@@ -24,6 +24,7 @@ def render() -> None:
     global FACE_ENHANCER_MODEL_DROPDOWN
     global FACE_ENHANCER_BLEND_SLIDER
     global FACE_SWAPPER_MODEL_DROPDOWN
+    global FACE_SWAPPER_WEIGHT_SLIDER
     global FRAME_ENHANCER_MODEL_DROPDOWN
     global FRAME_ENHANCER_BLEND_SLIDER
     global LIP_SYNCER_MODEL_DROPDOWN
@@ -32,9 +33,17 @@ def render() -> None:
         choices=frame_processors_choices.face_debugger_items,
         value=frame_processors_globals.face_debugger_items,
         visible='face_debugger' in facefusion.globals.frame_processors,
-        elem_id='face_swapper_model_dropdown'
+        elem_id='face_debugger_items_checkbox'
     )
-
+    FACE_SWAPPER_WEIGHT_SLIDER = gradio.Slider(
+        label=wording.get('uis.face_swapper_weight_slider'),
+        value=frame_processors_globals.face_swapper_weight,
+        step=frame_processors_choices.face_swapper_weight_range[1] - frame_processors_choices.face_swapper_weight_range[
+            0],
+        minimum=frame_processors_choices.face_swapper_weight_range[0],
+        maximum=frame_processors_choices.face_swapper_weight_range[-1],
+        visible='face_swapper' in facefusion.globals.frame_processors
+    )
     FACE_ENHANCER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.face_enhancer_model_dropdown'),
         choices=frame_processors_choices.face_enhancer_models,
@@ -86,6 +95,7 @@ def render() -> None:
     register_ui_component('face_enhancer_model_dropdown', FACE_ENHANCER_MODEL_DROPDOWN)
     register_ui_component('face_enhancer_blend_slider', FACE_ENHANCER_BLEND_SLIDER)
     register_ui_component('face_swapper_model_dropdown', FACE_SWAPPER_MODEL_DROPDOWN)
+    register_ui_component('face_swapper_weight_slider', FACE_SWAPPER_WEIGHT_SLIDER)
     register_ui_component('frame_enhancer_model_dropdown', FRAME_ENHANCER_MODEL_DROPDOWN)
     register_ui_component('frame_enhancer_blend_slider', FRAME_ENHANCER_BLEND_SLIDER)
     register_ui_component('lip_syncer_model_dropdown', LIP_SYNCER_MODEL_DROPDOWN)
@@ -98,6 +108,7 @@ def listen() -> None:
     FACE_ENHANCER_BLEND_SLIDER.change(update_face_enhancer_blend, inputs=FACE_ENHANCER_BLEND_SLIDER)
     FACE_SWAPPER_MODEL_DROPDOWN.change(update_face_swapper_model, inputs=FACE_SWAPPER_MODEL_DROPDOWN,
                                        outputs=FACE_SWAPPER_MODEL_DROPDOWN)
+    FACE_SWAPPER_WEIGHT_SLIDER.change(update_face_swapper_weight, inputs=FACE_SWAPPER_WEIGHT_SLIDER)
     FRAME_ENHANCER_MODEL_DROPDOWN.change(update_frame_enhancer_model, inputs=FRAME_ENHANCER_MODEL_DROPDOWN,
                                          outputs=FRAME_ENHANCER_MODEL_DROPDOWN)
     FRAME_ENHANCER_BLEND_SLIDER.change(update_frame_enhancer_blend, inputs=FRAME_ENHANCER_BLEND_SLIDER)
@@ -108,25 +119,30 @@ def listen() -> None:
         frame_processors_checkbox_group.change(update_frame_processors, inputs=frame_processors_checkbox_group,
                                                outputs=[FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP,
                                                         FACE_ENHANCER_MODEL_DROPDOWN, FACE_ENHANCER_BLEND_SLIDER,
-                                                        FACE_SWAPPER_MODEL_DROPDOWN, FRAME_ENHANCER_MODEL_DROPDOWN,
-                                                        FRAME_ENHANCER_BLEND_SLIDER])
+                                                        FACE_SWAPPER_MODEL_DROPDOWN, FACE_SWAPPER_WEIGHT_SLIDER,
+                                                        FRAME_ENHANCER_MODEL_DROPDOWN, FRAME_ENHANCER_BLEND_SLIDER,
+                                                        LIP_SYNCER_MODEL_DROPDOWN])
 
 
 def update_frame_processors(frame_processors: List[str]) -> Tuple[
-    gradio.CheckboxGroup, gradio.Dropdown, gradio.Slider, gradio.Dropdown, gradio.Dropdown, gradio.Slider]:
+    gradio.CheckboxGroup, gradio.Dropdown, gradio.Slider, gradio.Dropdown, gradio.Slider, gradio.Dropdown, gradio.Slider, gradio.Dropdown]:
     has_face_debugger = 'face_debugger' in frame_processors
     has_face_enhancer = 'face_enhancer' in frame_processors
     has_face_swapper = 'face_swapper' in frame_processors
     has_frame_enhancer = 'frame_enhancer' in frame_processors
+    has_lip_syncer = 'lip_syncer' in frame_processors
     return gradio.update(visible=has_face_debugger), gradio.update(visible=has_face_enhancer), gradio.update(
         visible=has_face_enhancer), gradio.update(visible=has_face_swapper), gradio.update(
-        visible=has_frame_enhancer), gradio.update(visible=has_frame_enhancer)
+        visible=has_face_swapper), gradio.update(visible=has_frame_enhancer), gradio.update(
+        visible=has_frame_enhancer), gradio.update(visible=has_lip_syncer)
 
 
 def update_face_debugger_items(face_debugger_items: List[FaceDebuggerItem]) -> None:
     frame_processors_globals.face_debugger_items = face_debugger_items
 
 
+def update_face_swapper_weight(face_swapper_weight: float) -> None:
+    frame_processors_globals.face_swapper_weight = face_swapper_weight
 def update_face_enhancer_model(face_enhancer_model: FaceEnhancerModel) -> gradio.Dropdown:
     frame_processors_globals.face_enhancer_model = face_enhancer_model
     face_enhancer_module = load_frame_processor_module('face_enhancer')

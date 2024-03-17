@@ -118,7 +118,7 @@ def pre_process(mode : ProcessMode) -> bool:
         facefusion.globals.target_path):
         logger.error(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode == 'output' and not facefusion.globals.output_path:
+    if mode == 'output' and not normalize_output_path(facefusion.globals.target_path, facefusion.globals.output_path):
         logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True
@@ -203,25 +203,25 @@ def get_reference_frame(source_face : Face, target_face : Face, temp_vision_fram
 
 
 def process_frame(inputs : LipSyncerInputs) -> VisionFrame:
-    reference_faces = inputs['reference_faces']
-    source_audio_frame = inputs['source_audio_frame']
-    target_vision_frame = inputs['target_vision_frame']
-    is_source_audio_frame = isinstance(source_audio_frame, numpy.ndarray) and source_audio_frame.any()
+    reference_faces = inputs.get('reference_faces')
+    source_audio_frame = inputs.get('source_audio_frame')
+    target_vision_frame = inputs.get('target_vision_frame')
 
-    if 'reference' in facefusion.globals.face_selector_mode:
-        similar_faces = find_similar_faces(reference_faces, target_vision_frame, facefusion.globals.reference_face_distance)
-        if similar_faces and is_source_audio_frame:
-            for similar_face in similar_faces:
-                target_vision_frame = sync_lip(similar_face, source_audio_frame, target_vision_frame)
-    if 'one' in facefusion.globals.face_selector_mode:
-        target_face = get_one_face(target_vision_frame)
-        if target_face and is_source_audio_frame:
-            target_vision_frame = sync_lip(target_face, source_audio_frame, target_vision_frame)
-    if 'many' in facefusion.globals.face_selector_mode:
+    if facefusion.globals.face_selector_mode == 'many':
         many_faces = get_many_faces(target_vision_frame)
-        if many_faces and is_source_audio_frame:
+        if many_faces:
             for target_face in many_faces:
                 target_vision_frame = sync_lip(target_face, source_audio_frame, target_vision_frame)
+    if facefusion.globals.face_selector_mode == 'one':
+        target_face = get_one_face(target_vision_frame)
+        if target_face:
+            target_vision_frame = sync_lip(target_face, source_audio_frame, target_vision_frame)
+    if facefusion.globals.face_selector_mode == 'reference':
+        similar_faces = find_similar_faces(reference_faces, target_vision_frame,
+                                           facefusion.globals.reference_face_distance)
+        if similar_faces:
+            for similar_face in similar_faces:
+                target_vision_frame = sync_lip(similar_face, source_audio_frame, target_vision_frame)
     return target_vision_frame
 
 
@@ -233,7 +233,9 @@ def process_frames(source_paths : List[str], queue_payloads : List[QueuePayload]
     for queue_payload in queue_payloads:
         frame_number = queue_payload['frame_number']
         target_vision_path = queue_payload['frame_path']
-        source_audio_frame = get_audio_frame(source_audio_path, target_video_fps, frame_number)
+        source_audio_frame = get_audio_frame(source_audio_path, facefusion.globals.output_video_fps, frame_number)
+        if not numpy.any(source_audio_frame):
+            source_audio_frame = create_empty_audio_frame()
         target_vision_frame = read_image(target_vision_path)
         result_frame = process_frame(
         {

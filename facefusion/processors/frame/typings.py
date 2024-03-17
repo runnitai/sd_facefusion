@@ -7,8 +7,8 @@ FaceDebuggerItem = Literal[
 FaceEnhancerModel = Literal[
     'codeformer', 'gfpgan_1.2', 'gfpgan_1.3', 'gfpgan_1.4', 'gpen_bfr_256', 'gpen_bfr_512', 'restoreformer_plus_plus']
 FaceSwapperModel = Literal[
-    'blendswap_256', 'inswapper_128', 'inswapper_128_fp16', 'simswap_256', 'simswap_512_unofficial', 'uniface_256']
-FrameEnhancerModel = Literal['lsdir_x4', 'nomos8k_sc_4x', 'real_esrgan_4x', 'span_kendata_4x']
+    'blendswap_256', 'ghost_unet_1_block', 'ghost_unet_2_block', 'ghost_unet_3_block', 'inswapper_128', 'inswapper_128_fp16', 'simswap_256', 'simswap_512_unofficial', 'uniface_256']
+FrameEnhancerModel = Literal['lsdir_x4', 'nomos8k_sc_x4', 'real_esrgan_x4', 'real_esrgan_x4_fp16', 'span_kendata_x4']
 LipSyncerModel = Literal['wav2lip_gan']
 
 FaceDebuggerInputs = TypedDict('FaceDebuggerInputs',

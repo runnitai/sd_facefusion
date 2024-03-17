@@ -1,9 +1,8 @@
-from typing import List, Dict
-
 from facefusion.common_helper import create_int_range, create_float_range
 from facefusion.typing import VideoMemoryStrategy, FaceSelectorMode, FaceAnalyserOrder, FaceAnalyserAge, \
     FaceAnalyserGender, FaceDetectorModel, FaceMaskType, FaceMaskRegion, TempFrameFormat, OutputVideoEncoder, \
     OutputVideoPreset
+from typing import List, Dict
 
 video_memory_strategies: List[VideoMemoryStrategy] = ['strict', 'moderate', 'tolerant']
 face_analyser_orders: List[FaceAnalyserOrder] = ['left-right', 'right-left', 'top-bottom', 'bottom-top', 'small-large',
@@ -23,7 +22,8 @@ face_mask_types: List[FaceMaskType] = ['box', 'occlusion', 'region']
 face_mask_regions: List[FaceMaskRegion] = ['skin', 'left-eyebrow', 'right-eyebrow', 'left-eye', 'right-eye',
                                            'eye-glasses', 'nose', 'mouth', 'upper-lip', 'lower-lip']
 temp_frame_formats: List[TempFrameFormat] = ['bmp', 'jpg', 'png']
-output_video_encoders: List[OutputVideoEncoder] = ['libx264', 'libx265', 'libvpx-vp9', 'h264_nvenc', 'hevc_nvenc']
+output_video_encoders: List[OutputVideoEncoder] = ['libx264', 'libx265', 'libvpx-vp9', 'h264_nvenc', 'hevc_nvenc',
+                                                   'h264_amf', 'hevc_amf']
 output_video_presets: List[OutputVideoPreset] = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
                                                  'slow', 'slower', 'veryslow']
 
@@ -38,6 +38,5 @@ face_landmarker_score_range: List[float] = create_float_range(0.0, 1.0, 0.05)
 face_mask_blur_range: List[float] = create_float_range(0.0, 1.0, 0.05)
 face_mask_padding_range: List[int] = create_int_range(0, 100, 1)
 reference_face_distance_range: List[float] = create_float_range(0.0, 1.5, 0.05)
-temp_frame_quality_range: List[int] = create_int_range(0, 100, 1)
 output_image_quality_range: List[int] = create_int_range(0, 100, 1)
 output_video_quality_range: List[int] = create_int_range(0, 100, 1)

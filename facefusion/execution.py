@@ -1,11 +1,10 @@
+import onnxruntime
 import subprocess
 import xml.etree.ElementTree as ElementTree
 from functools import lru_cache
-from typing import List, Any
-
-import onnxruntime
 
 from facefusion.typing import ExecutionDevice, ValueAndUnit
+from typing import List, Any
 
 
 def encode_execution_providers(execution_providers: List[str]) -> List[str]:
@@ -58,17 +57,17 @@ def detect_execution_devices() -> List[ExecutionDevice]:
     try:
         output, _ = run_nvidia_smi().communicate()
         root_element = ElementTree.fromstring(output)
-    except FileNotFoundError:
+    except Exception:
         root_element = ElementTree.Element('xml')
 
     for gpu_element in root_element.findall('gpu'):
         execution_devices.append(
             {
-                'driver_version': root_element.find('.//driver_version').text,
+                'driver_version': root_element.find('driver_version').text,
                 'framework':
                     {
                         'name': 'CUDA',
-                        'version': root_element.find('.//cuda_version').text,
+                        'version': root_element.find('cuda_version').text,
                     },
                 'product':
                     {

@@ -112,8 +112,7 @@ class FFStatus:
         from facefusion.filesystem import is_video, is_image
         if is_video(target_path):
             original_fps = detect_video_fps(target_path)
-            keep_fps = job.keep_fps
-            fps = 25 if not keep_fps else original_fps
+            fps = job.output_video_fps
             video_frame_total = count_video_frame_total(target_path)
             if trim_frame_start is not None:
                 video_frame_total -= trim_frame_start

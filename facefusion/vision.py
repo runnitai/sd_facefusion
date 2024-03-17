@@ -1,13 +1,12 @@
-from functools import lru_cache
-from typing import Optional, List, Tuple
-
 import cv2
 import numpy
 from cv2.typing import Size
+from functools import lru_cache
 
 from facefusion.choices import image_template_sizes, video_template_sizes
 from facefusion.filesystem import is_image, is_video
-from facefusion.typing import VisionFrame, Resolution
+from facefusion.typing import VisionFrame, Resolution, Fps
+from typing import Optional, List, Tuple
 
 
 @lru_cache(maxsize=128)
@@ -43,6 +42,14 @@ def detect_image_resolution(image_path: str) -> Optional[Resolution]:
     return None
 
 
+def restrict_image_resolution(image_path: str, resolution: Resolution) -> Resolution:
+    if is_image(image_path):
+        image_resolution = detect_image_resolution(image_path)
+        if image_resolution < resolution:
+            return image_resolution
+    return resolution
+
+
 def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[VisionFrame]:
     if is_video(video_path):
         video_capture = cv2.VideoCapture(video_path)
@@ -56,7 +63,7 @@ def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[VisionFr
     return None
 
 
-def create_image_resolutions(resolution: Optional[Resolution]) -> List[str]:
+def create_image_resolutions(resolution: Resolution) -> List[str]:
     resolutions = []
     temp_resolutions = []
 
@@ -91,6 +98,14 @@ def detect_video_fps(video_path: str) -> Optional[float]:
     return None
 
 
+def restrict_video_fps(video_path: str, fps: Fps) -> Fps:
+    if is_video(video_path):
+        video_fps = detect_video_fps(video_path)
+        if video_fps < fps:
+            return video_fps
+    return fps
+
+
 def detect_video_resolution(video_path: str) -> Optional[Resolution]:
     if is_video(video_path):
         video_capture = cv2.VideoCapture(video_path)
@@ -102,7 +117,15 @@ def detect_video_resolution(video_path: str) -> Optional[Resolution]:
     return None
 
 
-def create_video_resolutions(resolution: Optional[Resolution]) -> List[str]:
+def restrict_video_resolution(video_path: str, resolution: Resolution) -> Resolution:
+    if is_video(video_path):
+        video_resolution = detect_video_resolution(video_path)
+        if video_resolution < resolution:
+            return video_resolution
+    return resolution
+
+
+def create_video_resolutions(resolution: Resolution) -> List[str]:
     resolutions = []
     temp_resolutions = []
 

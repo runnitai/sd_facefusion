@@ -13,15 +13,14 @@ from facefusion.choices import face_mask_regions
 from modules.paths_internal import script_path
 
 
+execution_thread_count, execution_queue_count, video_memory_strategy = tune_performance()
+        
 class JobParams:
     def __init__(self):
         self.id = 0
-        # Set default values
+        # general
         self.source_paths: Optional[List[str]] = None
-        self.source_paths_2: Optional[List[str]] = None
-        self.source_speaker_path: Optional[str] = None
         self.target_path: Optional[str] = None
-        self.restricted_path: Optional[str] = None
         self.output_path: Optional[str] = os.path.join(script_path, "outputs", "facefusion")
         # misc
         self.skip_download: Optional[bool] = False
@@ -29,9 +28,9 @@ class JobParams:
         self.log_level: Optional[LogLevel] = ['info']
         # execution
         self.execution_providers: List[str] = [('CUDAExecutionProvider', {'cudnn_conv_algo_search': 'DEFAULT'})]
-        execution_thread_count, execution_queue_count, video_memory_strategy = tune_performance()
         self.execution_thread_count: Optional[int] = execution_thread_count
         self.execution_queue_count: Optional[int] = execution_queue_count
+        # memory
         self.video_memory_strategy: Optional[str] = video_memory_strategy
         self.max_memory: Optional[int] = None
         # face analyser
@@ -48,12 +47,8 @@ class JobParams:
         self.reference_face_position: Optional[int] = 0
         self.reference_face_distance: Optional[float] = 0.75
         self.reference_frame_number: Optional[int] = 0
-        self.reference_face_dict: Optional[dict] = {}
-        self.reference_face_dict_2: Optional[dict] = {}
         # face mask
         self.face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
-        self.mask_enabled_times: Optional[List[int]] = []
-        self.mask_disabled_times: Optional[List[int]] = [0]
         self.face_mask_blur: Optional[float] = 0.3
         self.face_mask_padding: Optional[Padding] = (0, 0, 0, 0)
         self.face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
@@ -61,7 +56,6 @@ class JobParams:
         self.trim_frame_start: Optional[int] = None
         self.trim_frame_end: Optional[int] = None
         self.temp_frame_format: Optional[TempFrameFormat] = 'png'
-        self.temp_frame_quality: Optional[int] = 60
         self.keep_temp: Optional[bool] = False
         # output creation
         self.output_image_quality: Optional[int] = 60
@@ -69,16 +63,22 @@ class JobParams:
         self.output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'
         self.output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
         self.output_video_quality: Optional[int] = 60
-        self.output_video_preset: Optional[OutputVideoPreset] = 'veryfast'
-        self.output_video_resolution: Optional[str] = None
-        self.keep_fps: Optional[bool] = True
+        self.output_video_resolution: None
+        self.output_video_fps: Optional[str] = None
         self.skip_audio: Optional[bool] = False
-        self.sync_video_lip: Optional[bool] = False
-
         # frame processors
         self.frame_processors: List[str] = ["face_swapper"]
         # uis
         self.ui_layouts: List[str] = ["default"]
+
+        # Custom elements for AUTO extension
+        self.mask_disabled_times: Optional[List[int]] = [0]
+        self.mask_enabled_times: Optional[List[int]] = []
+        self.reference_face_dict: Optional[dict] = {}
+        self.reference_face_dict_2: Optional[dict] = {}
+        self.restricted_path: Optional[str] = None
+        self.source_paths_2: Optional[List[str]] = None
+        self.sync_video_lip: Optional[bool] = False
 
     def compare(self, other):
         # Compare all of the values in this instance to another instance, excluding self.id

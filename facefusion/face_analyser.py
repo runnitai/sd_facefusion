@@ -1,9 +1,7 @@
-import threading
-from typing import Any, Optional, List, Tuple
-
 import cv2
 import numpy
 import onnxruntime
+import threading
 
 import facefusion.globals
 from facefusion.common_helper import get_first
@@ -17,6 +15,7 @@ from facefusion.filesystem import resolve_relative_path
 from facefusion.typing import VisionFrame, Face, FaceSet, FaceAnalyserOrder, FaceAnalyserAge, FaceAnalyserGender, \
     ModelSet, BoundingBox, FaceLandmarkSet, FaceLandmark5, FaceLandmark68, Score, FaceScoreSet, Embedding
 from facefusion.vision import resize_frame_resolution, unpack_resolution
+from typing import Any, Optional, List, Tuple
 
 FACE_ANALYSER = None
 THREAD_SEMAPHORE: threading.Semaphore = threading.Semaphore()
@@ -47,6 +46,11 @@ MODELS: ModelSet = \
             {
                 'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/arcface_w600k_r50.onnx',
                 'path': resolve_relative_path('../.assets/models/arcface_w600k_r50.onnx')
+            },
+        'face_recognizer_arcface_ghost':
+            {
+                'url': 'https://github.com/harisreedhar/Face-Swappers-ONNX/releases/download/ghost/ghost_arcface_backbone.onnx',
+                'path': resolve_relative_path('../.assets/models/ghost_arcface_backbone.onnx')
             },
         'face_recognizer_arcface_inswapper':
             {
@@ -104,6 +108,9 @@ def get_face_analyser() -> Any:
                 face_recognizer = onnxruntime.InferenceSession(
                     MODELS.get('face_recognizer_arcface_blendswap').get('path'),
                     providers=apply_execution_provider_options(facefusion.globals.execution_providers))
+            if facefusion.globals.face_recognizer_model == 'arcface_ghost':
+                face_recognizer = onnxruntime.InferenceSession(MODELS.get('face_recognizer_arcface_ghost').get('path'),
+                                                               providers=facefusion.globals.execution_providers)
             if facefusion.globals.face_recognizer_model == 'arcface_inswapper':
                 face_recognizer = onnxruntime.InferenceSession(
                     MODELS.get('face_recognizer_arcface_inswapper').get('path'),
@@ -148,6 +155,7 @@ def pre_check() -> bool:
                 MODELS.get('face_detector_yoloface').get('url'),
                 MODELS.get('face_detector_yunet').get('url'),
                 MODELS.get('face_recognizer_arcface_blendswap').get('url'),
+                MODELS.get('face_recognizer_arcface_ghost').get('url'),
                 MODELS.get('face_recognizer_arcface_inswapper').get('url'),
                 MODELS.get('face_recognizer_arcface_simswap').get('url'),
                 MODELS.get('face_recognizer_arcface_uniface').get('url'),
@@ -329,7 +337,8 @@ def create_faces(vision_frame: VisionFrame, bounding_box_list: List[BoundingBox]
         bounding_box_list = [bounding_box_list[index] for index in sort_indices]
         face_landmark_5_list = [face_landmark_5_list[index] for index in sort_indices]
         score_list = [score_list[index] for index in sort_indices]
-        keep_indices = apply_nms(bounding_box_list, 0.4)
+        iou_threshold = 0.1 if facefusion.globals.face_detector_model == 'many' else 0.4
+        keep_indices = apply_nms(bounding_box_list, iou_threshold)
         for index in keep_indices:
             bounding_box = bounding_box_list[index]
             face_landmark_5_68 = face_landmark_5_list[index]
@@ -385,10 +394,10 @@ def detect_face_landmark_68(temp_vision_frame: VisionFrame, bounding_box: Boundi
     scale = 195 / numpy.subtract(bounding_box[2:], bounding_box[:2]).max()
     translation = (256 - numpy.add(bounding_box[2:], bounding_box[:2]) * scale) * 0.5
     crop_vision_frame, affine_matrix = warp_face_by_translation(temp_vision_frame, translation, scale, (256, 256))
-    # crop_vision_frame = cv2.cvtColor(crop_vision_frame, cv2.COLOR_RGB2Lab)
-    # if numpy.mean(crop_vision_frame[:, :, 0]) < 30:
-    #     crop_vision_frame[:, :, 0] = cv2.createCLAHE(clipLimit=2).apply(crop_vision_frame[:, :, 0])
-    # crop_vision_frame = cv2.cvtColor(crop_vision_frame, cv2.COLOR_Lab2RGB)
+    crop_vision_frame = cv2.cvtColor(crop_vision_frame, cv2.COLOR_RGB2Lab)
+    if numpy.mean(crop_vision_frame[:, :, 0]) < 30:
+        crop_vision_frame[:, :, 0] = cv2.createCLAHE(clipLimit=2).apply(crop_vision_frame[:, :, 0])
+    crop_vision_frame = cv2.cvtColor(crop_vision_frame, cv2.COLOR_Lab2RGB)
     crop_vision_frame = crop_vision_frame.transpose(2, 0, 1).astype(numpy.float32) / 255.0
     face_landmark_68, face_heatmap = face_landmarker.run(None,
                                                          {
@@ -509,6 +518,7 @@ def get_many_faces(vision_frame: VisionFrame) -> List[Face]:
 def find_similar_faces(reference_faces: FaceSet, vision_frame: VisionFrame, face_distance: float) -> List[Face]:
     similar_faces: List[Face] = []
     many_faces = get_many_faces(vision_frame)
+
     if reference_faces:
         for reference_set in reference_faces:
             if not similar_faces:

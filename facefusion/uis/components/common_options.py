@@ -1,5 +1,5 @@
-from typing import Optional, List
 import gradio
+from typing import Optional, List
 
 import facefusion.globals
 from facefusion import wording

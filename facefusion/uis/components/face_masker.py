@@ -1,8 +1,8 @@
-from typing import Optional, Tuple, List
 import gradio
+from typing import Optional, Tuple, List
 
-import facefusion.globals
 import facefusion.choices
+import facefusion.globals
 from facefusion import wording
 from facefusion.typing import FaceMaskType, FaceMaskRegion
 from facefusion.uis.core import register_ui_component, get_ui_component
@@ -117,14 +117,14 @@ def listen() -> None:
                                            outputs=FACE_MASK_REGION_CHECKBOX_GROUP)
     face_mask_padding_sliders = [FACE_MASK_PADDING_TOP_SLIDER, FACE_MASK_PADDING_RIGHT_SLIDER,
                                  FACE_MASK_PADDING_BOTTOM_SLIDER, FACE_MASK_PADDING_LEFT_SLIDER]
+    
+    for face_mask_padding_slider in face_mask_padding_sliders:
+        face_mask_padding_slider.change(update_face_mask_padding, inputs=face_mask_padding_sliders)
     preview_frame_slider = get_ui_component("preview_frame_slider")
     mask_elements = [BOTTOM_MASK_POSITIONS, MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON]
     MASK_DISABLE_BUTTON.click(set_disable_mask_time, inputs=preview_frame_slider, outputs=mask_elements)
     MASK_ENABLE_BUTTON.click(set_enable_mask_time, inputs=preview_frame_slider, outputs=mask_elements)
     MASK_CLEAR_BUTTON.click(clear_mask_times, outputs=mask_elements)
-    for face_mask_padding_slider in face_mask_padding_sliders:
-        face_mask_padding_slider.change(update_face_mask_padding, inputs=face_mask_padding_sliders)
-
 
 def generate_frame_html(return_value: bool = False) -> gradio.update:
     start_frames = facefusion.globals.mask_enabled_times
