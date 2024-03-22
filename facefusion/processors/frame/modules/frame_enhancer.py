@@ -194,7 +194,7 @@ def process_frame(inputs: FrameEnhancerInputs) -> VisionFrame:
     return enhance_frame(target_vision_frame)
 
 
-def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload], update_progress: UpdateProcess) -> None:
+def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload], update_progress: UpdateProcess) -> None:
     for queue_payload in process_manager.manage(queue_payloads):
         target_vision_path = queue_payload['frame_path']
         target_vision_frame = read_image(target_vision_path)

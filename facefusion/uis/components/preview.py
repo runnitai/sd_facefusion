@@ -51,7 +51,8 @@ def render() -> None:
             'visible': False
         }
     conditional_append_reference_faces()
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = (get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
+
     source_frames = read_static_images(facefusion.globals.source_paths)
     source_face = get_average_face(source_frames)
     source_frames_2 = read_static_images(facefusion.globals.source_paths_2)
@@ -234,7 +235,7 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
         source_audio_frame = None
 
     enable_button, disable_button = update_mask_buttons(frame_number)
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else None
+    reference_faces, reference_faces_2 = (get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
     if is_image(facefusion.globals.target_path):
         target_frame = read_static_image(facefusion.globals.target_path)
         preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, target_frame, -1)

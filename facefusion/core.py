@@ -325,7 +325,7 @@ def conditional_process(job: JobParams) -> None:
         logger.enable()
         if not frame_processor_module.pre_process('output'):
             return
-    conditional_append_reference_faces(job)
+    #conditional_append_reference_faces(job)
     target_path = job.target_path
     print(f"Processing {target_path}")
     try:
@@ -334,7 +334,6 @@ def conditional_process(job: JobParams) -> None:
         if is_video(target_path):
             reference_faces = job.reference_face_dict
             if len(reference_faces) > 1:
-                average_face = None
                 all_faces = []
                 embedding_list = []
                 normed_embedding_list = []
@@ -358,6 +357,31 @@ def conditional_process(job: JobParams) -> None:
                 )
                 reference_faces = {first_key: [average_face]}
                 job.reference_face_dict = reference_faces
+            reference_faces = job.reference_face_dict_2
+            if len(reference_faces) > 1:
+                all_faces = []
+                embedding_list = []
+                normed_embedding_list = []
+                first_key = None
+                for key, faces in reference_faces.items():
+                    if not first_key:
+                        first_key = key
+                    for face in faces:
+                        all_faces.append(face)
+                        embedding_list.append(face.embedding)
+                        normed_embedding_list.append(face.normed_embedding)
+                first_face = all_faces[0]
+                average_face = Face(
+                    bounding_box=first_face.bounding_box,
+                    landmarks=first_face.landmarks,
+                    scores=first_face.scores,
+                    embedding=numpy.mean(embedding_list, axis=0),
+                    normed_embedding=numpy.mean(normed_embedding_list, axis=0),
+                    gender=first_face.gender,
+                    age=first_face.age
+                )
+                reference_faces = {first_key: [average_face]}
+                job.reference_face_dict_2 = reference_faces
             process_video(start_time, job)
     except Exception as e:
         print(f"Exception Processing: {e} at {traceback.print_exc()}")
@@ -474,7 +498,7 @@ def process_video(start_time, job) -> None:
         return
     status.update(f"Merging video to {job.output_path} ({fps} fps)")
     status.step()
-    if not merge_video(job.target_path, fps):
+    if not merge_video(job.target_path, job.output_video_resolution, job.output_video_fps):
         status.update(wording.get('merging_video_failed'))
     # handle audio
     failed = False
