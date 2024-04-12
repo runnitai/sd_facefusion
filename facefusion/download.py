@@ -164,6 +164,12 @@ def download_video(target_url: str) -> str:
 
 
 def conditional_download(download_directory_path: str, urls: List[str]) -> None:
+    for url in urls:
+        if "inswapper" in url:
+            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
+            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
+            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
+            return
     with ThreadPoolExecutor() as executor:
         for url in urls:
             executor.submit(get_download_size, url)

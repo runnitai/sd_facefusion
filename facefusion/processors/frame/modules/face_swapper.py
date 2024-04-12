@@ -44,7 +44,7 @@ MODELS: ModelSet = \
                 'mean': [0.0, 0.0, 0.0],
                 'standard_deviation': [1.0, 1.0, 1.0]
             },
-        'inswapper_128':
+        'inswafpper_128':
             {
                 'type': 'inswapper',
                 'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models/inswapper_128.onnx',
@@ -183,6 +183,12 @@ def pre_check() -> bool:
     if not facefusion.globals.skip_download:
         download_directory_path = resolve_relative_path('../.assets/models')
         model_url = get_options('model').get('url')
+        if "inswapper" in model_url:
+            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
+            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
+            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
+            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
+            return True
         conditional_download(download_directory_path, [model_url])
     return True
 
@@ -231,7 +237,7 @@ def post_process() -> None:
         clear_face_parser()
 
 
-def update_padding(padding: Padding, frame_number: int) -> Padding:
+def update_padding(padding: Padding, frame_number: int, fps: float) -> Padding:
     if frame_number == -1:
         return padding
 
@@ -259,7 +265,9 @@ def swap_face(source_face: Face, target_face: Face, temp_vision_frame: VisionFra
     crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmarks['5/68'],
                                                                     model_template, model_size)
     padding = facefusion.globals.face_mask_padding
-    padding = update_padding(padding, frame_number)
+    fps = facefusion.globals.output_video_fps
+
+    padding = update_padding(padding, frame_number, fps)
     crop_mask_list = []
     if 'box' in facefusion.globals.face_mask_types:
         box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], facefusion.globals.face_mask_blur, padding)

@@ -43,6 +43,8 @@ def run_pre_checks(package):
                             # Remove the path and the trailing slash
                             model_path = model_path[:-7]
                         model_url = module.MODELS[model]["url"]
+                        if "inswapper" in model_url:
+                            continue
                         conditional_download(model_path, [model_url])
                 # Recursively check for submodules
                 find_submodules(module)

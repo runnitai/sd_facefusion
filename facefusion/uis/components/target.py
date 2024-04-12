@@ -10,6 +10,7 @@ from facefusion.download import download_video
 from facefusion.face_store import clear_reference_faces, clear_static_faces
 from facefusion.ffmpeg import extract_audio_from_video
 from facefusion.filesystem import is_image, is_video, is_url, TEMP_DIRECTORY_PATH, clear_temp
+from facefusion.uis.components.face_selector import clear_selected_faces
 from facefusion.uis.core import register_ui_component, get_ui_component
 from facefusion.uis.components.source import update as source_update
 from facefusion.uis.typing import File
@@ -121,6 +122,7 @@ def update_from_path(path: str) -> Tuple[gradio.update, gradio.update, gradio.up
 def update(file: IO[Any]) -> Tuple[gradio.Image, gradio.Video]:
     clear_reference_faces()
     clear_static_faces()
+    clear_selected_faces()
     # If file is a string, make it a file object
     if isinstance(file, str):
         file_path = file

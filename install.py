@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys
-import traceback
 import urllib.request
 from importlib import metadata
 from typing import Optional

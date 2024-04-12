@@ -1,3 +1,5 @@
+import threading
+from functools import wraps
 from time import sleep
 from typing import Any, Dict, List, Optional
 
@@ -51,7 +53,8 @@ def render() -> None:
             'visible': False
         }
     conditional_append_reference_faces()
-    reference_faces, reference_faces_2 = (get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
+    reference_faces, reference_faces_2 = (
+        get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
 
     source_frames = read_static_images(facefusion.globals.source_paths)
     source_face = get_average_face(source_frames)
@@ -65,12 +68,14 @@ def render() -> None:
         source_audio_frame = None
     if is_image(facefusion.globals.target_path):
         target_frame = read_static_image(facefusion.globals.target_path)
-        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, target_frame, -1)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
+                                              source_audio_frame, target_frame, -1)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
     if is_video(facefusion.globals.target_path):
         frame_number = facefusion.globals.reference_frame_number
         temp_frame = get_video_frame(facefusion.globals.target_path, frame_number)
-        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, temp_frame, frame_number)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
+                                              source_audio_frame, temp_frame, frame_number)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
         preview_image_args['visible'] = True
         preview_frame_slider_args['value'] = facefusion.globals.reference_frame_number
@@ -189,16 +194,16 @@ def listen() -> None:
         if component:
             component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     change_two_component_names: List[ComponentName] = \
-    [
-        'frame_processors_checkbox_group',
-        'face_enhancer_model_dropdown',
-        'face_swapper_model_dropdown',
-        'frame_enhancer_model_dropdown',
-        'lip_syncer_model_dropdown',
-        'face_detector_model_dropdown',
-        'face_detector_size_dropdown',
-        'face_detector_score_slider'
-    ]
+        [
+            'frame_processors_checkbox_group',
+            'face_enhancer_model_dropdown',
+            'face_swapper_model_dropdown',
+            'frame_enhancer_model_dropdown',
+            'lip_syncer_model_dropdown',
+            'face_detector_model_dropdown',
+            'face_detector_size_dropdown',
+            'face_detector_score_slider'
+        ]
     for component_name in change_two_component_names:
         component = get_ui_component(component_name)
         if component:
@@ -211,6 +216,30 @@ def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
     clear_static_faces()
     sleep(0.5)
     return update_preview_image(frame_number)
+
+
+def debounce(wait):
+    """Debounce decorator that returns a default value if the call is debounced."""
+
+    def decorator(fn):
+        @wraps(fn)
+        def debounced(*args, **kwargs):
+            def call_it():
+                debounced._timer = None
+                fn(*args, **kwargs)
+
+            if debounced._timer is not None:
+                debounced._timer.cancel()
+                return gradio.update(), gradio.update(), gradio.update()  # Return the default value immediately if debouncing
+            else:
+                debounced._timer = threading.Timer(wait, call_it)
+                debounced._timer.start()
+                return gradio.update(), gradio.update(), gradio.update()
+
+        debounced._timer = None
+        return debounced
+
+    return decorator
 
 
 def update_preview_image(frame_number: int = 0) -> gradio.Image:
@@ -235,15 +264,18 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
         source_audio_frame = None
 
     enable_button, disable_button = update_mask_buttons(frame_number)
-    reference_faces, reference_faces_2 = (get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
+    reference_faces, reference_faces_2 = (
+        get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
     if is_image(facefusion.globals.target_path):
         target_frame = read_static_image(facefusion.globals.target_path)
-        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, target_frame, -1)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
+                                              source_audio_frame, target_frame, -1)
         preview_frame = normalize_frame_color(preview_frame)
         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
     if is_video(facefusion.globals.target_path):
         temp_frame = get_video_frame(facefusion.globals.target_path, frame_number)
-        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2, source_audio_frame, temp_frame, frame_number)
+        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
+                                              source_audio_frame, temp_frame, frame_number)
         preview_frame = normalize_frame_color(preview_frame)
         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
     return gradio.update(value=None, visible=True), enable_button, disable_button
@@ -288,7 +320,8 @@ def update_preview_frame_slider() -> gradio.update:
         visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
 
-def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face, source_audio_frame: AudioFrame,
+def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face,
+                          source_audio_frame: AudioFrame,
                           target_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
     target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
     if analyse_frame(target_vision_frame):

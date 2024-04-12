@@ -96,14 +96,12 @@ def multi_process_frames(source_paths: List[str], source_paths_2: List[str], tem
                 if current_step % 30 == 0 or current_step == status.job_total:
                     status.preview_image = preview_image
 
-        with ThreadPoolExecutor(max_workers=facefusion.globals.execution_thread_count) as executor:
+        with ThreadPoolExecutor() as executor:
             futures = []
             queue: Queue[QueuePayload] = create_queue(queue_payloads)
-            queue_per_future = max(
-                len(queue_payloads) // facefusion.globals.execution_thread_count * facefusion.globals.execution_queue_count,
-                1)
             while not queue.empty():
-                future = executor.submit(process_frames, source_paths, source_paths_2, pick_queue(queue, queue_per_future),
+                future = executor.submit(process_frames, source_paths, source_paths_2,
+                                         pick_queue(queue, 1),
                                          update_progress)
                 futures.append(future)
             for future_done in as_completed(futures):

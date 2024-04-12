@@ -94,7 +94,8 @@ def debug_face(target_face: Face, temp_vision_frame: VisionFrame, frame_number=-
         crop_mask_list = []
         if 'box' in facefusion.globals.face_mask_types:
             padding = facefusion.globals.face_mask_padding
-            padding = update_padding(padding, frame_number)
+            fps = facefusion.globals.output_video_fps
+            padding = update_padding(padding, frame_number, fps)
             box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], 0, padding)
             crop_mask_list.append(box_mask)
 

@@ -5,6 +5,7 @@ import numpy
 import facefusion.globals
 from facefusion.typing import VisionFrame, Face, FaceStore, FaceSet
 
+
 FACE_STORE: FaceStore = \
     {
         'static_faces': {},
@@ -54,6 +55,8 @@ def get_reference_faces_original() -> Optional[FaceSet]:
 
 
 def get_reference_faces() -> Tuple[Optional[FaceSet], Optional[FaceSet]]:
+    from extensions.sd_facefusion.facefusion.face_analyser import get_average_face
+
     set_out = {}
     set_out_2 = {}
     all_faces = []

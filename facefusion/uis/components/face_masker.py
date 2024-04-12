@@ -53,8 +53,10 @@ def render() -> None:
             value=facefusion.globals.face_mask_blur
         )
         with gradio.Row():
-            MASK_DISABLE_BUTTON = gradio.Button(value="Disable Padding", variant="secondary", visible=False, elem_classes=["maskBtn"])
-            MASK_ENABLE_BUTTON = gradio.Button(value="Enable Padding", variant="primary", visible=True, elem_classes=["maskBtn"])
+            MASK_DISABLE_BUTTON = gradio.Button(value="Disable Padding", variant="secondary", visible=False,
+                                                elem_classes=["maskBtn"])
+            MASK_ENABLE_BUTTON = gradio.Button(value="Enable Padding", variant="primary", visible=True,
+                                               elem_classes=["maskBtn"])
             MASK_CLEAR_BUTTON = gradio.Button(value="Clear Markers", elem_classes=["maskBtn"])
             BOTTOM_MASK_POSITIONS = gradio.HTML(value=generate_frame_html(True), elem_id="bottom_mask_positions")
         with gradio.Row():
@@ -117,7 +119,7 @@ def listen() -> None:
                                            outputs=FACE_MASK_REGION_CHECKBOX_GROUP)
     face_mask_padding_sliders = [FACE_MASK_PADDING_TOP_SLIDER, FACE_MASK_PADDING_RIGHT_SLIDER,
                                  FACE_MASK_PADDING_BOTTOM_SLIDER, FACE_MASK_PADDING_LEFT_SLIDER]
-    
+
     for face_mask_padding_slider in face_mask_padding_sliders:
         face_mask_padding_slider.change(update_face_mask_padding, inputs=face_mask_padding_sliders)
     preview_frame_slider = get_ui_component("preview_frame_slider")
@@ -125,6 +127,7 @@ def listen() -> None:
     MASK_DISABLE_BUTTON.click(set_disable_mask_time, inputs=preview_frame_slider, outputs=mask_elements)
     MASK_ENABLE_BUTTON.click(set_enable_mask_time, inputs=preview_frame_slider, outputs=mask_elements)
     MASK_CLEAR_BUTTON.click(clear_mask_times, outputs=mask_elements)
+
 
 def generate_frame_html(return_value: bool = False) -> gradio.update:
     start_frames = facefusion.globals.mask_enabled_times

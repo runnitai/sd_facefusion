@@ -23,7 +23,7 @@ execution_thread_count: Optional[int] = 32
 execution_queue_count: Optional[int] = 2
 # memory
 video_memory_strategy: Optional[VideoMemoryStrategy] = "tolerant"
-system_memory_limit: Optional[int] = None
+system_memory_limit: Optional[int] = 0
 # face analyser
 face_analyser_order: Optional[FaceAnalyserOrder] = 'best-worst'
 face_analyser_age: Optional[FaceAnalyserAge] = None

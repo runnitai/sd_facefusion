@@ -140,14 +140,16 @@ def listen() -> None:
                                                     OUTPUT_VIDEO_FPS_SLIDER])
 
 
-def remote_update() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+def remote_update() -> Tuple[
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     if is_image(facefusion.globals.target_path):
         output_image_resolution = detect_image_resolution(facefusion.globals.target_path)
         output_image_resolutions = create_image_resolutions(output_image_resolution)
         facefusion.globals.output_image_resolution = pack_resolution(output_image_resolution)
         return gradio.update(visible=True), gradio.update(visible=True,
-                                                            value=facefusion.globals.output_image_resolution,
-                                                            choices=output_image_resolutions), gradio.update(visible=False), gradio.update(visible=False), gradio.update(
+                                                          value=facefusion.globals.output_image_resolution,
+                                                          choices=output_image_resolutions), gradio.update(
+            visible=False), gradio.update(visible=False), gradio.update(
             visible=False), gradio.update(visible=False, value=None, choices=None), gradio.update(visible=False,
                                                                                                   value=None)
     if is_video(facefusion.globals.target_path):
@@ -157,9 +159,11 @@ def remote_update() -> Tuple[gradio.update, gradio.update, gradio.update, gradio
         facefusion.globals.output_video_fps = detect_video_fps(facefusion.globals.target_path)
         return (gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=True),
                 gradio.update(visible=True), gradio.update(visible=True),
-                gradio.update(visible=True, value=facefusion.globals.output_video_resolution, choices=output_video_resolutions),
+                gradio.update(visible=True, value=facefusion.globals.output_video_resolution,
+                              choices=output_video_resolutions),
                 gradio.update(visible=True, value=facefusion.globals.output_video_fps))
-    return gradio.update(visible=False), gradio.update(visible=False, value=None, choices=None), gradio.update(visible=False), gradio.update(visible=False), gradio.update(
+    return gradio.update(visible=False), gradio.update(visible=False, value=None, choices=None), gradio.update(
+        visible=False), gradio.update(visible=False), gradio.update(
         visible=False), gradio.update(visible=False, value=None, choices=None), gradio.update(visible=False, value=None)
 
 
@@ -169,6 +173,8 @@ def update_output_path(output_path: str) -> None:
 
 def update_output_image_quality(output_image_quality: int) -> None:
     facefusion.globals.output_image_quality = output_image_quality
+
+
 def update_output_image_resolution(output_image_resolution: str) -> None:
     facefusion.globals.output_image_resolution = output_image_resolution
 

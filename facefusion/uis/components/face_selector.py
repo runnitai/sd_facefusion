@@ -247,9 +247,18 @@ def update_selected_face_index_2(event: gradio.SelectData) -> None:
     selected_face_index_2 = event.index
 
 
+def clear_selected_faces() -> None:
+    global current_selected_faces, current_selected_faces_2, selected_face_index, selected_face_index_2
+    current_selected_faces = []
+    current_selected_faces_2 = []
+    selected_face_index = -1
+    selected_face_index_2 = -1
+
+
 def clear_and_update_reference_face_position(event: gradio.SelectData) -> gradio.Gallery:
     clear_reference_faces()
     clear_static_faces()
+    clear_selected_faces()
     update_reference_face_position(event.index)
     return update_reference_position_gallery(), clear_mask_times()
 
@@ -418,7 +427,7 @@ def reference_frame_forward(reference_frame_number: int) -> None:
 def clear_and_update_reference_position_gallery() -> gradio.update:
     clear_reference_faces()
     clear_static_faces()
-
+    clear_selected_faces()
     return update_reference_position_gallery()
 
 
