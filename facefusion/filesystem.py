@@ -136,3 +136,10 @@ def resolve_relative_path_auto(path: str) -> str:
     return os.path.join(models_path, 'facefusion', model_name)
 
 
+def list_face_models() -> List[str]:
+    from modules.paths_internal import models_path
+    models = ['blendswap_256', 'ghost_unet_1_block', 'ghost_unet_2_block',
+              'ghost_unet_3_block', 'inswapper_128', 'inswapper_128_fp16',
+              'simswap_256', 'simswap_512_unofficial', 'uniface_256']
+    model_dir = os.path.join(models_path, 'facefusion')
+    return [model for model in models if os.path.exists(os.path.join(model_dir, f"{model}.onnx")) or "inswapper" not in model]

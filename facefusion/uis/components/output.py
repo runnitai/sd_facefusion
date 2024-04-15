@@ -192,7 +192,6 @@ gradio.update, gradio.update, gradio.update]:
         pass
     job_queue.clear()
     out_files, out_image, out_video = process_outputs()
-    clear_temp()
     current_target_path = facefusion.globals.target_path
     if is_video(current_target_path):
         current_target_ext = os.path.splitext(current_target_path)[1]
