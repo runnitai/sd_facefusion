@@ -142,7 +142,6 @@ def download_video(target_url: str) -> str:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(target_url, download=False)
         video_title = info_dict.get('title')
-        print(f"Video info: {info_dict}")
 
     if video_title:
         video_filename = get_video_filename(video_title)

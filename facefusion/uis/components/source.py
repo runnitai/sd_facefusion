@@ -1,5 +1,5 @@
 import os
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
 import gradio
 
@@ -95,36 +95,45 @@ def listen() -> None:
     SOURCE_FILE_2.change(update_2, inputs=SOURCE_FILE_2, outputs=[SOURCE_IMAGE_2])
 
 
-def check_swap_source_style(files: List[File]) -> List[File]:
+def check_swap_source_style(files: List[File], return_files: bool = False) -> Union[gradio.update, List[str]]:
     style_type = facefusion.globals.style_changer_model
+    target = facefusion.globals.style_changer_target
+    if target != 'source':
+        file_names = [file.name for file in files if file] if files else None
+        return gradio.update() if not return_files else file_names
     swapped_files = []
-    for file in files:
-        if is_image(file.name):
-            # Split the file name and extension, make sure it ends with _style_{style_type}
-            file_name, file_extension = os.path.splitext(file.name)
-            if "_style_" in file_name:
-                file_parts = file_name.split('_style_')
-                if len(file_parts) > 1 and file_parts[-1] == style_type:
-                    swapped_files.append(file)
-                else:
-                    # Find the original file
-                    original_file = file_name.split('_style_')[0] + file_extension
-                    if os.path.exists(original_file):
-                        swapped_files.append(File(process_src_image(original_file, style_type)))
+    if files:
+        for file in files:
+            if is_image(file.name):
+                # Split the file name and extension, make sure it ends with _style_{style_type}
+                file_name, file_extension = os.path.splitext(file.name)
+                if "_style_" in file_name:
+                    file_parts = file_name.split('_style_')
+                    if len(file_parts) > 1 and file_parts[-1] == style_type:
+                        swapped_files.append(file.name)
                     else:
-                        print(f"Original file {original_file} not found.")
+                        # Find the original file
+                        original_file = file_name.split('_style_')[0] + file_extension
+                        if os.path.exists(original_file):
+                            swapped = process_src_image(original_file, style_type)
+                            swapped_files.append(swapped)
+                        else:
+                            print(f"Original file {original_file} not found.")
+                else:
+                    swapped = process_src_image(file.name, style_type)
+                    swapped_files.append(swapped)
             else:
-                swapped_files.append(File(process_src_image(file.name, style_type)))
-        else:
-            swapped_files.append(file)
-    return swapped_files
+                swapped_files.append(file.name)
+        return gradio.update(value=swapped_files) if not return_files else swapped_files
+    return gradio.update() if not return_files else files
 
 
 def update(files: List[File]) -> Tuple[gradio.Audio, gradio.Image]:
+    file_names = [file.name for file in files if file] if files else None
     if 'style_changer' in facefusion.globals.frame_processors:
-        files = check_swap_source_style(files)
+        files = check_swap_source_style(files, True)
+        file_names = files
 
-    file_names = [file.name for file in files] if files else None
     temp_dir = TEMP_DIRECTORY_PATH
     os.makedirs(temp_dir, exist_ok=True)
     has_source_audio = has_audio(file_names)
@@ -141,10 +150,11 @@ def update(files: List[File]) -> Tuple[gradio.Audio, gradio.Image]:
 
 
 def update_2(files: List[File]) -> Tuple[gradio.Audio, gradio.Image]:
-    if 'style_changer' in facefusion.globals.frame_processors:
-        files = check_swap_source_style(files)
-
     file_names = [file.name for file in files] if files else None
+    if 'style_changer' in facefusion.globals.frame_processors:
+        files = check_swap_source_style(files, True)
+        file_names = files
+
     temp_dir = TEMP_DIRECTORY_PATH
     os.makedirs(temp_dir, exist_ok=True)
     has_source_image = has_image(file_names)

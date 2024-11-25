@@ -103,8 +103,7 @@ class JobParams:
                 if key == "reference_face_dict" or key == "reference_face_dict_2":
                     continue
                 out_params[key] = self.__dict__[key]
-            else:
-                print(f"Could not serialize {key}={value}")
+
         return json.dumps(out_params, indent=4)
 
     def to_dict(self):

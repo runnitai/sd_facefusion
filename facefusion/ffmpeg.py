@@ -21,7 +21,7 @@ LAST_VIDEO_INFO = None
 
 def run_ffmpeg(args: List[str], show_progress: bool = False) -> bool:
     if show_progress:
-        return run_ffmpeg_progress(args)
+        return run_ffmpeg_progress(args, "Extracting")
     else:
         return open_ffmpeg(args).wait() == 0
 
@@ -202,14 +202,14 @@ def extract_audio_from_video(target_path: str) -> Optional[str]:
     return None
 
 
-def run_ffmpeg_progress(args: List[str]) -> bool:
+def run_ffmpeg_progress(args: List[str], description: str = "Processing") -> bool:
     commands = ['ffmpeg', '-hide_banner', '-loglevel', 'error']
     commands.extend(args)
     print(f"Executing ffmpeg: '{' '.join(commands)}'")
     status = FFStatus()
     try:
         ff = FfmpegProgress(commands)
-        with mytqdm(total=100, position=1, desc="Processing", state=status) as pbar:
+        with mytqdm(total=100, position=1, desc=description, state=status) as pbar:
             for progress in ff.run_command_with_progress():
                 pbar.update(progress - pbar.n)
         return True

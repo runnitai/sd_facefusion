@@ -163,6 +163,11 @@ gradio.update, gradio.update, gradio.update]:
         unload_model_weights()
     OUTPUTS = []
     total_jobs = len(queue)
+    if total_jobs == 0:
+        from facefusion.uis.components.job_queue import enqueue
+        job = enqueue(False)
+        if job:
+            total_jobs = 1
     if total_jobs > 0:
         status.start(queue, "Starting FaceFusion")
         print("Starting jobs from queue")
@@ -181,6 +186,8 @@ gradio.update, gradio.update, gradio.update]:
             out_path = start_job(job)
             OUTPUTS.append(out_path)
             completed_jobs.append(job)
+            # Delete job from queue
+            #queue.remove(job)
             job_idx += 1
         job_queue.clear()
     else:

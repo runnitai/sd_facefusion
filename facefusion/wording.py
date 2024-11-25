@@ -187,6 +187,9 @@ WORDING: Dict[str, Any] = \
                 'preview_frame_slider': 'PREVIEW FRAME',
                 # source
                 'source_file': 'SOURCE',
+                # style changer
+                'style_changer_model_dropdown': 'SELECTED STYLE',
+                'style_changer_target_radio': 'STYLE TARGET',
                 # target
                 'target_file': 'TARGET',
                 'target_url_textbox': 'TARGET URL',

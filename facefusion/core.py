@@ -486,6 +486,7 @@ def process_video(start_time, job) -> None:
             # Replace "_" with spaces and title case it
             module_name = module_name.replace("_", " ").title()
             status.update(f"Processing with {module_name}")
+            print(f"Processing with {module_name}")
             frame_processor_module.process_video(job.source_paths, job.source_paths_2, temp_frame_paths)
             frame_processor_module.post_process()
     else:

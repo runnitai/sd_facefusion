@@ -55,7 +55,7 @@ def get_frame_processors_modules(frame_processors: List[str]) -> List[ModuleType
     global FRAME_PROCESSORS_MODULES
 
     # Priority list defining the order
-    priority_order = ['face_swapper', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
+    priority_order = ['face_swapper', 'style_changer', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
 
     # Sort the frame_processors list based on the priority_order
     ordered_processors = sorted(frame_processors,
@@ -109,6 +109,7 @@ def clear_frame_processors_modules() -> None:
 def multi_process_frames(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str],
                          process_frames: ProcessFrames) -> None:
     queue_payloads = create_queue_payloads(temp_frame_paths)
+    print(f"Processing frames with {len(queue_payloads)} payloads.")
     batch_size = facefusion.globals.batch_size or 4  # Default to 4 frames per batch
     max_workers = max(facefusion.globals.execution_thread_count, 4)  # Ensure sufficient threads
 

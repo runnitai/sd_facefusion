@@ -33,6 +33,8 @@ def render() -> None:
     global FRAME_ENHANCER_MODEL_DROPDOWN
     global FRAME_ENHANCER_BLEND_SLIDER
     global LIP_SYNCER_MODEL_DROPDOWN
+    global STYLE_CHANGER_MODEL_DROPDOWN
+    global STYLE_TARGET_RADIO
     FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP = gradio.CheckboxGroup(
         label=wording.get('uis.face_debugger_items_checkbox_group'),
         choices=frame_processors_choices.face_debugger_items,
@@ -135,11 +137,10 @@ def listen() -> None:
     FRAME_ENHANCER_BLEND_SLIDER.change(update_frame_enhancer_blend, inputs=FRAME_ENHANCER_BLEND_SLIDER)
     LIP_SYNCER_MODEL_DROPDOWN.change(update_lip_syncer_model, inputs=LIP_SYNCER_MODEL_DROPDOWN,
                                      outputs=LIP_SYNCER_MODEL_DROPDOWN)
-    STYLE_CHANGER_MODEL_DROPDOWN.change(update_style_changer_model, inputs=STYLE_CHANGER_MODEL_DROPDOWN,
-                                        outputs=STYLE_CHANGER_MODEL_DROPDOWN)
-    target_file = get_ui_component('target_file')
-    target_file_2 = get_ui_component('target_file_2')
-    STYLE_TARGET_RADIO.change(update_style_target, inputs=[STYLE_TARGET_RADIO, target_file, target_file_2], outputs=[target_file, target_file_2])
+    STYLE_CHANGER_MODEL_DROPDOWN.change(update_style_changer_model, inputs=STYLE_CHANGER_MODEL_DROPDOWN)
+    source_file = get_ui_component('source_file')
+    source_file_2 = get_ui_component('source_file_2')
+    STYLE_TARGET_RADIO.change(update_style_target, inputs=[STYLE_TARGET_RADIO, source_file, source_file_2 ], outputs=[source_file, source_file_2])
     frame_processors_checkbox_group = get_ui_component('frame_processors_checkbox_group')
     if frame_processors_checkbox_group:
         frame_processors_checkbox_group.change(update_frame_processors, inputs=frame_processors_checkbox_group,
@@ -147,7 +148,8 @@ def listen() -> None:
                                                         FACE_ENHANCER_MODEL_DROPDOWN, FACE_ENHANCER_BLEND_SLIDER,
                                                         FACE_SWAPPER_MODEL_DROPDOWN, FACE_SWAPPER_WEIGHT_SLIDER,
                                                         FRAME_ENHANCER_MODEL_DROPDOWN, FRAME_ENHANCER_BLEND_SLIDER,
-                                                        LIP_SYNCER_MODEL_DROPDOWN])
+                                                        LIP_SYNCER_MODEL_DROPDOWN, STYLE_CHANGER_MODEL_DROPDOWN,
+                                                        STYLE_TARGET_RADIO])
 
 
 def update_frame_processors(frame_processors: List[str]) -> Tuple[
@@ -157,10 +159,12 @@ def update_frame_processors(frame_processors: List[str]) -> Tuple[
     has_face_swapper = 'face_swapper' in frame_processors
     has_frame_enhancer = 'frame_enhancer' in frame_processors
     has_lip_syncer = 'lip_syncer' in frame_processors
-    return gradio.update(visible=has_face_debugger), gradio.update(visible=has_face_enhancer), gradio.update(
+    has_style_changer = 'style_changer' in frame_processors
+    return (gradio.update(visible=has_face_debugger), gradio.update(visible=has_face_enhancer), gradio.update(
         visible=has_face_enhancer), gradio.update(visible=has_face_swapper), gradio.update(
         visible=has_face_swapper), gradio.update(visible=has_frame_enhancer), gradio.update(
-        visible=has_frame_enhancer), gradio.update(visible=has_lip_syncer)
+        visible=has_frame_enhancer), gradio.update(visible=has_lip_syncer), gradio.update(visible=has_style_changer),
+            gradio.update(visible=has_style_changer))
 
 
 def update_face_debugger_items(face_debugger_items: List[FaceDebuggerItem]) -> None:
@@ -227,15 +231,14 @@ def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.Dropdown
     return gradio.Dropdown()
 
 
-def update_style_changer_model(style_changer_model: str) -> gradio.Dropdown:
+def update_style_changer_model(style_changer_model: str):
     frame_processors_globals.style_changer_model = style_changer_model
     facefusion.globals.style_changer_model = style_changer_model
     style_changer_module = load_frame_processor_module('style_changer')
-    style_changer_module.clear_frame_processor()
+    print(f"Style Changer Model: {style_changer_model}")
     style_changer_module.set_options('model', style_changer_model)
-    if style_changer_module.pre_check():
-        return gradio.Dropdown(value=style_changer_model)
-    return gradio.Dropdown()
+    print(f"Options set")
+    return
 
 
 def update_style_target(style_target: str, source_file: List[File], source_file_2: List[File]) -> Tuple[gradio.update, gradio.update]:
@@ -243,6 +246,6 @@ def update_style_target(style_target: str, source_file: List[File], source_file_
     facefusion.globals.style_changer_target = style_target
     style_changer_module = load_frame_processor_module('style_changer')
     style_changer_module.set_options('target', style_target)
-    return gradio.update(check_swap_source_style(source_file)), gradio.update(check_swap_source_style(source_file_2))
+    return check_swap_source_style(source_file), check_swap_source_style(source_file_2)
 
 

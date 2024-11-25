@@ -3,21 +3,11 @@ let stoppedCount = 0;
 
 function start_status() {
     stoppedCount = 0;
-    let queueBtn = gradioApp().getElementById("ff_enqueue");
-    if (queueBtn == null) {
-        return;
-    }
-    queueBtn.click();
     ffProgressTimeout = setTimeout(recheck_status, 2000);
 }
 
 function stop_status() {
     console.log("Stop status...");
-    let queueBtn = gradioApp().getElementById("ff_dequeue");
-    if (queueBtn == null) {
-        return;
-    }
-    queueBtn.click();
     clearTimeout(ffProgressTimeout);
 }
 

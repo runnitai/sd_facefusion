@@ -12,7 +12,6 @@ from facefusion.ffmpeg import extract_audio_from_video
 from facefusion.filesystem import is_image, is_video, is_url, TEMP_DIRECTORY_PATH, clear_temp
 from facefusion.uis.components.face_selector import clear_selected_faces
 from facefusion.uis.core import register_ui_component, get_ui_component
-from facefusion.uis.components.source import update as source_update
 from facefusion.uis.typing import File
 
 TARGET_PATH: Optional[gradio.Text] = None
@@ -85,14 +84,14 @@ def listen() -> None:
 def update_from_path(path: str) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     if not path:
         return gradio.update(value=None, visible=True), gradio.update(value=None, visible=False), gradio.update(
-            value=None, visible=False)
+            value=None, visible=False), gradio.update(value=None, visible=False)
     if is_url(path):
         print(f"Downloading video from {path}")
         path = download_video(path)
         print(f"Downloaded video to {path}")
         if not path:
             return gradio.update(value=None, visible=True), gradio.update(value=None, visible=False), gradio.update(
-                value=None, visible=False)
+                value=None, visible=False), gradio.update(value=None, visible=False)
 
     root_path = facefusion.globals.restricted_path if facefusion.globals.restricted_path else "/mnt/private"
     absolute_path = os.path.abspath(path)

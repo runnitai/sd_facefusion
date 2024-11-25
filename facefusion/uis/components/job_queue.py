@@ -1,6 +1,6 @@
 import logging
 import os.path
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import gradio
 
@@ -178,22 +178,23 @@ def remove_last(last_value) -> gradio.update:
     return gradio.update(value=queue_to_table(), visible=True)
 
 
-def enqueue() -> gradio.update:
+def enqueue(return_update: bool = True) -> Union[None, Tuple[gradio.update, gradio.update, gradio.update, gradio.update]]:
     global JOB_QUEUE
     # Enumerate all values in facefusion.globals to a dict
     global_dict = {}
     for key in facefusion.globals.__dict__:
         if not key.startswith("__"):
             global_dict[key] = facefusion.globals.__dict__[key]
-    required_keys = ["output_path", "target_path", "source_paths"]
+    required_keys = ["output_path", "target_path"]
+    default = (gradio.update(), gradio.update(), gradio.update(), gradio.update()) if return_update else None
     # If any of the required keys are missing, don't add the job to the queue
     if any(key not in global_dict for key in required_keys):
         print(f"Missing required key in facefusion.globals")
-        return gradio.update(), gradio.update(), gradio.update(), gradio.update()
+        return default
     # Make sure the required_keys have values
     if any(not global_dict[key] for key in required_keys):
         print(f"Missing required value in facefusion.globals")
-        return gradio.update(), gradio.update(), gradio.update(), gradio.update()
+        return default
     new_job = JobParams().from_dict(global_dict)
 
     processors = new_job.frame_processors
@@ -208,7 +209,7 @@ def enqueue() -> gradio.update:
     for job in JOB_QUEUE:
         if new_job.compare(job):
             print(f"Job already in queue")
-            return gradio.update(), target_file, source_image, source_image_2
+            return (gradio.update(), target_file, source_image, source_image_2) if return_update else None
     new_job.id = len(JOB_QUEUE) + len(COMPLETED_JOBS) + 1  # Add ID field
     temp_test_dir = os.path.join(os.path.dirname(new_job.output_path), "ff_debug")
     if not os.path.exists(temp_test_dir):
@@ -224,4 +225,4 @@ def enqueue() -> gradio.update:
         source_image = gradio.update(value=None)
         source_image_2 = gradio.update(value=None)
 
-    return gradio.update(value=queue_to_table(), visible=True), target_file, source_image, source_image_2
+    return (gradio.update(value=queue_to_table(), visible=True), target_file, source_image, source_image_2) if return_update else new_job

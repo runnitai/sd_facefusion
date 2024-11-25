@@ -204,7 +204,9 @@ def listen() -> None:
             'lip_syncer_model_dropdown',
             'face_detector_model_dropdown',
             'face_detector_size_dropdown',
-            'face_detector_score_slider'
+            'face_detector_score_slider',
+            'style_changer_model_dropdown',
+            'style_changer_target_radio',
         ]
     for component_name in change_two_component_names:
         component = get_ui_component(component_name)
@@ -249,6 +251,7 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
     from facefusion.uis.components.frame_processors import sort_frame_processors
     global_processors = sort_frame_processors(global_processors)
     for frame_processor in global_processors:
+        print(f"Checking frame processor: {frame_processor}")
         frame_processor_module = load_frame_processor_module(frame_processor)
         while not frame_processor_module.post_check():
             logger.disable()
@@ -325,11 +328,12 @@ def update_preview_frame_slider() -> gradio.update:
 def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face,
                           source_audio_frame: AudioFrame,
                           target_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
+    print("Processing preview frame")
     target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
     if analyse_frame(target_vision_frame):
         return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
     global_processors = facefusion.globals.frame_processors
-    priority_order = ['face_swapper', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
+    priority_order = ['face_swapper', 'style_changer', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
 
     # Sort global_processors based on the priority_order
     global_processors = sorted(
