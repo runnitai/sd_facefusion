@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from modules.paths_internal import script_path
 from facefusion.choices import face_mask_regions
-
+batch_size: Optional[int] = 4
 # general
 source_paths: Optional[List[str]] = None
 target_path: Optional[str] = None
@@ -57,6 +57,8 @@ output_video_quality: Optional[int] = 60
 output_video_resolution: Optional[str] = None
 output_video_fps: Optional[float] = None
 skip_audio: Optional[bool] = False
+style_changer_model: Optional[str] = '3d'
+style_changer_target: Optional[str] = 'target'
 # frame processors
 frame_processors: List[str] = ["face_swapper"]
 # uis

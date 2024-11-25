@@ -11,3 +11,6 @@ face_swapper_weight: Optional[float] = 1.0
 frame_enhancer_model: Optional[FrameEnhancerModel] = "real_esrgan_4x"
 frame_enhancer_blend: Optional[int] = 100
 lip_syncer_model: Optional[LipSyncerModel] = "wav2lip_gan"
+style_changer_model: Optional[str] = '3d'
+style_changer_target: Optional[str] = 'target'
+

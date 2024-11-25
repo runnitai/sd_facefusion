@@ -110,6 +110,8 @@ WORDING: Dict[str, Any] = \
                 'frame_enhancer_model': 'choose the model responsible for enhancing the frame',
                 'frame_enhancer_blend': 'blend the enhanced into the previous frame',
                 'lip_syncer_model': 'choose the model responsible for syncing the lips',
+                'style_changer_model': 'choose the model responsible for changing the style',
+                'style_changer_target': 'choose whether to apply the style to the source images, or target media',
                 # uis
                 'ui_layouts': 'launch a single or multiple UI layouts (choices: {choices}, ...)'
             },

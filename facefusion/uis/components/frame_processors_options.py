@@ -8,6 +8,9 @@ from facefusion.processors.frame.core import load_frame_processor_module
 from facefusion.processors.frame.typings import FaceDebuggerItem, FaceEnhancerModel, FaceSwapperModel, \
     FrameEnhancerModel, LipSyncerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
+from facefusion.uis.components.source import update as update_source, update_2 as update_source_2, \
+    check_swap_source_style
+from facefusion.uis.typing import File
 
 FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
 FACE_ENHANCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
@@ -17,6 +20,8 @@ FACE_SWAPPER_WEIGHT_SLIDER: Optional[gradio.Slider] = None
 FRAME_ENHANCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FRAME_ENHANCER_BLEND_SLIDER: Optional[gradio.Slider] = None
 LIP_SYNCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
+STYLE_CHANGER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
+STYLE_TARGET_RADIO: Optional[gradio.Radio] = None
 
 
 def render() -> None:
@@ -91,6 +96,20 @@ def render() -> None:
         visible='lip_syncer' in facefusion.globals.frame_processors,
         elem_id='lip_syncer_model'
     )
+    STYLE_CHANGER_MODEL_DROPDOWN = gradio.Dropdown(
+        label=wording.get('uis.style_changer_model_dropdown'),
+        choices=frame_processors_choices.style_changer_models,
+        value=frame_processors_globals.style_changer_model,
+        visible='style_changer' in facefusion.globals.frame_processors,
+        elem_id='style_changer_model_dropdown'
+    )
+    STYLE_TARGET_RADIO = gradio.Radio(
+        label=wording.get('uis.style_target_radio'),
+        choices=["source", "target"],
+        value=frame_processors_globals.style_changer_target,
+        visible='style_changer' in facefusion.globals.frame_processors,
+        elem_id='style_target_radio'
+    )
     register_ui_component('face_debugger_items_checkbox_group', FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP)
     register_ui_component('face_enhancer_model_dropdown', FACE_ENHANCER_MODEL_DROPDOWN)
     register_ui_component('face_enhancer_blend_slider', FACE_ENHANCER_BLEND_SLIDER)
@@ -99,6 +118,8 @@ def render() -> None:
     register_ui_component('frame_enhancer_model_dropdown', FRAME_ENHANCER_MODEL_DROPDOWN)
     register_ui_component('frame_enhancer_blend_slider', FRAME_ENHANCER_BLEND_SLIDER)
     register_ui_component('lip_syncer_model_dropdown', LIP_SYNCER_MODEL_DROPDOWN)
+    register_ui_component('style_changer_model_dropdown', STYLE_CHANGER_MODEL_DROPDOWN)
+    register_ui_component('style_target_radio', STYLE_TARGET_RADIO)
 
 
 def listen() -> None:
@@ -114,6 +135,11 @@ def listen() -> None:
     FRAME_ENHANCER_BLEND_SLIDER.change(update_frame_enhancer_blend, inputs=FRAME_ENHANCER_BLEND_SLIDER)
     LIP_SYNCER_MODEL_DROPDOWN.change(update_lip_syncer_model, inputs=LIP_SYNCER_MODEL_DROPDOWN,
                                      outputs=LIP_SYNCER_MODEL_DROPDOWN)
+    STYLE_CHANGER_MODEL_DROPDOWN.change(update_style_changer_model, inputs=STYLE_CHANGER_MODEL_DROPDOWN,
+                                        outputs=STYLE_CHANGER_MODEL_DROPDOWN)
+    target_file = get_ui_component('target_file')
+    target_file_2 = get_ui_component('target_file_2')
+    STYLE_TARGET_RADIO.change(update_style_target, inputs=[STYLE_TARGET_RADIO, target_file, target_file_2], outputs=[target_file, target_file_2])
     frame_processors_checkbox_group = get_ui_component('frame_processors_checkbox_group')
     if frame_processors_checkbox_group:
         frame_processors_checkbox_group.change(update_frame_processors, inputs=frame_processors_checkbox_group,
@@ -143,6 +169,8 @@ def update_face_debugger_items(face_debugger_items: List[FaceDebuggerItem]) -> N
 
 def update_face_swapper_weight(face_swapper_weight: float) -> None:
     frame_processors_globals.face_swapper_weight = face_swapper_weight
+
+
 def update_face_enhancer_model(face_enhancer_model: FaceEnhancerModel) -> gradio.Dropdown:
     frame_processors_globals.face_enhancer_model = face_enhancer_model
     face_enhancer_module = load_frame_processor_module('face_enhancer')
@@ -197,3 +225,24 @@ def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.Dropdown
     if lip_syncer_module.pre_check():
         return gradio.Dropdown(value=lip_syncer_model)
     return gradio.Dropdown()
+
+
+def update_style_changer_model(style_changer_model: str) -> gradio.Dropdown:
+    frame_processors_globals.style_changer_model = style_changer_model
+    facefusion.globals.style_changer_model = style_changer_model
+    style_changer_module = load_frame_processor_module('style_changer')
+    style_changer_module.clear_frame_processor()
+    style_changer_module.set_options('model', style_changer_model)
+    if style_changer_module.pre_check():
+        return gradio.Dropdown(value=style_changer_model)
+    return gradio.Dropdown()
+
+
+def update_style_target(style_target: str, source_file: List[File], source_file_2: List[File]) -> Tuple[gradio.update, gradio.update]:
+    frame_processors_globals.style_changer_target = style_target
+    facefusion.globals.style_changer_target = style_target
+    style_changer_module = load_frame_processor_module('style_changer')
+    style_changer_module.set_options('target', style_target)
+    return gradio.update(check_swap_source_style(source_file)), gradio.update(check_swap_source_style(source_file_2))
+
+

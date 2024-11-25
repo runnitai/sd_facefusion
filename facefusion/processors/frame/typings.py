@@ -38,6 +38,11 @@ FrameEnhancerInputs = TypedDict('FrameEnhancerInputs',
                                 {
                                     'target_vision_frame': VisionFrame
                                 })
+
+StyleChangerInputs = TypedDict('StyleChangerInputs',
+                                {
+                                    'target_vision_frame': VisionFrame
+                                })
 LipSyncerInputs = TypedDict('LipSyncerInputs',
                             {
                                 'reference_faces': FaceSet,
