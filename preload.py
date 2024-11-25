@@ -3,7 +3,6 @@ import os
 import logging
 
 # Disable httpcore.http11 logging
-os.environ['LOG_LEVEL'] = 'INFO'
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 
 

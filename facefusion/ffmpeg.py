@@ -27,7 +27,7 @@ def run_ffmpeg(args: List[str], show_progress: bool = False) -> bool:
 
 
 def open_ffmpeg(args: List[str]) -> subprocess.Popen[bytes]:
-    commands = ['ffmpeg', '-hide_banner', '-loglevel', 'quiet']
+    commands = ['ffmpeg', '-hide_banner', '-loglevel', 'quiet'] if "ffmpeg" not in args[0] else []
     commands.extend(args)
     return subprocess.Popen(commands, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
@@ -131,12 +131,9 @@ def restore_audio(target_path: str, output_path: str, output_video_fps: float) -
             '-i', temp_output_video_path  # Input video without audio
         ]
 
-        if isinstance(trim_frame_start, int):
+        if isinstance(trim_frame_start, int) and trim_frame_start > 0:
             start_time = trim_frame_start / output_video_fps
             commands.extend(['-ss', str(start_time)])
-        if isinstance(trim_frame_end, int):
-            end_time = trim_frame_end / output_video_fps
-            commands.extend(['-to', str(end_time)])
         commands.extend(
             ['-i', target_path, '-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0',
              '-map', '1:a:0', '-shortest', '-y', output_path])
