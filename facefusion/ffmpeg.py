@@ -19,18 +19,11 @@ TEMP_OUTPUT_VIDEO_NAME = 'temp.mp4'
 LAST_VIDEO_INFO = None
 
 
-def run_ffmpeg(args: List[str]) -> bool:
-    return run_ffmpeg_progress(args)
-    commands = ['ffmpeg', '-hide_banner', '-loglevel', 'quiet']
-    commands.extend(args)
-    process = subprocess.Popen(commands, stdout=subprocess.PIPE)
-
-    while process_manager.is_processing():
-        try:
-            return process.wait(timeout=0.5) == 0
-        except subprocess.TimeoutExpired:
-            continue
-    return process.returncode == 0
+def run_ffmpeg(args: List[str], show_progress: bool = False) -> bool:
+    if show_progress:
+        return run_ffmpeg_progress(args)
+    else:
+        return open_ffmpeg(args).wait() == 0
 
 
 def open_ffmpeg(args: List[str]) -> subprocess.Popen[bytes]:
@@ -40,24 +33,26 @@ def open_ffmpeg(args: List[str]) -> subprocess.Popen[bytes]:
 
 
 def extract_frames(target_path: str, temp_video_resolution: str, temp_video_fps: Fps) -> bool:
+    temp_frames_pattern = get_temp_frames_pattern(target_path, '%04d')
     trim_frame_start = facefusion.globals.trim_frame_start
     trim_frame_end = facefusion.globals.trim_frame_end
-    temp_frames_pattern = get_temp_frames_pattern(target_path, '%04d')
-    commands = ['-hwaccel', 'auto', '-i', target_path, '-q:v', '0']
-    # temp_video_resolution = resolution = temp_video_resolution.replace('x', ':')
-    if trim_frame_start is not None and trim_frame_end is not None:
-        commands.extend(['-vf', 'trim=start_frame=' + str(trim_frame_start) + ':end_frame=' + str(
-            trim_frame_end) + ',scale=' + str(temp_video_resolution) + ',fps=' + str(temp_video_fps)])
-    elif trim_frame_start is not None:
-        commands.extend(['-vf', 'trim=start_frame=' + str(trim_frame_start) + ',scale=' + str(
-            temp_video_resolution) + ',fps=' + str(temp_video_fps)])
-    elif trim_frame_end is not None:
-        commands.extend(['-vf', 'trim=end_frame=' + str(trim_frame_end) + ',scale=' + str(
-            temp_video_resolution) + ',fps=' + str(temp_video_fps)])
-    else:
-        commands.extend(['-vf', 'scale=' + str(temp_video_resolution) + ',fps=' + str(temp_video_fps)])
-    commands.extend(['-vsync', '0', temp_frames_pattern])
-    return run_ffmpeg(commands)
+
+    # Initialize FFmpeg commands
+    commands = ['-hwaccel', 'auto', '-i', target_path]
+    filter_string = f"scale={temp_video_resolution},fps={temp_video_fps}"
+
+    # Add trim options
+    if trim_frame_start is not None or trim_frame_end is not None:
+        trim_filter = []
+        if trim_frame_start is not None:
+            trim_filter.append(f"start_frame={trim_frame_start}")
+        if trim_frame_end is not None and trim_frame_end > 0:
+            trim_filter.append(f"end_frame={trim_frame_end}")
+        trim_options = ':'.join(trim_filter)
+        filter_string = f"trim={trim_options},{filter_string}"
+
+    commands.extend(['-vf', filter_string, '-vsync', '0', temp_frames_pattern])
+    return run_ffmpeg(commands, show_progress=True)
 
 
 def merge_video(target_path: str, output_video_resolution: str, output_video_fps: Fps) -> bool:
@@ -109,19 +104,56 @@ def read_audio_buffer(target_path: str, sample_rate: int, total_channel: int) ->
     return None
 
 
-def restore_audio(target_path: str, output_path: str, output_video_fps: Fps) -> bool:
-    trim_frame_start = facefusion.globals.trim_frame_start
-    trim_frame_end = facefusion.globals.trim_frame_end
-    temp_output_video_path = get_temp_output_video_path(target_path)
-    commands = ['-hwaccel', 'auto', '-i', temp_output_video_path]
-    if trim_frame_start is not None:
-        start_time = trim_frame_start / output_video_fps
-        commands.extend(['-ss', str(start_time)])
-    if trim_frame_end is not None:
-        end_time = trim_frame_end / output_video_fps
-        commands.extend(['-to', str(end_time)])
-    commands.extend(['-i', target_path, '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-y', output_path])
-    return run_ffmpeg(commands)
+def restore_audio(target_path: str, output_path: str, output_video_fps: float) -> bool:
+    """
+    Restores the original audio to a trimmed video.
+
+    Args:
+        target_path (str): Path to the original video with audio.
+        output_path (str): Path to save the output video with restored audio.
+        output_video_fps (float): Frame rate of the video to calculate time offsets.
+
+    Returns:
+        bool: True if the operation succeeds, False otherwise.
+    """
+    try:
+        # Fetch global trim frame values
+        trim_frame_start = facefusion.globals.trim_frame_start
+        trim_frame_end = facefusion.globals.trim_frame_end
+
+        # Get the temporary video path
+        temp_output_video_path = get_temp_output_video_path(target_path)
+
+        # Initialize the FFmpeg command
+        commands = [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error',  # Suppress unnecessary output
+            '-hwaccel', 'auto',  # Enable hardware acceleration
+            '-i', temp_output_video_path  # Input video without audio
+        ]
+
+        if isinstance(trim_frame_start, int):
+            start_time = trim_frame_start / output_video_fps
+            commands.extend(['-ss', str(start_time)])
+        if isinstance(trim_frame_end, int):
+            end_time = trim_frame_end / output_video_fps
+            commands.extend(['-to', str(end_time)])
+        commands.extend(
+            ['-i', target_path, '-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0',
+             '-map', '1:a:0', '-shortest', '-y', output_path])
+
+        # Run the FFmpeg command
+        print(f"Restoring audio: '{' '.join(commands)}'")
+        result = run_ffmpeg(commands)
+
+        # Check if the command was successful
+        if not result:
+            print("FFmpeg failed. Check inputs and outputs.")
+            return False
+
+        return True
+    except Exception as e:
+        print(f"Error in restore_audio: {e}")
+        return False
 
 
 def replace_audio(target_path: str, audio_path: str, output_path: str) -> bool:
