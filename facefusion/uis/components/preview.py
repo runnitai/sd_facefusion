@@ -29,7 +29,7 @@ PREVIEW_FRAME_BACK_BUTTON: Optional[gradio.Button] = None
 PREVIEW_FRAME_FORWARD_BUTTON: Optional[gradio.Button] = None
 PREVIEW_FRAME_BACK_FIVE_BUTTON: Optional[gradio.Button] = None
 PREVIEW_FRAME_FORWARD_FIVE_BUTTON: Optional[gradio.Button] = None
-
+PREVIEW_FRAME_ROW: Optional[gradio.Row] = None
 
 def render() -> None:
     global PREVIEW_IMAGE
@@ -38,6 +38,7 @@ def render() -> None:
     global PREVIEW_FRAME_FORWARD_BUTTON
     global PREVIEW_FRAME_BACK_FIVE_BUTTON
     global PREVIEW_FRAME_FORWARD_FIVE_BUTTON
+    global PREVIEW_FRAME_ROW
 
     preview_image_args: Dict[str, Any] = \
         {
@@ -82,7 +83,7 @@ def render() -> None:
         preview_frame_slider_args['maximum'] = count_video_frame_total(facefusion.globals.target_path)
         preview_frame_slider_args['visible'] = True
     PREVIEW_IMAGE = gradio.Image(**preview_image_args)
-    with gradio.Row():
+    with gradio.Row() as PREVIEW_FRAME_ROW:
         PREVIEW_FRAME_BACK_FIVE_BUTTON = gradio.Button(
             value="-5s",
             elem_id='ff_preview_frame_back_five_button',
@@ -117,6 +118,7 @@ def render() -> None:
     register_ui_component('preview_frame_back_five_button', PREVIEW_FRAME_BACK_FIVE_BUTTON)
     register_ui_component('preview_frame_forward_five_button', PREVIEW_FRAME_FORWARD_FIVE_BUTTON)
     register_ui_component('preview_image', PREVIEW_IMAGE)
+    register_ui_component('preview_frame_row', PREVIEW_FRAME_ROW)
 
 
 def listen() -> None:
@@ -159,7 +161,7 @@ def listen() -> None:
                 getattr(component, method)(update_preview_frame_slider,
                                            outputs=[PREVIEW_FRAME_SLIDER, PREVIEW_FRAME_BACK_BUTTON,
                                                     PREVIEW_FRAME_FORWARD_BUTTON, PREVIEW_FRAME_BACK_FIVE_BUTTON,
-                                                    PREVIEW_FRAME_FORWARD_FIVE_BUTTON])
+                                                    PREVIEW_FRAME_FORWARD_FIVE_BUTTON, PREVIEW_FRAME_ROW])
     select_component_names: List[ComponentName] = \
         [
             'face_analyser_order_dropdown',
@@ -315,9 +317,9 @@ def update_preview_frame_slider() -> gradio.update:
     if is_video(facefusion.globals.target_path):
         video_frame_total = count_video_frame_total(facefusion.globals.target_path)
         return gradio.update(maximum=video_frame_total, visible=True), gradio.update(visible=True), gradio.update(
-            visible=True), gradio.update(visible=True), gradio.update(visible=True)
+            visible=True), gradio.update(visible=True), gradio.update(visible=True), gradio.update(visible=True)
     return gradio.update(value=None, maximum=None, visible=False), gradio.update(visible=False), gradio.update(
-        visible=False), gradio.update(visible=False), gradio.update(visible=False)
+        visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
 
 def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face,

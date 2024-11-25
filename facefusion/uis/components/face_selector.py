@@ -139,8 +139,9 @@ def listen() -> None:
     bottom_mask_positions = get_ui_component('bottom_mask_positions')
     FACE_SELECTOR_MODE_DROPDOWN.select(update_face_selector_mode, inputs=FACE_SELECTOR_MODE_DROPDOWN,
                                        outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
+                                                REFERENCE_FACES_SELECTION_GALLERY_2,
                                                 REFERENCE_FACE_DISTANCE_SLIDER, ADD_REFERENCE_FACE_BUTTON,
-                                                REMOVE_REFERENCE_FACE_BUTTON])
+                                                REMOVE_REFERENCE_FACE_BUTTON, ADD_REFERENCE_FACE_BUTTON_2, REMOVE_REFERENCE_FACE_BUTTON_2])
     REFERENCE_FACE_POSITION_GALLERY.select(update_selector_face_index)
     REFERENCE_FACES_SELECTION_GALLERY.select(update_selected_face_index)
     REFERENCE_FACES_SELECTION_GALLERY_2.select(update_selected_face_index_2)
@@ -225,8 +226,9 @@ def listen() -> None:
 def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     facefusion.globals.face_selector_mode = face_selector_mode
     visible = 'reference' in face_selector_mode
-    return gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(
-        visible=visible), gradio.update(visible=visible), gradio.update(visible=visible)
+    return (gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(
+        visible=visible), gradio.update(visible=visible), gradio.update(visible=visible),
+            gradio.update(visible=visible), gradio.update(visible=visible), gradio.update(visible=visible))
 
 
 def update_selector_face_index(event: gradio.SelectData) -> None:

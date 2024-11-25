@@ -58,8 +58,8 @@ def listen() -> None:
 def remote_update() -> Tuple[gradio.update, gradio.update]:
     if is_video(facefusion.globals.target_path):
         video_frame_total = count_video_frame_total(facefusion.globals.target_path)
-        facefusion.globals.trim_frame_start = None
-        facefusion.globals.trim_frame_end = None
+        facefusion.globals.trim_frame_start = 0
+        facefusion.globals.trim_frame_end = video_frame_total
         return gradio.update(value=0, maximum=video_frame_total, visible=True), gradio.update(value=video_frame_total,
                                                                                               maximum=video_frame_total,
                                                                                               visible=True)

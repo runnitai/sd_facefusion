@@ -493,12 +493,13 @@ def process_video(start_time, job) -> None:
         return
     # merge video
     if status.cancelled:
-        print("Interrupted")
+        logger.debug("Interrupted, clearing temp...", __name__.upper())
         clear_temp()
         return
     status.update(f"Merging video to {job.output_path} ({fps} fps)")
     status.step()
     if not merge_video(job.target_path, job.output_video_resolution, job.output_video_fps):
+        logger.error(wording.get('merging_video_failed'), __name__.upper())
         status.update(wording.get('merging_video_failed'))
     # handle audio
     failed = False

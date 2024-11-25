@@ -77,35 +77,73 @@ def clear_frame_processors_modules() -> None:
     FRAME_PROCESSORS_MODULES = []
 
 
-def multi_process_frames(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str], process_frames: ProcessFrames) -> None:
+# def multi_process_frames(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str], process_frames: ProcessFrames) -> None:
+#     queue_payloads = create_queue_payloads(temp_frame_paths)
+#     with tqdm(total=len(queue_payloads), desc=wording.get('processing'), unit='frame', ascii=' =',
+#               disable=facefusion.globals.log_level in ['warn', 'error']) as progress:
+#         progress.set_postfix(
+#             {
+#                 'execution_providers': encode_execution_providers(facefusion.globals.execution_providers),
+#                 'execution_thread_count': facefusion.globals.execution_thread_count,
+#                 'execution_queue_count': facefusion.globals.execution_queue_count
+#             })
+#         status = FFStatus()
+#
+#         def update_progress(preview_image: str = None) -> None:
+#             progress.update()
+#             if preview_image is not None:
+#                 current_step = status.job_current
+#                 if current_step % 30 == 0 or current_step == status.job_total:
+#                     status.preview_image = preview_image
+#
+#         with ThreadPoolExecutor() as executor:
+#             futures = []
+#             queue: Queue[QueuePayload] = create_queue(queue_payloads)
+#             while not queue.empty():
+#                 future = executor.submit(process_frames, source_paths, source_paths_2,
+#                                          pick_queue(queue, 1),
+#                                          update_progress)
+#                 futures.append(future)
+#             for future_done in as_completed(futures):
+#                 future_done.result()
+def multi_process_frames(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str],
+                         process_frames: ProcessFrames) -> None:
     queue_payloads = create_queue_payloads(temp_frame_paths)
+    batch_size = facefusion.globals.batch_size or 4  # Default to 4 frames per batch
+    max_workers = max(facefusion.globals.execution_thread_count, 4)  # Ensure sufficient threads
+
     with tqdm(total=len(queue_payloads), desc=wording.get('processing'), unit='frame', ascii=' =',
               disable=facefusion.globals.log_level in ['warn', 'error']) as progress:
         progress.set_postfix(
             {
                 'execution_providers': encode_execution_providers(facefusion.globals.execution_providers),
-                'execution_thread_count': facefusion.globals.execution_thread_count,
+                'execution_thread_count': max_workers,
                 'execution_queue_count': facefusion.globals.execution_queue_count
             })
         status = FFStatus()
+        frame_counter = 0
 
         def update_progress(preview_image: str = None) -> None:
-            progress.update()
-            if preview_image is not None:
-                current_step = status.job_current
-                if current_step % 30 == 0 or current_step == status.job_total:
-                    status.preview_image = preview_image
+            nonlocal frame_counter
+            frame_counter += 1
+            if frame_counter % 10 == 0 or frame_counter == status.job_total:
+                progress.update(10)
+            if preview_image is not None and frame_counter % 30 == 0:
+                status.preview_image = preview_image
 
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
             queue: Queue[QueuePayload] = create_queue(queue_payloads)
             while not queue.empty():
-                future = executor.submit(process_frames, source_paths, source_paths_2,
-                                         pick_queue(queue, 1),
-                                         update_progress)
+                batch = pick_queue(queue, batch_size)  # Fetch batches of frames
+                future = executor.submit(process_frames, source_paths, source_paths_2, batch, update_progress)
                 futures.append(future)
-            for future_done in as_completed(futures):
-                future_done.result()
+
+            for future_done in as_completed(futures):  # Wait for batch completion
+                try:
+                    future_done.result()
+                except Exception as e:
+                    print(f"Error processing batch: {e}")
 
 
 def create_queue(queue_payloads: List[QueuePayload]) -> Queue[QueuePayload]:
