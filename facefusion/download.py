@@ -4,6 +4,8 @@ import re
 import subprocess
 import threading
 import urllib.request
+import unicodedata
+import string
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import List, Tuple
@@ -117,9 +119,18 @@ def download_convert_ts_to_mp4(ts_url, output_path):
 
 
 def get_video_filename(title: str) -> str:
-    # Replace spaces with underscores and remove disallowed characters for filenames
-    safe_title = title.replace(" ", "_").translate({ord(i): None for i in r'\/:*?"<>|'})
-    return f"{safe_title}"
+    allowed_chars = set(string.ascii_letters + string.digits + '._-')
+    # Replace spaces with underscores
+    safe_title = title.replace(" ", "_")
+    # Normalize unicode characters to ASCII equivalents
+    safe_title = unicodedata.normalize('NFKD', safe_title)
+    # Remove combining marks (accents)
+    safe_title = ''.join(c for c in safe_title if not unicodedata.combining(c))
+    # Remove disallowed characters
+    safe_title = ''.join(c if c in allowed_chars else '_' for c in safe_title)
+    # Remove leading and trailing dots or underscores
+    safe_title = safe_title.strip('._')
+    return safe_title
 
 
 def download_video(target_url: str) -> str:
