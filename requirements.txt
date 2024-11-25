@@ -1,13 +1,13 @@
 basicsr>=1.4.2
 filetype==1.2.0
 ffmpeg_progress_yield
-onnx>=1.15.0
-onnxruntime-gpu>=1.16.3
-opencv-python==4.9.0.80
+onnx>=1.17.0
+onnxruntime-gpu>=1.20.1
+opencv-python>=4.10.0.84
 yt-dlp==2024.11.18
-psutil>=5.9.6
+psutil>=6.1.0
 realesrgan==0.3.0
-tqdm==4.66.1
-huggingface-hub
+tqdm>=4.67.1
+huggingface-hub>=0.26.2
 modelscope[cv]>=1.20.1
 -f https://modelscope.oss-cn-beijing.aliyuncs.com/releases/repo.html
