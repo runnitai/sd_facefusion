@@ -1,18 +1,22 @@
 import argparse
 import os
 import threading
-from typing import Any, Literal, Optional, List
+from typing import Any, Dict
+from typing import Literal, Optional, List
 
+import PIL
 import cv2
 import numpy as np
-from modelscope.outputs import OutputKeys
-from modelscope.pipelines import pipeline
-from modelscope.utils.constant import Tasks
+import tensorflow as tf
+from PIL import ImageOps
+from PIL.Image import Image
 
 import facefusion.globals
 import facefusion.processors.frame.core as frame_processors
-from facefusion import config, logger, wording, process_manager
-from facefusion.filesystem import is_image, is_video
+from facefusion import config, logger, wording
+from facefusion.download import conditional_download
+from facefusion.face_ana import get_f5p, warp_and_crop_face, get_reference_facial_points, FaceAna
+from facefusion.filesystem import is_image, is_video, resolve_relative_path
 from facefusion.processors.frame import globals as frame_processors_globals
 from facefusion.processors.frame.typings import StyleChangerInputs
 from facefusion.typing import ProcessMode, OptionsWithModel, VisionFrame, QueuePayload, UpdateProcess, Face
@@ -24,17 +28,297 @@ NAME = __name__.upper()
 
 # Available models
 MODEL_MAPPING = {
-    "anime": "damo/cv_unet_person-image-cartoon_compound-models",
-    "3d": "damo/cv_unet_person-image-cartoon-3d_compound-models",
-    "handdrawn": "damo/cv_unet_person-image-cartoon-handdrawn_compound-models",
-    "sketch": "damo/cv_unet_person-image-cartoon-sketch_compound-models",
-    "artstyle": "damo/cv_unet_person-image-cartoon-artstyle_compound-models",
-    "design": "damo/cv_unet_person-image-cartoon-sd-design_compound-models",
-    "illustration": "damo/cv_unet_person-image-cartoon-sd-illustration_compound-models",
-    "genshen": "lskhh/moran-cv_unet_person-image-cartoon-genshin_compound-models",
-    "anime2": "lskhh/ty_cv_unet_person-image-cartoon-wz_compound-models"
+    "anime": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/anime_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/anime_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.hash"
+        }
+    },
+    "3d": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/3d_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/3d_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.hash"
+        }
+    },
+    "handdrawn": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/handdrawn_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/handdrawn_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.hash"
+        }
+    },
+    "sketch": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/sketch_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/sketch_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.hash"
+        }
+    },
+    "artstyle": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/artstyle_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/artstyle_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.hash"
+        }
+    },
+    "design": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/design_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/design_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.hash"
+        }
+    },
+    "illustration": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/illustration_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/illustration_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.hash"
+        }
+    },
+    "genshen": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/genshen_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/genshen_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.hash"
+        }
+    },
+    "anime2": {
+        "bg": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.pb",
+            "path": resolve_relative_path('../.assets/models/style/anime2_bg.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.hash"
+        },
+        "head": {
+            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.pb",
+            "path": resolve_relative_path('../.assets/models/style/anime2_h.pb'),
+            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.hash"
+        }
+    }
 }
+
 OPTIONS: Optional[OptionsWithModel] = None
+
+if tf.__version__ >= '2.0':
+    tf = tf.compat.v1
+    tf.disable_eager_execution()
+
+
+def padTo16x(image):
+    h, w, c = np.shape(image)
+    if h % 16 == 0 and w % 16 == 0:
+        return image, h, w
+    nh, nw = (h // 16 + 1) * 16, (w // 16 + 1) * 16
+    img_new = np.ones((nh, nw, 3), np.uint8) * 255
+    img_new[:h, :w, :] = image
+
+    return img_new, h, w
+
+
+def resize_size(image, size=720):
+    h, w, c = np.shape(image)
+    if min(h, w) > size:
+        if h > w:
+            h, w = int(size * h / w), size
+        else:
+            h, w = size, int(size * w / h)
+    image = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
+    return image
+
+
+def load_image(image_path: str) -> Image:
+    with open(image_path, 'rb') as f:
+        img = PIL.Image.open(f)
+        img = ImageOps.exif_transpose(img)
+        img = img.convert('RGB')
+    return img
+
+
+def convert_to_ndarray(input) -> np.ndarray:
+    if isinstance(input, str):
+        img = np.array(load_image(input))
+    elif isinstance(input, Image):
+        img = np.array(input.convert('RGB'))
+    elif isinstance(input, np.ndarray):
+        if len(input.shape) == 2:
+            input = cv2.cvtColor(input, cv2.COLOR_GRAY2BGR)
+        img = input[:, :, ::-1]
+    elif isinstance(input, Dict):
+        img = input.get('image', None)
+        if img:
+            img = np.array(load_image(img))
+    else:
+        raise TypeError(f'input should be either str, PIL.Image,'
+                        f' np.array, but got {type(input)}')
+    return img
+
+
+class ImageCartoonPipelineCustom:
+
+    def __init__(self, model: str):
+        """
+        Initialize the cartoon pipeline.
+        Args:
+            model: Model ID to load specific style models.
+        """
+        # Define model paths
+        style_model_dir = resolve_relative_path('../.assets/models/style')
+        model_head_path = os.path.join(style_model_dir, f"{model}_h.pb")
+        model_bg_path = os.path.join(style_model_dir, f"{model}_bg.pb")
+
+        # Load models for head and background processing
+        self.facer = FaceAna(style_model_dir)
+        with tf.Graph().as_default():
+            self.sess_anime_head = self.load_sess(model_head_path, 'model_anime_head')
+            self.sess_anime_bg = self.load_sess(model_bg_path, 'model_anime_bg')
+
+        # Configuration for masks and dimensions
+        self.box_width = 288
+        global_mask = cv2.imread(os.path.join(style_model_dir, 'alpha.jpg'))
+        global_mask = cv2.resize(global_mask, (self.box_width, self.box_width), interpolation=cv2.INTER_AREA)
+        self.global_mask = cv2.cvtColor(global_mask, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+
+    @staticmethod
+    def load_sess(model_path: str, name: str) -> tf.Session:
+        """
+        Load a TensorFlow model into a session.
+        Args:
+            model_path: Path to the model file.
+            name: Name for the imported graph.
+        Returns:
+            A TensorFlow session with the loaded model.
+        """
+        model_config = tf.ConfigProto(allow_soft_placement=True)
+        model_config.gpu_options.allow_growth = True
+        sess = tf.Session(config=model_config)
+        with tf.io.gfile.GFile(model_path, 'rb') as f:
+            graph_def = tf.GraphDef()
+            graph_def.ParseFromString(f.read())
+            sess.graph.as_default()
+            tf.import_graph_def(graph_def, name=name)
+            sess.run(tf.global_variables_initializer())
+        return sess
+
+    def detect_face(self, img: np.ndarray) -> Any:
+        """
+        Detect faces in the input image using the FaceAna utility.
+        Args:
+            img: Input image in np.ndarray format.
+        Returns:
+            Landmarks of detected faces or None if no face is detected.
+        """
+        boxes, landmarks, _ = self.facer.run(img)
+        if boxes.shape[0] == 0:
+            return None
+        return landmarks
+
+    def __call__(self, img: np.ndarray) -> np.ndarray:
+        """
+        Process an image through the cartoonization pipeline.
+        Args:
+            img: Input image in np.ndarray format (RGB).
+        Returns:
+            Processed cartoonized image in np.ndarray format (RGB).
+        """
+        # Original dimensions
+        img = convert_to_ndarray(img)
+        ori_h, ori_w, _ = img.shape
+
+        # Preprocessing: Resize for processing
+        img_resized = resize_size(img, size=720)
+        img_bgr = img_resized[:, :, ::-1]  # Convert RGB to BGR for OpenCV
+
+        # Background processing
+        pad_bg, pad_h, pad_w = padTo16x(img_bgr)
+        bg_res = self.sess_anime_bg.run(
+            self.sess_anime_bg.graph.get_tensor_by_name('model_anime_bg/output_image:0'),
+            feed_dict={'model_anime_bg/input_image:0': pad_bg}
+        )
+        res = bg_res[:pad_h, :pad_w, :]
+
+        # Face detection and processing
+        landmarks = self.detect_face(img_resized)
+        if landmarks is not None:
+            for landmark in landmarks:
+                # Get facial 5 points for alignment
+                f5p = get_f5p(landmark, img_bgr)
+
+                # Face alignment
+                head_img, trans_inv = warp_and_crop_face(
+                    img_resized,
+                    f5p,
+                    ratio=0.75,
+                    reference_pts=get_reference_facial_points(default_square=True),
+                    crop_size=(self.box_width, self.box_width),
+                    return_trans_inv=True
+                )
+
+                # Head processing
+                head_res = self.sess_anime_head.run(
+                    self.sess_anime_head.graph.get_tensor_by_name('model_anime_head/output_image:0'),
+                    feed_dict={'model_anime_head/input_image:0': head_img[:, :, ::-1]}
+                )
+
+                # Merge head and background
+                head_trans_inv = cv2.warpAffine(
+                    head_res,
+                    trans_inv, (img.shape[1], img.shape[0]),
+                    borderValue=(0, 0, 0)
+                )
+                mask = self.global_mask
+                mask_trans_inv = cv2.warpAffine(
+                    mask,
+                    trans_inv, (img.shape[1], img.shape[0]),
+                    borderValue=(0, 0, 0)
+                )
+                mask_trans_inv = np.expand_dims(mask_trans_inv, 2)
+                res = mask_trans_inv * head_trans_inv + (1 - mask_trans_inv) * res
+
+        # Postprocessing: Resize back to original dimensions
+        res = cv2.resize(res, (ori_w, ori_h), interpolation=cv2.INTER_AREA)
+        #res = res[:, :, ::-1]  # Convert BGR to RGB
+        return np.clip(res, 0, 255).astype(np.uint8)
 
 
 def get_frame_processor() -> Any:
@@ -45,7 +329,7 @@ def get_frame_processor() -> Any:
             model = get_options('model')
             model_name = MODEL_MAPPING.get(model)
             print(f"Loading style changer model: {model_name}")
-            FRAME_PROCESSOR = pipeline(Tasks.image_portrait_stylization, model=model_name)
+            FRAME_PROCESSOR = ImageCartoonPipelineCustom(model=model)
     return FRAME_PROCESSOR
 
 
@@ -115,11 +399,15 @@ def pre_check() -> bool:
         logger.error(f"Model '{model_name}' not found in available models.", "STYLE_CHANGER")
         return False
     print(f"Pre-check passed for model '{model_name}'.")
-    # Todo: Figure out how to download the model and store it locally
-    # model_path = resolve_relative_path(f'../.assets/models/{model_name}.onnx')
-    # if not is_file(model_path):
-    #     logger.error(f"Model file for '{model_name}' is not present.", "STYLE_CHANGER")
-    #     return False
+    download_path = resolve_relative_path('../.assets/models/style')
+    model_urls = []
+    for model_type, model in MODEL_MAPPING.items():
+        print(f"Checking model '{model_type}'...")
+        model_bg_url = model.get('bg').get('url')
+        model_head_url = model.get('head').get('url')
+        model_urls.append(model_bg_url)
+        model_urls.append(model_head_url)
+    conditional_download(download_path, model_urls)
     return True
 
 
@@ -141,43 +429,12 @@ def pre_process(mode: ProcessMode) -> bool:
 
 def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
     frame_processor = get_frame_processor()
-    result = frame_processor(temp_vision_frame)
+    img = frame_processor(img=temp_vision_frame)
 
-    # Extract the processed image
-    img = result.get(OutputKeys.OUTPUT_IMG)
-
-    # If the output image is None, return the input frame directly
+    # Fallback to input frame if no output is generated
     if img is None:
         print("No processed image returned; using input frame.")
         return temp_vision_frame
-
-    # Ensure the image is in float format for processing
-    if img.dtype not in [np.float32, np.float64]:
-        img = img.astype(np.float32)
-
-    # Check the range of the image
-    img_min, img_max = np.min(img), np.max(img)
-
-    # Normalize based on the range
-    if img_min >= -1.0 and img_max <= 1.0:
-        img = (img + 1.0) / 2.0  # Convert [-1, 1] to [0, 1]
-    elif img_min >= 0.0 and img_max <= 1.0:
-        pass  # Already in [0, 1], no normalization needed
-    elif img_min >= 0.0 and img_max <= 255.0:
-        img = img / 255.0  # Normalize to [0, 1]
-    else:
-        img = (img - img_min) / (img_max - img_min)  # Fallback normalization
-
-    # Ensure final range is clipped to [0, 1]
-    img = np.clip(img, 0, 1)
-
-    # Convert to uint8 for visualization or output
-    img = (img * 255).astype(np.uint8)
-
-    # Resize the image to match the input frame dimensions if necessary
-    input_h, input_w, _ = temp_vision_frame.shape
-    if img.shape[:2] != (input_h, input_w):
-        img = cv2.resize(img, (input_w, input_h), interpolation=cv2.INTER_AREA)
 
     return img
 
@@ -195,7 +452,7 @@ def process_src_image(input_path: str, style: str):
     output_path = f"{input_file}_style_{style}{input_extension}"
     processor = get_frame_processor()
     result = processor(input_path)
-    cv2.imwrite(output_path, result[OutputKeys.OUTPUT_IMG])
+    cv2.imwrite(output_path, result)
     print(f"Image processing complete. Output saved to {output_path}.")
     return output_path
 

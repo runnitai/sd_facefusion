@@ -184,12 +184,7 @@ def pre_check() -> bool:
         download_directory_path = resolve_relative_path('../.assets/models')
         model_url = get_options('model').get('url')
         if "inswapper" in model_url:
-            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
-            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
-            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
-            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
-            return True
-        conditional_download(download_directory_path, [model_url])
+            conditional_download(download_directory_path, [model_url])
     return True
 
 
@@ -397,10 +392,8 @@ def process_frames(source_paths: List[str], source_paths_2: List[str], queue_pay
                    update_progress: UpdateProcess) -> None:
     reference_faces, reference_faces_2 = (get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
 
-    source_frames = read_static_images(source_paths)
-    source_face = get_average_face(source_frames)
-    source_frames_2 = read_static_images(source_paths_2)
-    source_face_2 = get_average_face(source_frames_2)
+    from facefusion.uis.components.preview import get_avg_faces
+    source_face, source_face_2 = get_avg_faces()
     for queue_payload in queue_payloads:
         target_vision_path = queue_payload['frame_path']
         target_frame_number = queue_payload['frame_number']
@@ -421,10 +414,8 @@ def process_frames(source_paths: List[str], source_paths_2: List[str], queue_pay
 
 def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
     reference_faces, reference_faces_2 = (get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
-    source_frames = read_static_images(source_paths)
-    source_frames_2 = read_static_images(source_paths_2)
-    source_face = get_average_face(source_frames)
-    source_face_2 = get_average_face(source_frames_2)
+    from facefusion.uis.components.preview import get_avg_faces
+    source_face, source_face_2 = get_avg_faces()
     target_vision_frame = read_static_image(target_path)
     result_frame = process_frame(
         {

@@ -12,6 +12,7 @@ from typing import List, Tuple
 
 import requests
 import yt_dlp
+from yt_dlp import YoutubeDL
 
 from facefusion import wording
 from facefusion.filesystem import is_file, TEMP_DIRECTORY_PATH
@@ -134,52 +135,51 @@ def get_video_filename(title: str) -> str:
 
 
 def download_video(target_url: str) -> str:
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'skip_download': True,  # Initially, just get the info
-    }
+    try:
+        # Step 1: Fetch video info
+        ydl_opts_info = {
+            'format': 'bestvideo+bestaudio/best',
+            'skip_download': True  # Only fetch metadata
+        }
+        with YoutubeDL(ydl_opts_info) as ydl:
+            info_dict = ydl.extract_info(target_url, download=False)
+            video_title = info_dict.get('title')
+            ext = info_dict.get('ext', 'mp4')  # Default extension to mp4 if missing
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(target_url, download=False)
-        video_title = info_dict.get('title')
+        if not video_title:
+            print("Could not retrieve video title.")
+            return ""
 
-    if video_title:
-        video_filename = get_video_filename(video_title)
-        video_path = os.path.join(TEMP_DIRECTORY_PATH, f"{video_filename}.mp4")
-        video_path = ydl.prepare_filename(info_dict, dir_type='', outtmpl=video_path)
+        # Step 2: Sanitize filename
+        video_filename = get_video_filename(video_title)  # Use your provided function
+        video_path = os.path.join(TEMP_DIRECTORY_PATH, f"{video_filename}.{ext}")
 
-        if not os.path.exists(video_path):  # Download only if the file doesn't exist
-            ydl_opts['skip_download'] = False  # Now, proceed to download
-            ydl_opts['outtmpl'] = video_path
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([target_url])
-                # Get the extension of the downloaded file
-                print(f"Downloaded video to {video_path}")
-                if not os.path.exists(video_path):
-                    print("Can't find the downloaded video, trying to find it in the temp directory.")
-                    video_without_extension = os.path.splitext(video_path)[0]
-                    for file in os.listdir(TEMP_DIRECTORY_PATH):
-                        full_path = os.path.join(TEMP_DIRECTORY_PATH, file)
-                        if full_path.startswith(video_without_extension):
-                            video_path = full_path
-                            print(f"Found video in temp directory: {video_path}")
-                            break
-        else:
+        # Step 3: Check if the file already exists
+        if os.path.exists(video_path):
             print(f"Video already exists: {video_path}")
+            return video_path
 
-        return video_path
-    else:
-        print("Could not retrieve video title.")
+        # Step 4: Set up download options with proper output path
+        ydl_opts_download = {
+            'format': 'bestvideo+bestaudio/best',
+            'outtmpl': video_path,  # Save to sanitized path
+        }
+        with YoutubeDL(ydl_opts_download) as ydl:
+            ydl.download([target_url])
+
+        # Step 5: Verify the file exists
+        if os.path.exists(video_path):
+            print(f"Video downloaded successfully: {video_path}")
+            return video_path
+        else:
+            print("Download completed, but the file could not be found.")
+            return ""
+    except Exception as e:
+        print(f"An error occurred during video processing: {e}")
         return ""
 
 
 def conditional_download(download_directory_path: str, urls: List[str]) -> None:
-    for url in urls:
-        if "inswapper" in url:
-            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
-            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
-            print("INSWAPPER CANNOT BE AUTO-DOWNLOADED.")
-            return
     with ThreadPoolExecutor() as executor:
         for url in urls:
             executor.submit(get_download_size, url)

@@ -392,10 +392,8 @@ def conditional_append_reference_faces(job=None) -> None:
     if not job:
         job = JobParams().from_globals()
     if 'reference' in job.face_selector_mode and not get_reference_faces():
-        source_frames = read_static_images(job.source_paths)
-        source_face = get_average_face(source_frames)
-        source_frames_2 = read_static_images(job.source_paths_2)
-        source_face_2 = get_average_face(source_frames_2)
+        from facefusion.uis.components.preview import get_avg_faces
+        source_face, source_face_2 = get_avg_faces()
         if is_video(job.target_path):
             reference_frame = get_video_frame(job.target_path, job.reference_frame_number)
         else:

@@ -128,15 +128,19 @@ def restore_audio(target_path: str, output_path: str, output_video_fps: float) -
         commands = [
             'ffmpeg', '-hide_banner', '-loglevel', 'error',  # Suppress unnecessary output
             '-hwaccel', 'auto',  # Enable hardware acceleration
-            '-i', temp_output_video_path  # Input video without audio
+            '-i', f'\"{temp_output_video_path}\"'  # Input video without audio
         ]
 
+        # We only need to set the start time if the start frame is greater than 0, we can ignore the end time because we
+        # are copying the audio from the original video and using the -shortest flag to match the video duration.
         if isinstance(trim_frame_start, int) and trim_frame_start > 0:
             start_time = trim_frame_start / output_video_fps
             commands.extend(['-ss', str(start_time)])
         commands.extend(
-            ['-i', target_path, '-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0',
-             '-map', '1:a:0', '-shortest', '-y', output_path])
+            ['-i', f'\"{target_path}\"'])
+        commands.extend(
+            ['-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', '-shortest',
+             '-y', f'\"{output_path}\"'])
 
         # Run the FFmpeg command
         print(f"Restoring audio: '{' '.join(commands)}'")

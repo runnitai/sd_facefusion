@@ -292,8 +292,8 @@ def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gra
             dest_items.append(selected_item["name"])
         from facefusion.uis.components.preview import update_preview_image
 
-        out_preview, enable_button, disable_button = update_preview_image(reference_frame_number)
-        return gradio.update(value=dest_items), out_preview, enable_button, disable_button
+        preview, enable_button, disable_button = update_preview_image(reference_frame_number)
+        return gradio.update(value=dest_items), preview, enable_button, disable_button
     else:
         return gradio.update(), gradio.update(), gradio.update(), gradio.update()  # Return the original gallery if no item is selected or if it's empty
 
@@ -359,8 +359,8 @@ def add_reference_face_2(src_gallery, dest_gallery, reference_frame_number) -> g
             dest_items.append(selected_item["name"])
         from facefusion.uis.components.preview import update_preview_image
 
-        out_preview, enable_button, disable_button = update_preview_image(reference_frame_number)
-        return gradio.update(value=dest_items), out_preview, enable_button, disable_button
+        preview, enable_button, disable_button = update_preview_image(reference_frame_number)
+        return gradio.update(value=dest_items), preview, enable_button, disable_button
     else:
         return gradio.update(), gradio.update(), gradio.update(), gradio.update()  # Return the original gallery if no item is selected or if it's empty
 
@@ -397,8 +397,8 @@ def remove_reference_face_2(gallery: gradio.Gallery, preview_frame_number) -> gr
     facefusion.globals.reference_face_dict_2 = global_reference_faces
     current_selected_faces_2.pop(selected_face_index_2)
     from facefusion.uis.components.preview import update_preview_image
-    preview_image, enable_button, disable_button = update_preview_image(preview_frame_number)
-    return gradio.update(value=new_items), preview_image, enable_button, disable_button
+    preview, enable_button, disable_button = update_preview_image(preview_frame_number)
+    return gradio.update(value=new_items), preview, enable_button, disable_button
 
 
 def update_reference_face_position(reference_face_position: int = 0) -> None:

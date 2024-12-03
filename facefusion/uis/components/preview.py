@@ -1,7 +1,7 @@
 import threading
-from functools import wraps
+import traceback
 from time import sleep
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import gradio
@@ -31,6 +31,15 @@ PREVIEW_FRAME_BACK_FIVE_BUTTON: Optional[gradio.Button] = None
 PREVIEW_FRAME_FORWARD_FIVE_BUTTON: Optional[gradio.Button] = None
 PREVIEW_FRAME_ROW: Optional[gradio.Row] = None
 
+CURRENT_PREVIEW_FRAME_NUMBER = -1
+AVG_FACE_1 = None
+AVG_FACE_2 = None
+SOURCE_FRAMES_1 = []
+SOURCE_FRAMES_2 = []
+
+frame_processing_lock = threading.Lock()
+
+
 def render() -> None:
     global PREVIEW_IMAGE
     global PREVIEW_FRAME_SLIDER
@@ -57,10 +66,7 @@ def render() -> None:
     reference_faces, reference_faces_2 = (
         get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
 
-    source_frames = read_static_images(facefusion.globals.source_paths)
-    source_face = get_average_face(source_frames)
-    source_frames_2 = read_static_images(facefusion.globals.source_paths_2)
-    source_face_2 = get_average_face(source_frames_2)
+    source_face, source_face_2 = get_avg_faces()
     source_audio_path = get_first(filter_audio_paths(facefusion.globals.source_paths))
     if source_audio_path and facefusion.globals.output_video_fps:
         source_audio_frame = get_audio_frame(source_audio_path, facefusion.globals.output_video_fps,
@@ -127,14 +133,14 @@ def listen() -> None:
     mask_clear = get_ui_component('mask_clear_button')
     all_update_elements = [PREVIEW_IMAGE, mask_enable_button, mask_disable_button]
     more_elements = [PREVIEW_FRAME_SLIDER] + all_update_elements
-    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
-    PREVIEW_FRAME_BACK_FIVE_BUTTON.click(preview_back_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
-    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
-    PREVIEW_FRAME_FORWARD_FIVE_BUTTON.click(preview_forward_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements)
-    PREVIEW_FRAME_SLIDER.input(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
-    mask_disable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
-    mask_enable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
-    mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
+    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, queue=False)
+    PREVIEW_FRAME_BACK_FIVE_BUTTON.click(preview_back_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, queue=False)
+    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, queue=False)
+    PREVIEW_FRAME_FORWARD_FIVE_BUTTON.click(preview_forward_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, queue=False)
+    PREVIEW_FRAME_SLIDER.input(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, queue=False)
+    mask_disable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, queue=False)
+    mask_enable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, queue=False)
+    mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, queue=False)
     multi_one_component_names: List[ComponentName] = \
         [
             'source_audio',
@@ -148,7 +154,7 @@ def listen() -> None:
         if component:
             for method in ['upload', 'change', 'clear']:
                 getattr(component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER,
-                                           outputs=all_update_elements)
+                                           outputs=all_update_elements, queue=False)
     multi_two_component_names: List[ComponentName] = \
         [
             'target_image',
@@ -171,7 +177,7 @@ def listen() -> None:
     for component_name in select_component_names:
         component = get_ui_component(component_name)
         if component:
-            component.select(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
+            component.select(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, queue=False)
     change_one_component_names: List[ComponentName] = \
         [
             'face_debugger_items_checkbox_group',
@@ -194,7 +200,7 @@ def listen() -> None:
     for component_name in change_one_component_names:
         component = get_ui_component(component_name)
         if component:
-            component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
+            component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, queue=False)
     change_two_component_names: List[ComponentName] = \
         [
             'frame_processors_checkbox_group',
@@ -214,7 +220,26 @@ def listen() -> None:
             component.change(clear_and_update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
 
 
+def get_avg_faces():
+    global AVG_FACE_1, AVG_FACE_2, SOURCE_FRAMES_1, SOURCE_FRAMES_2
+    source_paths = facefusion.globals.source_paths
+    source_paths_2 = facefusion.globals.source_paths_2
+    if SOURCE_FRAMES_1 != source_paths or AVG_FACE_1 is None and source_paths and len(source_paths) > 0:
+        SOURCE_FRAMES_1 = source_paths
+        source_frames = read_static_images(source_paths)
+        AVG_FACE_1 = get_average_face(source_frames)
+
+    if SOURCE_FRAMES_2 != source_paths_2 or AVG_FACE_2 is None and source_paths_2 and len(source_paths_2) > 0:
+        SOURCE_FRAMES_2 = source_paths_2
+        source_frames_2 = read_static_images(source_paths_2)
+        AVG_FACE_2 = get_average_face(source_frames_2)
+
+    return AVG_FACE_1, AVG_FACE_2
+
+
 def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
+    global CURRENT_PREVIEW_FRAME_NUMBER
+    CURRENT_PREVIEW_FRAME_NUMBER = -1
     clear_face_analyser()
     clear_reference_faces()
     clear_static_faces()
@@ -222,46 +247,23 @@ def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
     return update_preview_image(frame_number)
 
 
-def debounce(wait):
-    """Debounce decorator that returns a default value if the call is debounced."""
-
-    def decorator(fn):
-        @wraps(fn)
-        def debounced(*args, **kwargs):
-            def call_it():
-                debounced._timer = None
-                fn(*args, **kwargs)
-
-            if debounced._timer is not None:
-                debounced._timer.cancel()
-                return gradio.update(), gradio.update(), gradio.update()  # Return the default value immediately if debouncing
-            else:
-                debounced._timer = threading.Timer(wait, call_it)
-                debounced._timer.start()
-                return gradio.update(), gradio.update(), gradio.update()
-
-        debounced._timer = None
-        return debounced
-
-    return decorator
-
-
-def update_preview_image(frame_number: int = 0) -> gradio.Image:
+def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.update, gradio.update]:
+    global CURRENT_PREVIEW_FRAME_NUMBER
+    if CURRENT_PREVIEW_FRAME_NUMBER == frame_number:
+        print("Debouncing update_preview_image")
+        return gradio.update(), gradio.update(), gradio.update()
+    print("Updating preview image")
     global_processors = facefusion.globals.frame_processors
     from facefusion.uis.components.frame_processors import sort_frame_processors
     global_processors = sort_frame_processors(global_processors)
     for frame_processor in global_processors:
-        print(f"Checking frame processor: {frame_processor}")
         frame_processor_module = load_frame_processor_module(frame_processor)
         while not frame_processor_module.post_check():
             logger.disable()
             sleep(0.5)
         logger.enable()
     conditional_append_reference_faces()
-    source_frames = read_static_images(facefusion.globals.source_paths)
-    source_face = get_average_face(source_frames)
-    source_frames_2 = read_static_images(facefusion.globals.source_paths_2)
-    source_face_2 = get_average_face(source_frames_2)
+    source_face, source_face_2 = get_avg_faces()
     source_audio_path = get_first(filter_audio_paths(facefusion.globals.source_paths))
     if source_audio_path and facefusion.globals.output_video_fps:
         source_audio_frame = get_audio_frame(source_audio_path, facefusion.globals.output_video_fps, frame_number)
@@ -279,9 +281,14 @@ def update_preview_image(frame_number: int = 0) -> gradio.Image:
         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
     if is_video(facefusion.globals.target_path):
         temp_frame = get_video_frame(facefusion.globals.target_path, frame_number)
-        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
-                                              source_audio_frame, temp_frame, frame_number)
-        preview_frame = normalize_frame_color(preview_frame)
+        try:
+            preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
+                                                  source_audio_frame, temp_frame, frame_number)
+            preview_frame = normalize_frame_color(preview_frame)
+        except Exception as e:
+            print("Error processing preview frame: ", e)
+            traceback.print_exc()
+            preview_frame = temp_frame
         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
     return gradio.update(value=None, visible=True), enable_button, disable_button
 
@@ -326,38 +333,39 @@ def update_preview_frame_slider() -> gradio.update:
 
 
 def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face,
-                          source_audio_frame: AudioFrame,
-                          target_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
-    print("Processing preview frame")
-    target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
-    if analyse_frame(target_vision_frame):
-        return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
-    global_processors = facefusion.globals.frame_processors
-    priority_order = ['face_swapper', 'style_changer', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
+                          source_audio_frame: AudioFrame, target_vision_frame: VisionFrame,
+                          frame_number=-1) -> VisionFrame:
+    with frame_processing_lock:
+        print("Processing preview frame")
+        target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
+        if analyse_frame(target_vision_frame):
+            return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
+        global_processors = facefusion.globals.frame_processors
+        priority_order = ['face_swapper', 'style_changer', 'lip_syncer', 'face_enhancer', 'frame_enhancer',
+                          'face_debugger']
 
-    # Sort global_processors based on the priority_order
-    global_processors = sorted(
-        global_processors,
-        key=lambda fp: priority_order.index(fp) if fp in priority_order else len(priority_order)
-    )
-    source_frame = target_vision_frame.copy()
-    for frame_processor in global_processors:
-        print("Processing with frame processor: ", frame_processor)
-        frame_processor_module = load_frame_processor_module(frame_processor)
-        logger.disable()
-        if frame_processor_module.pre_process('preview'):
-            logger.enable()
-            target_vision_frame = frame_processor_module.process_frame(
-                {
-                    'reference_faces': reference_faces,
-                    'reference_faces_2': reference_faces_2,
-                    'source_face': source_face,
-                    'source_face_2': source_face_2,
-                    'source_audio_frame': source_audio_frame,
-                    'target_vision_frame': target_vision_frame,
-                    'target_frame_number': frame_number,
-                    'source_frame': source_frame,
-                })
-        # Apply overlay to temp_frame
+        # Sort global_processors based on the priority_order
+        global_processors = sorted(
+            global_processors,
+            key=lambda fp: priority_order.index(fp) if fp in priority_order else len(priority_order)
+        )
+        source_frame = target_vision_frame.copy()
 
-    return target_vision_frame
+        for frame_processor in global_processors:
+            try:
+                frame_processor_module = load_frame_processor_module(frame_processor)
+                if frame_processor_module.pre_process('preview'):
+                    target_vision_frame = frame_processor_module.process_frame({
+                        'reference_faces': reference_faces,
+                        'reference_faces_2': reference_faces_2,
+                        'source_face': source_face,
+                        'source_face_2': source_face_2,
+                        'source_audio_frame': source_audio_frame,
+                        'target_vision_frame': target_vision_frame,
+                        'target_frame_number': frame_number,
+                        'source_frame': source_frame,
+                    })
+            except Exception as e:
+                print(f"Error processing with frame processor {frame_processor}: {e}")
+                traceback.print_exc()
+        return target_vision_frame
