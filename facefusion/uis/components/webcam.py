@@ -16,7 +16,7 @@ from facefusion.content_analyser import analyse_stream
 from facefusion.face_analyser import get_average_face
 from facefusion.ffmpeg import open_ffmpeg
 from facefusion.filesystem import filter_image_paths
-from facefusion.processors.frame.core import get_frame_processors_modules, load_frame_processor_module
+from facefusion.processors.core import get_processors_modules, load_processor_module
 from facefusion.typing import VisionFrame, Face, Fps
 from facefusion.uis.core import get_ui_component
 from facefusion.uis.typing import StreamMode, WebcamMode, ComponentName
@@ -143,7 +143,7 @@ def multi_process_capture(source_face: Face, webcam_capture: cv2.VideoCapture, w
 
 def update() -> None:
     for frame_processor in facefusion.globals.frame_processors:
-        frame_processor_module = load_frame_processor_module(frame_processor)
+        frame_processor_module = load_processor_module(frame_processor)
         while not frame_processor_module.post_check():
             logger.disable()
             sleep(0.5)
@@ -157,7 +157,7 @@ def stop() -> gradio.Image:
 
 def process_stream_frame(source_face : Face, target_vision_frame : VisionFrame) -> VisionFrame:
     source_audio_frame = create_empty_audio_frame()
-    for frame_processor_module in get_frame_processors_modules(facefusion.globals.frame_processors):
+    for frame_processor_module in get_processors_modules(facefusion.globals.frame_processors):
         logger.disable()
         if frame_processor_module.pre_process('stream'):
             logger.enable()

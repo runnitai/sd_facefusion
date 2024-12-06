@@ -1,12 +1,14 @@
+from functools import lru_cache
+from typing import List, Optional, Tuple
+
 import cv2
 import numpy
 from cv2.typing import Size
-from functools import lru_cache
 
 from facefusion.choices import image_template_sizes, video_template_sizes
-from facefusion.filesystem import is_image, is_video
-from facefusion.typing import VisionFrame, Resolution, Fps
-from typing import Optional, List, Tuple
+from facefusion.common_helper import is_windows
+from facefusion.filesystem import is_image, is_video, sanitize_path_for_windows
+from facefusion.typing import Fps, Orientation, Resolution, VisionFrame
 
 
 @lru_cache(maxsize=128)
@@ -14,8 +16,9 @@ def read_static_image(image_path: str) -> Optional[VisionFrame]:
     return read_image(image_path)
 
 
-def read_static_images(image_paths: List[str]) -> Optional[List[VisionFrame]]:
+def read_static_images(image_paths: List[str]) -> List[VisionFrame]:
     frames = []
+
     if image_paths:
         for image_path in image_paths:
             frames.append(read_static_image(image_path))
@@ -24,12 +27,16 @@ def read_static_images(image_paths: List[str]) -> Optional[List[VisionFrame]]:
 
 def read_image(image_path: str) -> Optional[VisionFrame]:
     if is_image(image_path):
+        if is_windows():
+            image_path = sanitize_path_for_windows(image_path)
         return cv2.imread(image_path)
     return None
 
 
 def write_image(image_path: str, vision_frame: VisionFrame) -> bool:
     if image_path:
+        if is_windows():
+            image_path = sanitize_path_for_windows(image_path)
         return cv2.imwrite(image_path, vision_frame)
     return False
 
@@ -50,19 +57,6 @@ def restrict_image_resolution(image_path: str, resolution: Resolution) -> Resolu
     return resolution
 
 
-def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[VisionFrame]:
-    if is_video(video_path):
-        video_capture = cv2.VideoCapture(video_path)
-        if video_capture.isOpened():
-            frame_total = video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
-            video_capture.set(cv2.CAP_PROP_POS_FRAMES, min(frame_total, frame_number - 1))
-            has_vision_frame, vision_frame = video_capture.read()
-            video_capture.release()
-            if has_vision_frame:
-                return vision_frame
-    return None
-
-
 def create_image_resolutions(resolution: Resolution) -> List[str]:
     resolutions = []
     temp_resolutions = []
@@ -78,8 +72,25 @@ def create_image_resolutions(resolution: Resolution) -> List[str]:
     return resolutions
 
 
+def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[VisionFrame]:
+    if is_video(video_path):
+        if is_windows():
+            video_path = sanitize_path_for_windows(video_path)
+        video_capture = cv2.VideoCapture(video_path)
+        if video_capture.isOpened():
+            frame_total = video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
+            video_capture.set(cv2.CAP_PROP_POS_FRAMES, min(frame_total, frame_number - 1))
+            has_vision_frame, vision_frame = video_capture.read()
+            video_capture.release()
+            if has_vision_frame:
+                return vision_frame
+    return None
+
+
 def count_video_frame_total(video_path: str) -> int:
     if is_video(video_path):
+        if is_windows():
+            video_path = sanitize_path_for_windows(video_path)
         video_capture = cv2.VideoCapture(video_path)
         if video_capture.isOpened():
             video_frame_total = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -90,6 +101,8 @@ def count_video_frame_total(video_path: str) -> int:
 
 def detect_video_fps(video_path: str) -> Optional[float]:
     if is_video(video_path):
+        if is_windows():
+            video_path = sanitize_path_for_windows(video_path)
         video_capture = cv2.VideoCapture(video_path)
         if video_capture.isOpened():
             video_fps = video_capture.get(cv2.CAP_PROP_FPS)
@@ -108,6 +121,8 @@ def restrict_video_fps(video_path: str, fps: Fps) -> Fps:
 
 def detect_video_resolution(video_path: str) -> Optional[Resolution]:
     if is_video(video_path):
+        if is_windows():
+            video_path = sanitize_path_for_windows(video_path)
         video_capture = cv2.VideoCapture(video_path)
         if video_capture.isOpened():
             width = video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
@@ -161,6 +176,14 @@ def pack_resolution(resolution: Resolution) -> str:
 def unpack_resolution(resolution: str) -> Resolution:
     width, height = map(int, resolution.split('x'))
     return width, height
+
+
+def detect_frame_orientation(vision_frame: VisionFrame) -> Orientation:
+    height, width = vision_frame.shape[:2]
+
+    if width > height:
+        return 'landscape'
+    return 'portrait'
 
 
 def resize_frame_resolution(vision_frame: VisionFrame, max_resolution: Resolution) -> VisionFrame:

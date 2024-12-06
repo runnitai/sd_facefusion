@@ -3,8 +3,7 @@ from typing import List, Optional
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.filesystem import list_directory
-from facefusion.processors.frame.core import load_frame_processor_module, clear_frame_processors_modules
+from facefusion.processors.core import load_processor_module, clear_processors_modules
 from facefusion.uis.core import register_ui_component
 
 FRAME_PROCESSORS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
@@ -29,9 +28,9 @@ def listen() -> None:
 
 def update_frame_processors(frame_processors: List[str]) -> gradio.CheckboxGroup:
     facefusion.globals.frame_processors = frame_processors
-    clear_frame_processors_modules()
+    clear_processors_modules()
     for frame_processor in frame_processors:
-        frame_processor_module = load_frame_processor_module(frame_processor)
+        frame_processor_module = load_processor_module(frame_processor)
         if not frame_processor_module.pre_check():
             return gradio.update(visible=True)
     return gradio.update(value=frame_processors, choices=sort_frame_processors(frame_processors))

@@ -1,6 +1,6 @@
 import os
 
-from facefusion.typing import LogLevel, VideoMemoryStrategy, FaceSelectorMode, FaceAnalyserOrder, FaceAnalyserAge, \
+from facefusion.typing import LogLevel, VideoMemoryStrategy, FaceSelectorMode, FaceSelectorOrder, FaceAnalyserAge, \
     FaceAnalyserGender, FaceMaskType, FaceMaskRegion, OutputVideoEncoder, OutputVideoPreset, FaceDetectorModel, \
     FaceRecognizerModel, TempFrameFormat, Padding
 from typing import List, Optional
@@ -18,14 +18,14 @@ skip_download: Optional[bool] = False
 headless: Optional[bool] = False
 log_level: Optional[LogLevel] = ['info']
 # execution
-execution_providers: List[str] = ['CUDAExecutionProvider']
-execution_thread_count: Optional[int] = 32
-execution_queue_count: Optional[int] = 2
+execution_providers: List[str] = ['TensorrtExecutionProvider', 'CUDAExecutionProvider']
+execution_thread_count: Optional[int] = 4
+execution_queue_count: Optional[int] = 1
 # memory
 video_memory_strategy: Optional[VideoMemoryStrategy] = "tolerant"
 system_memory_limit: Optional[int] = 0
 # face analyser
-face_analyser_order: Optional[FaceAnalyserOrder] = 'best-worst'
+face_analyser_order: Optional[FaceSelectorOrder] = 'best-worst'
 face_analyser_age: Optional[FaceAnalyserAge] = None
 face_analyser_gender: Optional[FaceAnalyserGender] = None
 face_detector_model: Optional[FaceDetectorModel] = 'many'
@@ -46,7 +46,7 @@ face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
 # frame extraction
 trim_frame_start: Optional[int] = None
 trim_frame_end: Optional[int] = None
-temp_frame_format: Optional[TempFrameFormat] = 'png'
+temp_frame_format: Optional[TempFrameFormat] = 'bmp'
 keep_temp: Optional[bool] = False
 # output creation
 output_image_quality: Optional[int] = 60

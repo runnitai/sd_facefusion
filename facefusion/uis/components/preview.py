@@ -15,7 +15,7 @@ from facefusion.core import conditional_append_reference_faces
 from facefusion.face_analyser import clear_face_analyser, get_average_face
 from facefusion.face_store import clear_static_faces, get_reference_faces, clear_reference_faces
 from facefusion.filesystem import is_video, is_image, filter_audio_paths
-from facefusion.processors.frame.core import load_frame_processor_module
+from facefusion.processors.core import load_processor_module
 from facefusion.typing import Face, FaceSet, AudioFrame, VisionFrame
 from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component
@@ -225,11 +225,13 @@ def get_avg_faces():
     source_paths = facefusion.globals.source_paths
     source_paths_2 = facefusion.globals.source_paths_2
     if SOURCE_FRAMES_1 != source_paths or AVG_FACE_1 is None and source_paths and len(source_paths) > 0:
+        print("Updating AVG_FACE_1")
         SOURCE_FRAMES_1 = source_paths
         source_frames = read_static_images(source_paths)
         AVG_FACE_1 = get_average_face(source_frames)
 
     if SOURCE_FRAMES_2 != source_paths_2 or AVG_FACE_2 is None and source_paths_2 and len(source_paths_2) > 0:
+        print("Updating AVG_FACE_2")
         SOURCE_FRAMES_2 = source_paths_2
         source_frames_2 = read_static_images(source_paths_2)
         AVG_FACE_2 = get_average_face(source_frames_2)
@@ -257,7 +259,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
     from facefusion.uis.components.frame_processors import sort_frame_processors
     global_processors = sort_frame_processors(global_processors)
     for frame_processor in global_processors:
-        frame_processor_module = load_frame_processor_module(frame_processor)
+        frame_processor_module = load_processor_module(frame_processor)
         while not frame_processor_module.post_check():
             logger.disable()
             sleep(0.5)
@@ -353,7 +355,7 @@ def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, 
 
         for frame_processor in global_processors:
             try:
-                frame_processor_module = load_frame_processor_module(frame_processor)
+                frame_processor_module = load_processor_module(frame_processor)
                 if frame_processor_module.pre_process('preview'):
                     target_vision_frame = frame_processor_module.process_frame({
                         'reference_faces': reference_faces,

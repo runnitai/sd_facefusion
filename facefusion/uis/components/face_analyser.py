@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 import facefusion.choices
 import facefusion.globals
 from facefusion import wording
-from facefusion.typing import FaceAnalyserOrder, FaceAnalyserAge, FaceAnalyserGender, FaceDetectorModel
+from facefusion.typing import FaceSelectorOrder, FaceAnalyserAge, FaceAnalyserGender, FaceDetectorModel
 from facefusion.uis.core import register_ui_component
 
 FACE_ANALYSER_ORDER_DROPDOWN: Optional[gradio.Dropdown] = None
@@ -91,7 +91,7 @@ def listen() -> None:
     FACE_LANDMARKER_SCORE_SLIDER.release(update_face_landmarker_score, inputs=FACE_LANDMARKER_SCORE_SLIDER)
 
 
-def update_face_analyser_order(face_analyser_order: FaceAnalyserOrder) -> None:
+def update_face_analyser_order(face_analyser_order: FaceSelectorOrder) -> None:
     facefusion.globals.face_analyser_order = face_analyser_order if face_analyser_order != 'none' else None
 
 

@@ -17,7 +17,9 @@ FACE_STORE_2: FaceStore = \
         'static_faces': {},
         'reference_faces': {}
     }
-
+	
+def get_face_store() -> FaceStore:
+    return FACE_STORE
 
 def get_static_faces(vision_frame: VisionFrame, dict_2=False) -> Optional[List[Face]]:
     frame_hash = create_frame_hash(vision_frame)
@@ -48,15 +50,7 @@ def create_frame_hash(vision_frame: VisionFrame) -> Optional[str]:
     return hashlib.sha1(vision_frame.tobytes()).hexdigest() if numpy.any(vision_frame) else None
 
 
-def get_reference_faces_original() -> Optional[FaceSet]:
-    if FACE_STORE['reference_faces']:
-        return FACE_STORE['reference_faces']
-    return None
-
-
 def get_reference_faces() -> Tuple[Optional[FaceSet], Optional[FaceSet]]:
-    from extensions.sd_facefusion.facefusion.face_analyser import get_average_face
-
     set_out = {}
     set_out_2 = {}
     all_faces = []

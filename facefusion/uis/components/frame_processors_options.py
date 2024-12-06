@@ -3,13 +3,12 @@ from typing import List, Optional, Tuple
 
 import facefusion.globals
 from facefusion import wording
-from facefusion.processors.frame import globals as frame_processors_globals, choices as frame_processors_choices
-from facefusion.processors.frame.core import load_frame_processor_module
-from facefusion.processors.frame.typings import FaceDebuggerItem, FaceEnhancerModel, FaceSwapperModel, \
+from facefusion.processors import choices as frame_processors_choices, globals as frame_processors_globals
+from facefusion.processors.core import load_processor_module
+from facefusion.processors.typing import FaceDebuggerItem, FaceEnhancerModel, FaceSwapperModel, \
     FrameEnhancerModel, LipSyncerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
-from facefusion.uis.components.source import update as update_source, update_2 as update_source_2, \
-    check_swap_source_style
+from facefusion.uis.components.source import check_swap_source_style
 from facefusion.uis.typing import File
 
 FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
@@ -177,7 +176,7 @@ def update_face_swapper_weight(face_swapper_weight: float) -> None:
 
 def update_face_enhancer_model(face_enhancer_model: FaceEnhancerModel) -> gradio.Dropdown:
     frame_processors_globals.face_enhancer_model = face_enhancer_model
-    face_enhancer_module = load_frame_processor_module('face_enhancer')
+    face_enhancer_module = load_processor_module('face_enhancer')
     face_enhancer_module.clear_frame_processor()
     face_enhancer_module.set_options('model', face_enhancer_module.MODELS[face_enhancer_model])
     if not face_enhancer_module.pre_check():
@@ -199,7 +198,7 @@ def update_face_swapper_model(face_swapper_model: FaceSwapperModel) -> gradio.up
         facefusion.globals.face_recognizer_model = 'arcface_simswap'
     if face_swapper_model == 'uniface_256':
         facefusion.globals.face_recognizer_model = 'arcface_uniface'
-    face_swapper_module = load_frame_processor_module('face_swapper')
+    face_swapper_module = load_processor_module('face_swapper')
     face_swapper_module.clear_frame_processor()
     face_swapper_module.set_options('model', face_swapper_module.MODELS[face_swapper_model])
     if not face_swapper_module.pre_check():
@@ -209,7 +208,7 @@ def update_face_swapper_model(face_swapper_model: FaceSwapperModel) -> gradio.up
 
 def update_frame_enhancer_model(frame_enhancer_model: FrameEnhancerModel) -> gradio.update:
     frame_processors_globals.frame_enhancer_model = frame_enhancer_model
-    frame_enhancer_module = load_frame_processor_module('frame_enhancer')
+    frame_enhancer_module = load_processor_module('frame_enhancer')
     frame_enhancer_module.clear_frame_processor()
     frame_enhancer_module.set_options('model', frame_enhancer_module.MODELS[frame_enhancer_model])
     if not frame_enhancer_module.pre_check():
@@ -223,7 +222,7 @@ def update_frame_enhancer_blend(frame_enhancer_blend: int) -> None:
 
 def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.Dropdown:
     frame_processors_globals.lip_syncer_model = lip_syncer_model
-    lip_syncer_module = load_frame_processor_module('lip_syncer')
+    lip_syncer_module = load_processor_module('lip_syncer')
     lip_syncer_module.clear_frame_processor()
     lip_syncer_module.set_options('model', lip_syncer_module.MODELS[lip_syncer_model])
     if lip_syncer_module.pre_check():
@@ -234,7 +233,7 @@ def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.Dropdown
 def update_style_changer_model(style_changer_model: str):
     frame_processors_globals.style_changer_model = style_changer_model
     facefusion.globals.style_changer_model = style_changer_model
-    style_changer_module = load_frame_processor_module('style_changer')
+    style_changer_module = load_processor_module('style_changer')
     print(f"Style Changer Model: {style_changer_model}")
     style_changer_module.set_options('model', style_changer_model)
     print(f"Options set")
@@ -244,7 +243,7 @@ def update_style_changer_model(style_changer_model: str):
 def update_style_target(style_target: str, source_file: List[File], source_file_2: List[File]) -> Tuple[gradio.update, gradio.update]:
     frame_processors_globals.style_changer_target = style_target
     facefusion.globals.style_changer_target = style_target
-    style_changer_module = load_frame_processor_module('style_changer')
+    style_changer_module = load_processor_module('style_changer')
     style_changer_module.set_options('target', style_target)
     return check_swap_source_style(source_file), check_swap_source_style(source_file_2)
 

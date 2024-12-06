@@ -1,37 +1,73 @@
-import onnxruntime
 import subprocess
 import xml.etree.ElementTree as ElementTree
 from functools import lru_cache
+from typing import Any, List
 
-from facefusion.typing import ExecutionDevice, ValueAndUnit
-from typing import List, Any
+from onnxruntime import get_available_providers, set_default_logger_severity
 
+from facefusion.choices import execution_provider_set
+from facefusion.typing import ExecutionDevice, ExecutionProviderKey, ExecutionProviderSet, ValueAndUnit
 
-def encode_execution_providers(execution_providers: List[str]) -> List[str]:
-    return [execution_provider.replace('ExecutionProvider', '').lower() for execution_provider in execution_providers]
-
-
-def decode_execution_providers(execution_providers: List[str]) -> List[str]:
-    available_execution_providers = onnxruntime.get_available_providers()
-    encoded_execution_providers = encode_execution_providers(available_execution_providers)
-
-    return [execution_provider for execution_provider, encoded_execution_provider in
-            zip(available_execution_providers, encoded_execution_providers) if
-            any(execution_provider in encoded_execution_provider for execution_provider in execution_providers)]
+set_default_logger_severity(3)
 
 
-def apply_execution_provider_options(execution_providers: List[str]) -> List[Any]:
-    execution_providers_with_options: List[Any] = []
+def get_execution_provider_choices() -> List[ExecutionProviderKey]:
+    return list(get_available_execution_provider_set().keys())
 
-    for execution_provider in execution_providers:
-        if execution_provider == 'CUDAExecutionProvider':
-            execution_providers_with_options.append((execution_provider,
-                                                     {
-                                                         'cudnn_conv_algo_search': 'EXHAUSTIVE' if use_exhaustive() else 'DEFAULT'
-                                                     }))
-        else:
-            execution_providers_with_options.append(execution_provider)
-    return execution_providers_with_options
+
+def has_execution_provider(execution_provider_key: ExecutionProviderKey) -> bool:
+    return execution_provider_key in get_execution_provider_choices()
+
+
+def get_available_execution_provider_set() -> ExecutionProviderSet:
+    available_execution_providers = get_available_providers()
+    available_execution_provider_set: ExecutionProviderSet = {}
+
+    for execution_provider_key, execution_provider_value in execution_provider_set.items():
+        if execution_provider_value in available_execution_providers:
+            available_execution_provider_set[execution_provider_key] = execution_provider_value
+    return available_execution_provider_set
+
+
+def create_execution_providers(execution_device_id: str, execution_provider_keys: List[ExecutionProviderKey]) -> List[
+    Any]:
+    execution_providers: List[Any] = []
+
+    for execution_provider_key in execution_provider_keys:
+        if execution_provider_key == 'cuda':
+            execution_providers.append((execution_provider_set.get(execution_provider_key),
+                                        {
+                                            'device_id': execution_device_id,
+                                            'cudnn_conv_algo_search': 'EXHAUSTIVE' if use_exhaustive() else 'DEFAULT'
+                                        }))
+        if execution_provider_key == 'tensorrt':
+            execution_providers.append((execution_provider_set.get(execution_provider_key),
+                                        {
+                                            'device_id': execution_device_id,
+                                            'trt_engine_cache_enable': True,
+                                            'trt_engine_cache_path': '.caches',
+                                            'trt_timing_cache_enable': True,
+                                            'trt_timing_cache_path': '.caches',
+                                            'trt_builder_optimization_level': 5
+                                        }))
+        if execution_provider_key == 'openvino':
+            execution_providers.append((execution_provider_set.get(execution_provider_key),
+                                        {
+                                            'device_type': 'GPU.' + execution_device_id,
+                                            'precision': 'FP32'
+                                        }))
+        if execution_provider_key in ['directml', 'rocm']:
+            execution_providers.append((execution_provider_set.get(execution_provider_key),
+                                        {
+                                            'device_id': execution_device_id
+                                        }))
+        if execution_provider_key == 'coreml':
+            execution_providers.append(execution_provider_set.get(execution_provider_key))
+
+    if 'cpu' in execution_provider_keys:
+        execution_providers.append(execution_provider_set.get('cpu'))
+
+    return execution_providers
 
 
 def use_exhaustive() -> bool:
@@ -54,6 +90,7 @@ def detect_static_execution_devices() -> List[ExecutionDevice]:
 
 def detect_execution_devices() -> List[ExecutionDevice]:
     execution_devices: List[ExecutionDevice] = []
+
     try:
         output, _ = run_nvidia_smi().communicate()
         root_element = ElementTree.fromstring(output)
@@ -67,13 +104,12 @@ def detect_execution_devices() -> List[ExecutionDevice]:
                 'framework':
                     {
                         'name': 'CUDA',
-                        'version': root_element.find('cuda_version').text,
+                        'version': root_element.find('cuda_version').text
                     },
                 'product':
                     {
                         'vendor': 'NVIDIA',
-                        'name': gpu_element.find('product_name').text.replace('NVIDIA ', ''),
-                        'architecture': gpu_element.find('product_architecture').text,
+                        'name': gpu_element.find('product_name').text.replace('NVIDIA ', '')
                     },
                 'video_memory':
                     {
@@ -93,8 +129,8 @@ def create_value_and_unit(text: str) -> ValueAndUnit:
     value, unit = text.split()
     value_and_unit: ValueAndUnit = \
         {
-            'value': value,
-            'unit': unit
+            'value': int(value),
+            'unit': str(unit)
         }
 
     return value_and_unit

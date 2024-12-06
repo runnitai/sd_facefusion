@@ -11,7 +11,7 @@ from PIL import Image
 from transformers.image_transforms import to_pil_image
 
 from facefusion import face_analyser, wording, globals
-from facefusion.processors.frame import choices as frame_processors_choices, globals as frame_processors_globals
+from facefusion.processors import choices as frame_processors_choices, globals as frame_processors_globals
 from facefusion.download import conditional_download
 from facefusion.filesystem import TEMP_DIRECTORY_PATH
 from facefusion.job_params import JobParams

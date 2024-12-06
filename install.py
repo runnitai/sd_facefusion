@@ -126,9 +126,7 @@ def print_requirement_installation_error(err):
 
 
 def install_runtimes():
-    torch_version = '2.0.1'
-    torch_cuda_wheel = 'cu118'  # Update this to the correct CUDA version if needed
-    onnxruntime_version = '1.16.3'
+    onnxruntime_version = '1.20.1'
     onnxruntime_cuda_name = 'onnxruntime-gpu'
     # Uninstall existing PyTorch and ONNX Runtime installations
     if not is_installed(onnxruntime_cuda_name, onnxruntime_version, True):

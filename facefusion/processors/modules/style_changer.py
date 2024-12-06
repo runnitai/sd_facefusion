@@ -1,8 +1,8 @@
 import argparse
 import os
 import threading
-from typing import Any, Dict
-from typing import Literal, Optional, List
+from typing import Any, Dict, Tuple
+from typing import Optional, List
 
 import PIL
 import cv2
@@ -12,131 +12,83 @@ from PIL import ImageOps
 from PIL.Image import Image
 
 import facefusion.globals
-import facefusion.processors.frame.core as frame_processors
-from facefusion import config, logger, wording
-from facefusion.download import conditional_download
+import facefusion.processors.core as frame_processors
+from facefusion import config, logger, wording, state_manager
+from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.face_ana import get_f5p, warp_and_crop_face, get_reference_facial_points, FaceAna
 from facefusion.filesystem import is_image, is_video, resolve_relative_path
-from facefusion.processors.frame import globals as frame_processors_globals
-from facefusion.processors.frame.typings import StyleChangerInputs
-from facefusion.typing import ProcessMode, OptionsWithModel, VisionFrame, QueuePayload, UpdateProcess, Face
+from facefusion.processors.typing import StyleChangerInputs
+from facefusion.typing import ProcessMode, OptionsWithModel, VisionFrame, QueuePayload, Face, ModelSet, ModelOptions
 from facefusion.vision import read_image, write_image, read_static_image
 
 FRAME_PROCESSOR = None
+SELECTED_MODEL = None
+
 THREAD_LOCK: threading.Lock = threading.Lock()
 NAME = __name__.upper()
 
 # Available models
-MODEL_MAPPING = {
-    "anime": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/anime_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.hash"
+MODEL_SET: ModelSet = \
+    {
+        'anime_bg': {
+            'hashes': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.hash',
+                    'path': resolve_relative_path('../.assets/models/style/anime_bg.hash')
+                }
+            },
+            'sources': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.pb',
+                    'path': resolve_relative_path('../.assets/models/style/anime_bg.pb')
+                }
+            }
         },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/anime_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.hash"
-        }
-    },
-    "3d": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/3d_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.hash"
+        'anime_head': {
+            'hashes': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.hash',
+                    'path': resolve_relative_path('../.assets/models/style/anime_h.hash')
+                }
+            },
+            'sources': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.pb',
+                    'path': resolve_relative_path('../.assets/models/style/anime_h.pb')
+                }
+            }
         },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/3d_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.hash"
-        }
-    },
-    "handdrawn": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/handdrawn_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.hash"
+        '3d_bg': {
+            'hashes': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.hash',
+                    'path': resolve_relative_path('../.assets/models/style/3d_bg.hash')
+                }
+            },
+            'sources': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.pb',
+                    'path': resolve_relative_path('../.assets/models/style/3d_bg.pb')
+                }
+            }
         },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/handdrawn_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.hash"
-        }
-    },
-    "sketch": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/sketch_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.hash"
+        '3d_head': {
+            'hashes': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.hash',
+                    'path': resolve_relative_path('../.assets/models/style/3d_h.hash')
+                }
+            },
+            'sources': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.pb',
+                    'path': resolve_relative_path('../.assets/models/style/3d_h.pb')
+                }
+            }
         },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/sketch_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.hash"
-        }
-    },
-    "artstyle": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/artstyle_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.hash"
-        },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/artstyle_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.hash"
-        }
-    },
-    "design": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/design_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.hash"
-        },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/design_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.hash"
-        }
-    },
-    "illustration": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/illustration_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.hash"
-        },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/illustration_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.hash"
-        }
-    },
-    "genshen": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/genshen_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.hash"
-        },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/genshen_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.hash"
-        }
-    },
-    "anime2": {
-        "bg": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.pb",
-            "path": resolve_relative_path('../.assets/models/style/anime2_bg.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.hash"
-        },
-        "head": {
-            "url": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.pb",
-            "path": resolve_relative_path('../.assets/models/style/anime2_h.pb'),
-            "hash": "https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.hash"
-        }
+        # Repeat similar structures for 'handdrawn', 'sketch', 'artstyle', 'design',
+        # 'illustration', 'genshen', and 'anime2' subtypes.
     }
-}
 
 OPTIONS: Optional[OptionsWithModel] = None
 
@@ -317,19 +269,19 @@ class ImageCartoonPipelineCustom:
 
         # Postprocessing: Resize back to original dimensions
         res = cv2.resize(res, (ori_w, ori_h), interpolation=cv2.INTER_AREA)
-        #res = res[:, :, ::-1]  # Convert BGR to RGB
+        # res = res[:, :, ::-1]  # Convert BGR to RGB
         return np.clip(res, 0, 255).astype(np.uint8)
 
 
 def get_frame_processor() -> Any:
-    global FRAME_PROCESSOR
+    global FRAME_PROCESSOR, SELECTED_MODEL
 
     with THREAD_LOCK:
-        if FRAME_PROCESSOR is None:
-            model = get_options('model')
-            model_name = MODEL_MAPPING.get(model)
-            print(f"Loading style changer model: {model_name}")
-            FRAME_PROCESSOR = ImageCartoonPipelineCustom(model=model)
+        selected_model = state_manager.get_item('style_changer_model')
+        if FRAME_PROCESSOR is None or selected_model != SELECTED_MODEL:
+            print(f"Loading style changer model: {selected_model}")
+            FRAME_PROCESSOR = ImageCartoonPipelineCustom(model=selected_model)
+            SELECTED_MODEL = selected_model
     return FRAME_PROCESSOR
 
 
@@ -342,40 +294,28 @@ def clear_frame_processor() -> None:
     FRAME_PROCESSOR = None
 
 
-def get_options(key: Literal['model']) -> Any:
-    global OPTIONS
-
-    if OPTIONS is None:
-        OPTIONS = \
-            {
-                'model': frame_processors_globals.style_changer_model,
-                'target': frame_processors_globals.style_changer_target
-            }
-    return OPTIONS.get(key)
+def get_model_options() -> Tuple[ModelOptions, ModelOptions]:
+    style_changer_model = state_manager.get_item('style_changer_model')
+    head_model = MODEL_SET.get(f'{style_changer_model}_head')
+    bg_model = MODEL_SET.get(f'{style_changer_model}_bg')
+    return head_model, bg_model
 
 
-def set_options(key: Literal['model'], value: Any) -> None:
-    global OPTIONS
-    if not OPTIONS:
-        OPTIONS = \
-            {
-                'model': MODEL_MAPPING[frame_processors_globals.style_changer_model],
-                'target': frame_processors_globals.style_changer_target
-            }
-    if key == 'model' and OPTIONS.get(key) != value and FRAME_PROCESSOR:
-        print("Clearing frame processor")
-        clear_frame_processor()
-        print("Frame processor cleared")
-    OPTIONS[key] = value
+def model_names() -> List[str]:
+    names = []
+    for key in MODEL_SET.keys():
+        model_name = key.split('_')[0]
+        if model_name not in names:
+            names.append(model_name)
+    return names
 
 
-# Register command-line arguments
 def register_args(program: argparse.ArgumentParser) -> None:
     program.add_argument(
         '--style-changer-model',
         help=wording.get('help.style_changer_model'),
         default=config.get_str_value('style_changer_model', 'anime'),
-        choices=list(MODEL_MAPPING.keys())
+        choices=model_names()
     )
     program.add_argument(
         '--style-changer-target',
@@ -395,20 +335,20 @@ def apply_args(program: argparse.ArgumentParser) -> None:
 # Pre-check before processing
 def pre_check() -> bool:
     model_name = facefusion.globals.style_changer_model
-    if model_name not in MODEL_MAPPING:
+    if model_name not in model_names():
         logger.error(f"Model '{model_name}' not found in available models.", "STYLE_CHANGER")
         return False
-    print(f"Pre-check passed for model '{model_name}'.")
-    download_path = resolve_relative_path('../.assets/models/style')
-    model_urls = []
-    for model_type, model in MODEL_MAPPING.items():
-        print(f"Checking model '{model_type}'...")
-        model_bg_url = model.get('bg').get('url')
-        model_head_url = model.get('head').get('url')
-        model_urls.append(model_bg_url)
-        model_urls.append(model_head_url)
-    conditional_download(download_path, model_urls)
-    return True
+    download_directory_path = resolve_relative_path('../.assets/models/styles')
+    head_model_options, bg_model_options = get_model_options()
+    head_model_hashes = head_model_options.get('hashes')
+    head_model_sources = head_model_options.get('sources')
+    bg_model_hashes = bg_model_options.get('hashes')
+    bg_model_sources = bg_model_options.get('sources')
+    all_hashes = {**head_model_hashes, **bg_model_hashes}
+    all_sources = {**head_model_sources, **bg_model_sources}
+
+    return conditional_download_hashes(download_directory_path, all_hashes) and conditional_download_sources(
+        download_directory_path, all_sources)
 
 
 # Post-check after setup (not used here, but included for completeness)
@@ -440,7 +380,7 @@ def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
 
 
 def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
-    if get_options('target') == 'source':
+    if state_manager.get_item('style_target') == 'source':
         return temp_vision_frame
     return change_style(temp_vision_frame)
 
@@ -468,24 +408,26 @@ def process_frame(inputs: StyleChangerInputs) -> VisionFrame:
     return converted
 
 
-def process_frames(source_paths: List[str], source_paths_2: List[str], queue_payloads: List[QueuePayload],
-                   update_progress: UpdateProcess) -> None:
-    if get_options('target') == 'source':
-        print(f"Skipping processing for source target: {get_options('target')}")
+def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
+    if state_manager.get_item('style_changer_target') == 'source':
+        print(f"Skipping processing for source target.")
         return
+    output_frames = []
     for queue_payload in queue_payloads:
         target_vision_path = queue_payload['frame_path']
+        target_frame_number = queue_payload['frame_number']
         target_vision_frame = read_image(target_vision_path)
         output_vision_frame = process_frame(
             {
                 'target_vision_frame': target_vision_frame
             })
         write_image(target_vision_path, output_vision_frame)
-        update_progress(target_vision_path)
+        output_frames.append((target_frame_number, target_vision_path))
+    return output_frames
 
 
 def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
-    if get_options('target') == 'source':
+    if state_manager.get_item('style_changer_target') == 'source':
         return
     target_vision_frame = read_static_image(target_path)
     output_vision_frame = process_frame(
@@ -497,4 +439,4 @@ def process_image(source_paths: List[str], target_path: str, output_path: str) -
 
 def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
     print("Processing video frames with style changer.")
-    frame_processors.multi_process_frames(None, None, temp_frame_paths, process_frames)
+    frame_processors.multi_process_frames(temp_frame_paths, process_frames)

@@ -7,7 +7,7 @@ import facefusion.globals
 from facefusion.common_helper import get_first
 from facefusion.filesystem import TEMP_DIRECTORY_PATH, is_image
 from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths
-from facefusion.processors.frame.modules.style_changer import process_src_image
+from facefusion.processors.modules import process_src_image
 from facefusion.uis.core import register_ui_component
 from facefusion.uis.typing import File
 
