@@ -7,6 +7,11 @@ import filetype
 
 from facefusion.common_helper import is_windows
 
+from modules.paths_internal import script_path
+
+output_dir = os.path.join(script_path, 'outputs')
+TEMP_DIRECTORY_PATH = os.path.join(output_dir, 'facefusion', 'temp')
+
 if is_windows():
     import ctypes
 
@@ -130,10 +135,19 @@ def create_directory(directory_path: str) -> bool:
 
 
 def list_directory(directory_path: str) -> Optional[List[str]]:
+    path_parts = directory_path.split("\\") if "\\" in directory_path else directory_path.split("/")
+    # Pop the first part if it is "facefusion"
+    if path_parts[0] == "facefusion":
+        path_parts.pop(0)
+    dir_path = os.path.dirname(__file__)
+    directory_path = os.path.join(dir_path, *path_parts)
+    print(f"Directory path: {directory_path}")
     if is_directory(directory_path):
         files = os.listdir(directory_path)
         files = [Path(file).stem for file in files if not Path(file).stem.startswith(('.', '__'))]
         return sorted(files)
+    else:
+        print(f"Directory not found: {directory_path}")
     return None
 
 
@@ -146,7 +160,14 @@ def resolve_relative_path_auto(path: str) -> str:
     model_name = os.path.basename(path)
     if model_name == "" or path.endswith("models"):
         return os.path.join(models_path, 'facefusion')
-    return os.path.join(models_path, 'facefusion', model_name)
+    # Replace .assets\models with models_path/facefusion
+    path_parts = path.split("\\") if "\\" in path else path.split("/")
+    cleaned_parts = []
+    for part in path_parts:
+        if part != ".assets" and part != "models" and part != ".." and part != ".":
+            cleaned_parts.append(part)
+
+    return os.path.join(models_path, "facefusion", *cleaned_parts)
 
 
 def remove_directory(directory_path: str) -> bool:

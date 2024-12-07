@@ -1,6 +1,7 @@
 from typing import List, Sequence
 
 from facefusion.common_helper import create_float_range, create_int_range
+from facefusion.processors.modules.style_changer import model_names
 from facefusion.processors.typing import AgeModifierModel, ExpressionRestorerModel, FaceDebuggerItem, FaceEditorModel, \
     FaceEnhancerModel, FaceSwapperSet, FrameColorizerModel, FrameEnhancerModel, LipSyncerModel
 
@@ -53,3 +54,4 @@ face_editor_head_roll_range: Sequence[float] = create_float_range(-1.0, 1.0, 0.0
 face_enhancer_blend_range: Sequence[int] = create_int_range(0, 100, 1)
 frame_colorizer_blend_range: Sequence[int] = create_int_range(0, 100, 1)
 frame_enhancer_blend_range: Sequence[int] = create_int_range(0, 100, 1)
+style_changer_models: List[str] = model_names()

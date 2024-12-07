@@ -21,7 +21,7 @@ from facefusion.jobs import job_helper, job_manager, job_runner
 from facefusion.jobs.job_list import compose_job_list
 from facefusion.memory import limit_system_memory
 from facefusion.processors.core import get_processors_modules
-from facefusion.program import create_program
+#from facefusion.program import create_program
 
 from facefusion.processors.modules import style_changer
 from facefusion.program_helper import validate_args
@@ -33,19 +33,19 @@ from facefusion.vision import get_video_frame, pack_resolution, read_image, read
     restrict_image_resolution, restrict_video_fps, restrict_video_resolution, unpack_resolution
 
 
-def cli() -> None:
-    signal.signal(signal.SIGINT, lambda signal_number, frame: graceful_exit(0))
-    program = create_program()
-
-    if validate_args(program):
-        args = vars(program.parse_args())
-        apply_args(args, state_manager.init_item)
-
-        if state_manager.get_item('command'):
-            logger.init(state_manager.get_item('log_level'))
-            route(args)
-        else:
-            program.print_help()
+# def cli() -> None:
+#     signal.signal(signal.SIGINT, lambda signal_number, frame: graceful_exit(0))
+#     program = create_program()
+#
+#     if validate_args(program):
+#         args = vars(program.parse_args())
+#         apply_args(args, state_manager.init_item)
+#
+#         if state_manager.get_item('command'):
+#             logger.init(state_manager.get_item('log_level'))
+#             route(args)
+#         else:
+#             program.print_help()
 
 
 def route(args: Args) -> None:

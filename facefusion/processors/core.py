@@ -31,10 +31,12 @@ PROCESSORS_METHODS = \
 
 def load_processor_module(processor: str) -> Any:
     processor_module = None
+    last_method_name = None
     try:
         processor_module = importlib.import_module('facefusion.processors.modules.' + processor)
         for method_name in PROCESSORS_METHODS:
             if not hasattr(processor_module, method_name):
+                last_method_name = method_name
                 raise NotImplementedError
     except ModuleNotFoundError as exception:
         logger.error(wording.get('processor_not_loaded').format(processor=processor), __name__)
@@ -42,6 +44,7 @@ def load_processor_module(processor: str) -> Any:
         #hard_exit(1)
     except NotImplementedError:
         logger.error(wording.get('processor_not_implemented').format(processor=processor), __name__)
+        print("Error: ", last_method_name)
         #hard_exit(1)
     return processor_module
 

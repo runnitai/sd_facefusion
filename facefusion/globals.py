@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from modules.paths_internal import script_path
 from facefusion.choices import face_mask_regions
+age_modifier_model: Optional[str] = "styleganex_age"
 batch_size: Optional[int] = 4
 # general
 source_paths: Optional[List[str]] = None
@@ -18,9 +19,19 @@ skip_download: Optional[bool] = False
 headless: Optional[bool] = False
 log_level: Optional[LogLevel] = ['info']
 # execution
-execution_providers: List[str] = ['TensorrtExecutionProvider', 'CUDAExecutionProvider']
+execution_providers: List[str] = ['tensorrt', 'cuda']
 execution_thread_count: Optional[int] = 4
 execution_queue_count: Optional[int] = 1
+face_detector_angles: Optional[List[int]] = [0, 90, 180, 270]
+expression_restorer_model: Optional[str] = 'live_portrait'
+face_editor_model: Optional[str] = 'live_portrait'
+face_enhancer_model: Optional[str] = 'gfpgan_1.4'
+face_landmarker_model: Optional[str] = 'many'
+face_swapper_model: Optional[str] = 'inswapper_128_fp16'
+frame_colorizer_model: Optional[str] = 'ddcolor'
+frame_enhancer_model: Optional[str] = 'real_esrgan_x2_fp16'
+lip_syncer_model: Optional[str] = 'wav2lip_gan_96'
+style_changer_model: Optional[str] = '3d'
 # memory
 video_memory_strategy: Optional[VideoMemoryStrategy] = "tolerant"
 system_memory_limit: Optional[int] = 0
@@ -35,6 +46,8 @@ face_landmarker_score: Optional[float] = 0.35
 face_recognizer_model: Optional[FaceRecognizerModel] = 'arcface_inswapper'
 # face selector
 face_selector_mode: Optional[FaceSelectorMode] = 'reference'
+
+jobs_path: Optional[str] = os.path.abspath(os.path.join(os.path.dirname(__file__),"..", 'jobs'))
 reference_face_position: Optional[int] = 0
 reference_face_distance: Optional[float] = 0.75
 reference_frame_number: Optional[int] = 0
@@ -57,10 +70,9 @@ output_video_quality: Optional[int] = 60
 output_video_resolution: Optional[str] = None
 output_video_fps: Optional[float] = None
 skip_audio: Optional[bool] = False
-style_changer_model: Optional[str] = '3d'
 style_changer_target: Optional[str] = 'target'
 # frame processors
-frame_processors: List[str] = ["face_swapper"]
+processors: List[str] = ["face_swapper"]
 # uis
 ui_layouts: List[str] = ["default"]
 

@@ -18,8 +18,11 @@ def validate_hash(validate_path: str) -> bool:
 
         with open(validate_path, 'rb') as validate_file:
             validate_content = validate_file.read()
-
-        return create_hash(validate_content) == hash_content
+        hashed = create_hash(validate_content)
+        if hashed != hash_content:
+            print(f'Hash mismatch: {hash_path} != {hashed}')
+        return hashed == hash_content
+    print(f'Hash file not found: {hash_path}')
     return False
 
 

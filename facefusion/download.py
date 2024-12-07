@@ -1,22 +1,24 @@
 import json
 import os
 import re
+import shutil
+import string
 import subprocess
 import threading
 import urllib.request
-import unicodedata
-import string
-from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import List, Tuple
+from urllib.parse import urlparse
 
 import requests
-import yt_dlp
+import unicodedata
+from tqdm import tqdm
 from yt_dlp import YoutubeDL
 
-from facefusion import wording
-from facefusion.filesystem import is_file, TEMP_DIRECTORY_PATH
-from facefusion.mytqdm import mytqdm
+from facefusion import wording, process_manager, state_manager, logger
+from facefusion.filesystem import is_file, TEMP_DIRECTORY_PATH, get_file_size, remove_file
+from facefusion.hash_helper import validate_hash
+from facefusion.typing import DownloadSet
 
 
 def find_media_urls(page_url) -> List[Tuple[str, str]]:
@@ -216,6 +218,8 @@ def is_download_done(url: str, file_path: str) -> bool:
     if is_file(file_path):
         return get_download_size(url) == get_file_size(file_path)
     return False
+
+
 def conditional_download_hashes(download_directory_path: str, hashes: DownloadSet) -> bool:
     hash_paths = [hashes.get(hash_key).get('path') for hash_key in hashes.keys()]
     process_manager.check()
@@ -232,10 +236,13 @@ def conditional_download_hashes(download_directory_path: str, hashes: DownloadSe
         logger.debug(wording.get('validating_hash_succeed').format(hash_file_name=valid_hash_file_name), __name__)
     for invalid_hash_path in invalid_hash_paths:
         invalid_hash_file_name, _ = os.path.splitext(os.path.basename(invalid_hash_path))
+        print(f"Invalid hash path: {invalid_hash_path}")
         logger.error(wording.get('validating_hash_failed').format(hash_file_name=invalid_hash_file_name), __name__)
     if not invalid_hash_paths:
         process_manager.end()
     return not invalid_hash_paths
+
+
 def conditional_download_sources(download_directory_path: str, sources: DownloadSet) -> bool:
     source_paths = [sources.get(source_key).get('path') for source_key in sources.keys()]
     process_manager.check()
@@ -252,6 +259,7 @@ def conditional_download_sources(download_directory_path: str, sources: Download
         logger.debug(wording.get('validating_source_succeed').format(source_file_name=valid_source_file_name), __name__)
     for invalid_source_path in invalid_source_paths:
         invalid_source_file_name, _ = os.path.splitext(os.path.basename(invalid_source_path))
+        print(f"Invalid source path: {invalid_source_path}")
         logger.error(wording.get('validating_source_failed').format(source_file_name=invalid_source_file_name),
                      __name__)
         if remove_file(invalid_source_path):
@@ -260,6 +268,8 @@ def conditional_download_sources(download_directory_path: str, sources: Download
     if not invalid_source_paths:
         process_manager.end()
     return not invalid_source_paths
+
+
 def validate_hash_paths(hash_paths: List[str]) -> Tuple[List[str], List[str]]:
     valid_hash_paths = []
     invalid_hash_paths = []
