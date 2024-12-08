@@ -31,9 +31,9 @@ def listen() -> None:
                                          outputs=FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP)
 
 
-def remote_update(processors: List[str]) -> gradio.CheckboxGroup:
+def remote_update(processors: List[str]) -> gradio.update:
     has_face_debugger = 'face_debugger' in processors
-    return gradio.CheckboxGroup(visible=has_face_debugger)
+    return gradio.update(visible=has_face_debugger)
 
 
 def update_face_debugger_items(face_debugger_items: List[FaceDebuggerItem]) -> None:

@@ -67,13 +67,13 @@ def remote_update(ui_workflow: UiWorkflow) -> gradio.Row:
     return gradio.Row(visible=is_instant_runner)
 
 
-def start() -> Tuple[gradio.Button, gradio.Button]:
+def start() -> Tuple[gradio.update, gradio.update]:
     while not process_manager.is_processing():
         sleep(0.5)
-    return gradio.Button(visible=False), gradio.Button(visible=True)
+    return gradio.update(visible=False), gradio.update(visible=True)
 
 
-def run() -> Tuple[gradio.Button, gradio.Button, gradio.Image, gradio.Video]:
+def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     step_args = collect_step_args()
     output_path = step_args.get('output_path')
 
@@ -84,13 +84,13 @@ def run() -> Tuple[gradio.Button, gradio.Button, gradio.Image, gradio.Video]:
         create_and_run_job(step_args)
         state_manager.set_item('output_path', output_path)
     if is_image(step_args.get('output_path')):
-        return gradio.Button(visible=True), gradio.Button(visible=False), gradio.Image(
-            value=step_args.get('output_path'), visible=True), gradio.Video(value=None, visible=False)
+        return gradio.update(visible=True), gradio.update(visible=False), gradio.update(
+            value=step_args.get('output_path'), visible=True), gradio.update(value=None, visible=False)
     if is_video(step_args.get('output_path')):
-        return gradio.Button(visible=True), gradio.Button(visible=False), gradio.Image(value=None,
-                                                                                       visible=False), gradio.Video(
+        return gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None,
+                                                                                       visible=False), gradio.update(
             value=step_args.get('output_path'), visible=True)
-    return gradio.Button(visible=True), gradio.Button(visible=False), gradio.Image(value=None), gradio.Video(value=None)
+    return gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None), gradio.update(value=None)
 
 
 def create_and_run_job(step_args: Args) -> bool:
@@ -103,14 +103,14 @@ def create_and_run_job(step_args: Args) -> bool:
         job_id) and job_runner.run_job(job_id, process_step)
 
 
-def stop() -> Tuple[gradio.Button, gradio.Button]:
+def stop() -> Tuple[gradio.update, gradio.update]:
     process_manager.stop()
-    return gradio.Button(visible=True), gradio.Button(visible=False)
+    return gradio.update(visible=True), gradio.update(visible=False)
 
 
-def clear() -> Tuple[gradio.Image, gradio.Video]:
+def clear() -> Tuple[gradio.update, gradio.update]:
     while process_manager.is_processing():
         sleep(0.5)
     if state_manager.get_item('target_path'):
         clear_temp_directory(state_manager.get_item('target_path'))
-    return gradio.Image(value=None), gradio.Video(value=None)
+    return gradio.update(value=None), gradio.update(value=None)

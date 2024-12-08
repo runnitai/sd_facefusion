@@ -33,16 +33,16 @@ def listen() -> None:
                                          outputs=LIP_SYNCER_MODEL_DROPDOWN)
 
 
-def remote_update(processors: List[str]) -> gradio.Dropdown:
+def remote_update(processors: List[str]) -> gradio.update:
     has_lip_syncer = 'lip_syncer' in processors
-    return gradio.Dropdown(visible=has_lip_syncer)
+    return gradio.update(visible=has_lip_syncer)
 
 
-def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.Dropdown:
+def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.update:
     lip_syncer_module = load_processor_module('lip_syncer')
     lip_syncer_module.clear_inference_pool()
     state_manager.set_item('lip_syncer_model', lip_syncer_model)
 
     if lip_syncer_module.pre_check():
-        return gradio.Dropdown(value=state_manager.get_item('lip_syncer_model'))
-    return gradio.Dropdown()
+        return gradio.update(value=state_manager.get_item('lip_syncer_model'))
+    return gradio.update()

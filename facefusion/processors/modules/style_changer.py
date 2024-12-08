@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 from PIL import ImageOps
 from PIL.Image import Image
-
+import facefusion.jobs.job_store
 import facefusion.globals
 import facefusion.processors.core as frame_processors
 from facefusion import config, logger, wording, state_manager
@@ -510,15 +510,16 @@ def register_args(program: argparse.ArgumentParser) -> None:
     program.add_argument(
         '--style-changer-model',
         help=wording.get('help.style_changer_model'),
-        default=config.get_str_value('style_changer_model', 'anime'),
+        default='3d',
         choices=model_names()
     )
     program.add_argument(
         '--style-changer-target',
         help=wording.get('help.style_changer_target'),
-        default=config.get_str_value('style_changer_target', 'target'),
+        default='target',
         choices=['source', 'target']
     )
+    facefusion.jobs.job_store.register_step_keys(['style_changer_model', 'style_changer_target'])
 
 
 # Apply command-line arguments
@@ -541,7 +542,6 @@ def pre_check() -> bool:
     bg_model_sources = bg_model_options.get('sources')
     all_hashes = {**head_model_hashes, **bg_model_hashes}
     all_sources = {**head_model_sources, **bg_model_sources}
-    print(f"Downloading style changer model: {model_name} to {download_directory_path}")
     return conditional_download_hashes(download_directory_path, all_hashes) and conditional_download_sources(
         download_directory_path, all_sources)
 

@@ -26,14 +26,14 @@ def listen() -> None:
                                      outputs=PROCESSORS_CHECKBOX_GROUP)
 
 
-def update_processors(processors: List[str]) -> gradio.CheckboxGroup:
+def update_processors(processors: List[str]) -> gradio.update:
     clear_processors_modules(state_manager.get_item('processors'))
     state_manager.set_item('processors', processors)
 
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         if not processor_module.pre_check():
-            return gradio.CheckboxGroup()
-    return gradio.CheckboxGroup(value=state_manager.get_item('processors'),
+            return gradio.update()
+    return gradio.update(value=state_manager.get_item('processors'),
                                 choices=sort_processors(state_manager.get_item('processors')))
 
 

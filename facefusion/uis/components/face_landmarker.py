@@ -38,13 +38,13 @@ def listen() -> None:
     FACE_LANDMARKER_SCORE_SLIDER.release(update_face_landmarker_score, inputs=FACE_LANDMARKER_SCORE_SLIDER)
 
 
-def update_face_landmarker_model(face_landmarker_model: FaceLandmarkerModel) -> gradio.Dropdown:
+def update_face_landmarker_model(face_landmarker_model: FaceLandmarkerModel) -> gradio.update:
     face_landmarker.clear_inference_pool()
     state_manager.set_item('face_landmarker_model', face_landmarker_model)
 
     if face_landmarker.pre_check():
-        gradio.Dropdown(value=state_manager.get_item('face_landmarker_model'))
-    return gradio.Dropdown()
+        gradio.update(value=state_manager.get_item('face_landmarker_model'))
+    return gradio.update()
 
 
 def update_face_landmarker_score(face_landmarker_score: Score) -> None:

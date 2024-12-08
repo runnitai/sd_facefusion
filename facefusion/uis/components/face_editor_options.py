@@ -219,9 +219,9 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[
-    gradio.Dropdown, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider]:
+    gradio.update, gradio.update, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider]:
     has_face_editor = 'face_editor' in processors
-    return gradio.Dropdown(visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
+    return gradio.update(visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
         visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
         visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
         visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
@@ -230,14 +230,14 @@ def remote_update(processors: List[str]) -> Tuple[
         visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(visible=has_face_editor)
 
 
-def update_face_editor_model(face_editor_model: FaceEditorModel) -> gradio.Dropdown:
+def update_face_editor_model(face_editor_model: FaceEditorModel) -> gradio.update:
     face_editor_module = load_processor_module('face_editor')
     face_editor_module.clear_inference_pool()
     state_manager.set_item('face_editor_model', face_editor_model)
 
     if face_editor_module.pre_check():
-        return gradio.Dropdown(value=state_manager.get_item('face_editor_model'))
-    return gradio.Dropdown()
+        return gradio.update(value=state_manager.get_item('face_editor_model'))
+    return gradio.update()
 
 
 def update_face_editor_eyebrow_direction(face_editor_eyebrow_direction: float) -> None:

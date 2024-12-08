@@ -2,11 +2,17 @@ import importlib
 import inspect
 import os
 import pkgutil
+import signal
 
 import gradio as gr
 
+from facefusion.args import apply_args
+from facefusion.core import route
 from facefusion.download import conditional_download
+from facefusion.exit_helper import graceful_exit
 from facefusion.memory import tune_performance
+from facefusion.program import create_program
+from facefusion.program_helper import validate_args
 from facefusion.uis.core import load_ui_layout_module
 from modules import script_callbacks
 
@@ -46,15 +52,28 @@ def run_pre_checks(package):
 
 def load_facefusion():
     import facefusion
-    run_pre_checks(facefusion)
-    tune_performance()
-    from facefusion import globals, state_manager, args
+    from facefusion import logger, globals, state_manager, args
+
+    signal.signal(signal.SIGINT, lambda signal_number, frame: graceful_exit(0))
+    program = create_program()
+
+    if validate_args(program):
+        args = vars(program.parse_args())
+        #apply_args(args, False)
+
+        if state_manager.get_item('command'):
+            logger.init(state_manager.get_item('log_level'))
+            route(args)
+        else:
+            program.print_help()
+
     globals_dict = {}
     for key in globals.__dict__:
         if not key.startswith('__'):
             globals_dict[key] = globals.__dict__[key]
 
     ff_ini = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'facefusion.ini'))
+    globals_dict['config_path'] = ff_ini
     # Load the ini file, read each line and set the key-value pair in globals_dict if the value is not None
     with open(ff_ini, 'r') as f:
         for line in f:
@@ -64,7 +83,11 @@ def load_facefusion():
             if value != 'None' and value != "" and value != "''":
                 print(f"Setting {key} to {value} from facefusion.ini")
                 globals_dict[key] = value
-    args.apply_args(globals_dict, True)
+    apply_args(globals_dict, False)
+    state_manager.init_item("config_path", ff_ini)
+
+    run_pre_checks(facefusion)
+    tune_performance()
 
     with gr.Blocks() as ff_ui:
         with gr.Tabs():

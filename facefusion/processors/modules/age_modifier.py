@@ -98,14 +98,14 @@ def pre_check() -> bool:
 
 def pre_process(mode: ProcessMode) -> bool:
     if mode in ['output', 'preview'] and not is_image(state_manager.get_item('target_path')) and not is_video(
-        state_manager.get_item('target_path')):
+            state_manager.get_item('target_path')):
         logger.error(wording.get('choose_image_or_video_target') + wording.get('exclamation_mark'), __name__)
         return False
     if mode == 'output' and not in_directory(state_manager.get_item('output_path')):
         logger.error(wording.get('specify_image_or_video_output') + wording.get('exclamation_mark'), __name__)
         return False
     if mode == 'output' and not same_file_extension(
-        [state_manager.get_item('target_path'), state_manager.get_item('output_path')]):
+            [state_manager.get_item('target_path'), state_manager.get_item('output_path')]):
         logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
         return False
     return True
@@ -255,7 +255,8 @@ def process_frame(inputs: AgeModifierInputs) -> VisionFrame:
 
 
 def process_frames(queue_payloads: List[QueuePayload]) -> None:
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
+        'face_selector_mode') else None
     output_frames = []
     for queue_payload in process_manager.manage(queue_payloads):
         target_vision_path = queue_payload['frame_path']
@@ -273,7 +274,8 @@ def process_frames(queue_payloads: List[QueuePayload]) -> None:
 
 
 def process_image(source_path: str, source_path_2: str, target_path: str, output_path: str) -> None:
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
+    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
+        'face_selector_mode') else None
     target_vision_frame = read_static_image(target_path)
     output_vision_frame = process_frame(
         {

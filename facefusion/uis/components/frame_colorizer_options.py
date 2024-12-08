@@ -57,20 +57,20 @@ def listen() -> None:
                                                   FRAME_COLORIZER_SIZE_DROPDOWN])
 
 
-def remote_update(processors: List[str]) -> Tuple[gradio.Dropdown, gradio.Slider, gradio.Dropdown]:
+def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update, gradio.update]:
     has_frame_colorizer = 'frame_colorizer' in processors
-    return gradio.Dropdown(visible=has_frame_colorizer), gradio.Slider(visible=has_frame_colorizer), gradio.Dropdown(
+    return gradio.update(visible=has_frame_colorizer), gradio.update(visible=has_frame_colorizer), gradio.update(
         visible=has_frame_colorizer)
 
 
-def update_frame_colorizer_model(frame_colorizer_model: FrameColorizerModel) -> gradio.Dropdown:
+def update_frame_colorizer_model(frame_colorizer_model: FrameColorizerModel) -> gradio.update:
     frame_colorizer_module = load_processor_module('frame_colorizer')
     frame_colorizer_module.clear_inference_pool()
     state_manager.set_item('frame_colorizer_model', frame_colorizer_model)
 
     if frame_colorizer_module.pre_check():
-        return gradio.Dropdown(value=state_manager.get_item('frame_colorizer_model'))
-    return gradio.Dropdown()
+        return gradio.update(value=state_manager.get_item('frame_colorizer_model'))
+    return gradio.update()
 
 
 def update_frame_colorizer_size(frame_colorizer_size: str) -> None:

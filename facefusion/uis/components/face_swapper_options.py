@@ -44,12 +44,12 @@ def listen() -> None:
                                          outputs=[FACE_SWAPPER_MODEL_DROPDOWN, FACE_SWAPPER_PIXEL_BOOST_DROPDOWN])
 
 
-def remote_update(processors: List[str]) -> Tuple[gradio.Dropdown, gradio.Dropdown]:
+def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
     has_face_swapper = 'face_swapper' in processors
-    return gradio.Dropdown(visible=has_face_swapper), gradio.Dropdown(visible=has_face_swapper)
+    return gradio.update(visible=has_face_swapper), gradio.update(visible=has_face_swapper)
 
 
-def update_face_swapper_model(face_swapper_model: FaceSwapperModel) -> Tuple[gradio.Dropdown, gradio.Dropdown]:
+def update_face_swapper_model(face_swapper_model: FaceSwapperModel) -> Tuple[gradio.update, gradio.update]:
     face_swapper_module = load_processor_module('face_swapper')
     face_swapper_module.clear_inference_pool()
     state_manager.set_item('face_swapper_model', face_swapper_model)
@@ -58,9 +58,9 @@ def update_face_swapper_model(face_swapper_model: FaceSwapperModel) -> Tuple[gra
         face_swapper_pixel_boost_choices = processors_choices.face_swapper_set.get(
             state_manager.get_item('face_swapper_model'))
         state_manager.set_item('face_swapper_pixel_boost', get_first(face_swapper_pixel_boost_choices))
-        return gradio.Dropdown(value=state_manager.get_item('face_swapper_model')), gradio.Dropdown(
+        return gradio.update(value=state_manager.get_item('face_swapper_model')), gradio.update(
             value=state_manager.get_item('face_swapper_pixel_boost'), choices=face_swapper_pixel_boost_choices)
-    return gradio.Dropdown(), gradio.Dropdown()
+    return gradio.update(), gradio.update()
 
 
 def update_face_swapper_pixel_boost(face_swapper_pixel_boost: str) -> None:

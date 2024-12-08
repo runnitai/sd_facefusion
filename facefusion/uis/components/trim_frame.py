@@ -1,5 +1,6 @@
 from typing import Optional, Tuple
 
+import gradio
 from gradio import Slider
 
 from facefusion import state_manager, wording
@@ -60,6 +61,7 @@ def listen() -> None:
     for ui_component in get_ui_components(
             [
                 'target_image',
+                'target_image_2'
                 'target_video'
             ]):
         for method in ['upload', 'change', 'clear']:
@@ -71,9 +73,9 @@ def remote_update() -> Tuple[Slider, Slider]:
         video_frame_total = count_video_frame_total(state_manager.get_item('target_path'))
         state_manager.clear_item('trim_frame_start')
         state_manager.clear_item('trim_frame_end')
-        return Slider(value=0, maximum=video_frame_total, visible=True), Slider(value=video_frame_total,
+        return gradio.update(value=0, maximum=video_frame_total, visible=True), gradio.update(value=video_frame_total,
                                                                                 maximum=video_frame_total, visible=True)
-    return Slider(value=0, maximum=0, visible=False), Slider(value=0, maximum=0, visible=False)
+    return gradio.update(value=0, maximum=0, visible=False), gradio.update(value=0, maximum=0, visible=False)
 
 
 def update_trim_frame(trim_frame: Tuple[float, float]) -> None:

@@ -3,7 +3,7 @@ import os
 import tempfile
 from typing import List
 
-from facefusion import state_manager
+from facefusion import state_manager, globals
 from facefusion.filesystem import create_directory, move_file, remove_directory
 
 
@@ -29,7 +29,12 @@ def get_temp_frames_pattern(target_path: str, temp_frame_prefix: str) -> str:
 
 
 def get_base_directory_path() -> str:
-    return os.path.join(tempfile.gettempdir(), 'facefusion')
+    output_path = state_manager.get_item('output_path')
+    if not output_path:
+        output_path = globals.output_path
+    temp_path = os.path.join(output_path, 'temp')
+    os.makedirs(temp_path, exist_ok=True)
+    return temp_path
 
 
 def create_base_directory() -> bool:

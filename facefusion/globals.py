@@ -14,6 +14,7 @@ batch_size: Optional[int] = 4
 source_paths: Optional[List[str]] = None
 target_path: Optional[str] = None
 output_path: Optional[str] = os.path.join(script_path, "outputs", "facefusion")
+config_path: Optional[str] = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'facefusion.ini'))
 # misc
 skip_download: Optional[bool] = False
 headless: Optional[bool] = False
@@ -22,7 +23,6 @@ log_level: Optional[LogLevel] = ['info']
 execution_providers: List[str] = ['tensorrt', 'cuda']
 execution_thread_count: Optional[int] = 4
 execution_queue_count: Optional[int] = 1
-face_detector_angles: Optional[List[int]] = [0, 90, 180, 270]
 expression_restorer_model: Optional[str] = 'live_portrait'
 face_editor_model: Optional[str] = 'live_portrait'
 face_enhancer_model: Optional[str] = 'gfpgan_1.4'
@@ -32,20 +32,27 @@ frame_colorizer_model: Optional[str] = 'ddcolor'
 frame_enhancer_model: Optional[str] = 'real_esrgan_x2_fp16'
 lip_syncer_model: Optional[str] = 'wav2lip_gan_96'
 style_changer_model: Optional[str] = '3d'
+face_swapper_pixel_boost: Optional[str] = "512x512"
 # memory
 video_memory_strategy: Optional[VideoMemoryStrategy] = "tolerant"
 system_memory_limit: Optional[int] = 0
 # face analyser
-face_analyser_order: Optional[FaceSelectorOrder] = 'best-worst'
-face_analyser_age: Optional[FaceAnalyserAge] = None
-face_analyser_gender: Optional[FaceAnalyserGender] = None
+face_selector_order: Optional[FaceSelectorOrder] = 'best-worst'
+face_selector_age_start: Optional[FaceAnalyserAge] = None
+face_selector_age_end: Optional[FaceAnalyserAge] = None
+face_selector_gender: Optional[FaceAnalyserGender] = None
+face_selector_mode: Optional[FaceSelectorMode] = 'reference'
+face_selector_race: Optional[str] = None
+
 face_detector_model: Optional[FaceDetectorModel] = 'many'
 face_detector_size: Optional[str] = "640x640"
 face_detector_score: Optional[float] = 0.35
 face_landmarker_score: Optional[float] = 0.35
+face_detector_angles: Optional[List[int]] = [0, 90, 180, 270]
 face_recognizer_model: Optional[FaceRecognizerModel] = 'arcface_inswapper'
 # face selector
-face_selector_mode: Optional[FaceSelectorMode] = 'reference'
+
+frame_colorizer_blend: Optional[float] = 0.5
 
 jobs_path: Optional[str] = os.path.abspath(os.path.join(os.path.dirname(__file__),"..", 'jobs'))
 reference_face_position: Optional[int] = 0
@@ -84,4 +91,5 @@ reference_face_dict_2: Optional[dict] = {}
 restricted_path: Optional[str] = None
 source_paths_2: Optional[List[str]] = None
 sync_video_lip: Optional[bool] = False
+ui_workflow: Optional[str] = "instant_runner"
 

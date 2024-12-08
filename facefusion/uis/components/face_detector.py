@@ -64,26 +64,26 @@ def listen() -> None:
     FACE_DETECTOR_SCORE_SLIDER.release(update_face_detector_score, inputs=FACE_DETECTOR_SCORE_SLIDER)
 
 
-def update_face_detector_model(face_detector_model: FaceDetectorModel) -> Tuple[gradio.Dropdown, gradio.Dropdown]:
+def update_face_detector_model(face_detector_model: FaceDetectorModel) -> Tuple[gradio.update, gradio.update]:
     face_detector.clear_inference_pool()
     state_manager.set_item('face_detector_model', face_detector_model)
 
     if face_detector.pre_check():
         face_detector_size_choices = choices.face_detector_set.get(state_manager.get_item('face_detector_model'))
         state_manager.set_item('face_detector_size', get_last(face_detector_size_choices))
-        return gradio.Dropdown(value=state_manager.get_item('face_detector_model')), gradio.Dropdown(
+        return gradio.update(value=state_manager.get_item('face_detector_model')), gradio.update(
             value=state_manager.get_item('face_detector_size'), choices=face_detector_size_choices)
-    return gradio.Dropdown(), gradio.Dropdown()
+    return gradio.update(), gradio.update()
 
 
 def update_face_detector_size(face_detector_size: str) -> None:
     state_manager.set_item('face_detector_size', face_detector_size)
 
 
-def update_face_detector_angles(face_detector_angles: Sequence[Angle]) -> gradio.CheckboxGroup:
+def update_face_detector_angles(face_detector_angles: Sequence[Angle]) -> gradio.update:
     face_detector_angles = face_detector_angles or facefusion.choices.face_detector_angles
     state_manager.set_item('face_detector_angles', face_detector_angles)
-    return gradio.CheckboxGroup(value=state_manager.get_item('face_detector_angles'))
+    return gradio.update(value=state_manager.get_item('face_detector_angles'))
 
 
 def update_face_detector_score(face_detector_score: Score) -> None:

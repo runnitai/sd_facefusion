@@ -48,20 +48,21 @@ def render() -> gradio.Blocks:
                     temp_frame.render()
                 with gradio.Blocks():
                     output_options.render()
+                with gradio.Blocks():
+                    output.render()
+                with gradio.Blocks():
+                    #ui_workflow.render()
+                    instant_runner.render()
+                    job_runner.render()
+                    job_manager.render()
+                # with gradio.Blocks():
+                #     terminal.render()
             with gradio.Column(scale=4):
                 with gradio.Blocks():
                     source.render()
                 with gradio.Blocks():
                     target.render()
-                with gradio.Blocks():
-                    output.render()
-                # with gradio.Blocks():
-                #     terminal.render()
-                # with gradio.Blocks():
-                #     ui_workflow.render()
-                #     instant_runner.render()
-                #     job_runner.render()
-                #     job_manager.render()
+
             with gradio.Column(scale=7):
                 with gradio.Blocks():
                     preview.render()
@@ -101,9 +102,9 @@ def listen() -> None:
     source.listen()
     target.listen()
     output.listen()
-    # instant_runner.listen()
-    # job_runner.listen()
-    # job_manager.listen()
+    instant_runner.listen()
+    job_runner.listen()
+    job_manager.listen()
     #terminal.listen()
     preview.listen()
     trim_frame.listen()

@@ -11,7 +11,7 @@ from facefusion import config, content_analyser, face_classifier, face_detector,
 from facefusion.common_helper import get_first
 from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.execution import has_execution_provider
-from facefusion.face_analyser import get_many_faces, get_one_face
+from facefusion.face_analyser import get_many_faces, get_one_face, get_avg_faces
 from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
 from facefusion.face_masker import create_occlusion_mask, create_region_mask, create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
@@ -347,13 +347,13 @@ def pre_check() -> bool:
 
 
 def pre_process(mode: ProcessMode) -> bool:
-    if not has_image(state_manager.get_item('source_paths')):
+    source_paths = state_manager.get_item('source_paths')
+    source_paths_2 = state_manager.get_item('source_paths_2')
+    if not has_image(source_paths) and not has_image(source_paths_2):
         logger.error(wording.get('choose_image_source') + wording.get('exclamation_mark'), __name__)
         return False
-    source_image_paths = filter_image_paths(state_manager.get_item('source_paths'))
-    source_frames = read_static_images(source_image_paths)
-    source_faces = get_many_faces(source_frames)
-    if not get_one_face(source_faces):
+    source_faces, source_faces_2 = get_avg_faces()
+    if not get_one_face([source_faces]) and not get_one_face([source_faces_2]):
         logger.error(wording.get('no_source_face_detected') + wording.get('exclamation_mark'), __name__)
         return False
     if mode in ['output', 'preview'] and not is_image(state_manager.get_item('target_path')) and not is_video(
@@ -553,7 +553,7 @@ def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
     source_face_2 = inputs.get('source_face_2')
     target_vision_frame = inputs.get('target_vision_frame')
     many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
-
+    face_selector_mode = state_manager.get_item('face_selector_mode')
     if state_manager.get_item('face_selector_mode') == 'many':
         if many_faces:
             for target_face in many_faces:
@@ -599,7 +599,6 @@ def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
 def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
     reference_faces, reference_faces_2 = (
         get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
-    from facefusion.uis.components.preview import get_avg_faces
     source_face, source_face_2 = get_avg_faces()
     target_vision_frame = read_static_image(target_path)
     result_frame = process_frame(

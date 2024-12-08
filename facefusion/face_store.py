@@ -2,9 +2,8 @@ from typing import Optional, List, Tuple
 import hashlib
 import numpy
 
-import facefusion.globals
+from facefusion import state_manager
 from facefusion.typing import VisionFrame, Face, FaceStore, FaceSet
-
 
 FACE_STORE: FaceStore = \
     {
@@ -17,9 +16,11 @@ FACE_STORE_2: FaceStore = \
         'static_faces': {},
         'reference_faces': {}
     }
-	
+
+
 def get_face_store() -> FaceStore:
     return FACE_STORE
+
 
 def get_static_faces(vision_frame: VisionFrame, dict_2=False) -> Optional[List[Face]]:
     frame_hash = create_frame_hash(vision_frame)
@@ -54,15 +55,19 @@ def get_reference_faces() -> Tuple[Optional[FaceSet], Optional[FaceSet]]:
     set_out = {}
     set_out_2 = {}
     all_faces = []
-    for frame_number, faces in facefusion.globals.reference_face_dict.items():
-        for face in faces:
-            all_faces.append(face)
-    set_out['reference_faces'] = all_faces
+    reference_face_dict = state_manager.get_item('reference_face_dict')
+    if reference_face_dict:
+        for frame_number, faces in reference_face_dict.items():
+            for face in faces:
+                all_faces.append(face)
+        set_out['reference_faces'] = all_faces
     all_faces = []
-    for frame_number, faces in facefusion.globals.reference_face_dict_2.items():
-        for face in faces:
-            all_faces.append(face)
-    set_out_2['reference_faces'] = all_faces
+    reference_face_dict_2 = state_manager.get_item('reference_face_dict_2')
+    if reference_face_dict_2:
+        for frame_number, faces in reference_face_dict_2.items():
+            for face in faces:
+                all_faces.append(face)
+        set_out_2['reference_faces'] = all_faces
     return set_out, set_out_2
 
 

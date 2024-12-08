@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 
 import gradio
 import numpy as np
+from gradio import SelectData
 
 import facefusion.choices
 from facefusion import state_manager, wording
@@ -199,91 +200,173 @@ def render() -> None:
 
 
 def listen() -> None:
-    galleries = [REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY]
-    bottom_mask_positions = get_ui_component('bottom_mask_positions')
-    FACE_SELECTOR_MODE_DROPDOWN.select(update_face_selector_mode, inputs=FACE_SELECTOR_MODE_DROPDOWN,
-                                       outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
-                                                REFERENCE_FACES_SELECTION_GALLERY_2,
-                                                REFERENCE_FACE_DISTANCE_SLIDER, ADD_REFERENCE_FACE_BUTTON,
-                                                REMOVE_REFERENCE_FACE_BUTTON, ADD_REFERENCE_FACE_BUTTON_2,
-                                                REMOVE_REFERENCE_FACE_BUTTON_2])
+    FACE_SELECTOR_MODE_DROPDOWN.select(
+        update_face_selector_mode,
+        inputs=FACE_SELECTOR_MODE_DROPDOWN,
+        outputs=[
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY_2,
+            REFERENCE_FACE_DISTANCE_SLIDER
+        ]
+    )
+
     REFERENCE_FACE_POSITION_GALLERY.select(update_selector_face_index)
     REFERENCE_FACES_SELECTION_GALLERY.select(update_selected_face_index)
     REFERENCE_FACES_SELECTION_GALLERY_2.select(update_selected_face_index_2)
-    REFERENCE_FACE_DISTANCE_SLIDER.change(update_reference_face_distance, inputs=REFERENCE_FACE_DISTANCE_SLIDER)
-    for ui_component in get_ui_components(
-            [
-                'target_image',
-                'target_video'
-            ]):
-        for method in ['upload', 'change', 'clear']:
-            getattr(ui_component, method)(update_reference_face_position)
-            getattr(ui_component, method)(update_reference_position_gallery, outputs=REFERENCE_FACE_POSITION_GALLERY)
 
-    for ui_component in get_ui_components(
-            [
-                'face_detector_model_dropdown',
-                'face_detector_size_dropdown',
-                'face_detector_angles_checkbox_group'
-            ]):
-        ui_component.change(clear_and_update_reference_position_gallery, outputs=REFERENCE_FACE_POSITION_GALLERY)
+    REFERENCE_FACE_DISTANCE_SLIDER.change(
+        update_reference_face_distance,
+        inputs=REFERENCE_FACE_DISTANCE_SLIDER,
+        outputs=[]
+    )
+
+    ADD_REFERENCE_FACE_BUTTON.click(
+        add_reference_face,
+        inputs=[
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY,
+            get_ui_component('preview_frame_slider')
+        ],
+        outputs=[
+            REFERENCE_FACES_SELECTION_GALLERY,
+            get_ui_component('preview_image'),
+            get_ui_component('mask_enable_button'),
+            get_ui_component('mask_disable_button')
+        ]
+    )
+
+    ADD_REFERENCE_FACE_BUTTON_2.click(
+        add_reference_face_2,
+        inputs=[
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY_2,
+            get_ui_component('preview_frame_slider')
+        ],
+        outputs=[
+            REFERENCE_FACES_SELECTION_GALLERY_2,
+            get_ui_component('preview_image'),
+            get_ui_component('mask_enable_button'),
+            get_ui_component('mask_disable_button')
+        ]
+    )
+
+    REMOVE_REFERENCE_FACE_BUTTON.click(
+        remove_reference_face,
+        inputs=[
+            REFERENCE_FACES_SELECTION_GALLERY,
+            get_ui_component('preview_frame_slider')
+        ],
+        outputs=[
+            REFERENCE_FACES_SELECTION_GALLERY,
+            get_ui_component('preview_image'),
+            get_ui_component('mask_enable_button'),
+            get_ui_component('mask_disable_button')
+        ]
+    )
+
+    REMOVE_REFERENCE_FACE_BUTTON_2.click(
+        remove_reference_face_2,
+        inputs=[
+            REFERENCE_FACES_SELECTION_GALLERY_2,
+            get_ui_component('preview_frame_slider')
+        ],
+        outputs=[
+            REFERENCE_FACES_SELECTION_GALLERY_2,
+            get_ui_component('preview_image'),
+            get_ui_component('mask_enable_button'),
+            get_ui_component('mask_disable_button')
+        ]
+    )
+
+    get_ui_component('preview_frame_slider').release(
+        update_reference_frame_number,
+        inputs=get_ui_component('preview_frame_slider'),
+        outputs=[
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY_2
+        ]
+    )
+
+    get_ui_component('preview_frame_slider').release(
+        update_reference_position_gallery,
+        outputs=[
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY_2
+        ]
+    )
+
+    get_ui_component('preview_frame_back_button').click(
+        reference_frame_back,
+        inputs=get_ui_component('preview_frame_slider'),
+        outputs=[
+            get_ui_component('preview_frame_slider'),
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY
+        ]
+    )
+
+    get_ui_component('preview_frame_forward_button').click(
+        reference_frame_forward,
+        inputs=get_ui_component('preview_frame_slider'),
+        outputs=[
+            get_ui_component('preview_frame_slider'),
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY
+        ]
+    )
+
+    for ui_component in get_ui_components(['target_image', 'target_video']):
+        for method in ['upload', 'change', 'clear']:
+            getattr(ui_component, method)(
+                update_reference_face_position,
+                outputs=[]
+            )
+            getattr(ui_component, method)(
+                update_reference_position_gallery,
+                outputs=[
+                    REFERENCE_FACE_POSITION_GALLERY,
+                    REFERENCE_FACES_SELECTION_GALLERY,
+                    REFERENCE_FACES_SELECTION_GALLERY_2
+                ]
+            )
+
+    for ui_component in get_ui_components([
+        'face_detector_model_dropdown',
+        'face_detector_size_dropdown',
+        'face_detector_angles_checkbox_group'
+    ]):
+        ui_component.change(
+            clear_and_update_reference_position_gallery,
+            outputs=[
+                REFERENCE_FACE_POSITION_GALLERY,
+                REFERENCE_FACES_SELECTION_GALLERY,
+                REFERENCE_FACES_SELECTION_GALLERY_2
+            ]
+        )
+
     face_detector_score_slider = get_ui_component('face_detector_score_slider')
     if face_detector_score_slider:
-        face_detector_score_slider.release(clear_and_update_reference_position_gallery,
-                                           outputs=REFERENCE_FACE_POSITION_GALLERY)
-    preview_frame_slider = get_ui_component('preview_frame_slider')
-    preview_frame_back_button = get_ui_component('preview_frame_back_button')
-    preview_frame_forward_button = get_ui_component('preview_frame_forward_button')
-    mask_enable_button = get_ui_component('mask_enable_button')
-    mask_disable_button = get_ui_component('mask_disable_button')
-    preview_image = get_ui_component('preview_image')
-    if preview_frame_slider:
-        # update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE
-
-        ADD_REFERENCE_FACE_BUTTON.click(add_reference_face,
-                                        inputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
-                                                preview_frame_slider],
-                                        outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image, mask_enable_button,
-                                                 mask_disable_button])
-        ADD_REFERENCE_FACE_BUTTON_2.click(add_reference_face_2,
-                                          inputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY_2,
-                                                  preview_frame_slider],
-                                          outputs=[REFERENCE_FACES_SELECTION_GALLERY_2, preview_image,
-                                                   mask_enable_button,
-                                                   mask_disable_button])
-        REMOVE_REFERENCE_FACE_BUTTON.click(fn=remove_reference_face,
-                                           inputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_frame_slider],
-                                           outputs=[REFERENCE_FACES_SELECTION_GALLERY, preview_image,
-                                                    mask_enable_button, mask_disable_button])
-
-        REMOVE_REFERENCE_FACE_BUTTON_2.click(fn=remove_reference_face_2,
-                                             inputs=[REFERENCE_FACES_SELECTION_GALLERY_2, preview_frame_slider],
-                                             outputs=[REFERENCE_FACES_SELECTION_GALLERY_2, preview_image,
-                                                      mask_enable_button, mask_disable_button])
-
-        preview_frame_back_button.click(reference_frame_back,
-                                        inputs=preview_frame_slider, outputs=[preview_frame_slider,
-                                                                              REFERENCE_FACE_POSITION_GALLERY,
-                                                                              REFERENCE_FACES_SELECTION_GALLERY])
-        preview_frame_forward_button.click(reference_frame_forward, inputs=preview_frame_slider,
-                                           outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY,
-                                                    REFERENCE_FACES_SELECTION_GALLERY])
-        preview_frame_slider.release(update_reference_frame_number, inputs=preview_frame_slider,
-                                     outputs=[preview_frame_slider, REFERENCE_FACE_POSITION_GALLERY,
-                                              REFERENCE_FACES_SELECTION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY_2])
-        preview_frame_slider.release(update_reference_position_gallery,
-                                     outputs=[REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACES_SELECTION_GALLERY,
-                                              REFERENCE_FACES_SELECTION_GALLERY_2])
+        face_detector_score_slider.release(
+            clear_and_update_reference_position_gallery,
+            outputs=[
+                REFERENCE_FACE_POSITION_GALLERY,
+                REFERENCE_FACES_SELECTION_GALLERY,
+                REFERENCE_FACES_SELECTION_GALLERY_2
+            ]
+        )
 
 
-def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gradio.Gallery, gradio.Slider]:
+def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gradio.Gallery, gradio.update]:
     state_manager.set_item('face_selector_mode', face_selector_mode)
     if face_selector_mode == 'many':
-        return gradio.Gallery(visible=False), gradio.Slider(visible=False)
+        return gradio.update(visible=False), gradio.update(visible=False)
     if face_selector_mode == 'one':
-        return gradio.Gallery(visible=False), gradio.Slider(visible=False)
+        return gradio.update(visible=False), gradio.update(visible=False)
     if face_selector_mode == 'reference':
-        return gradio.Gallery(visible=True), gradio.Slider(visible=True)
+        return gradio.update(visible=True), gradio.update(visible=True)
 
 
 def update_face_selector_order(face_analyser_order: FaceSelectorOrder) -> gradio.Gallery:
@@ -314,6 +397,8 @@ def clear_selected_faces() -> None:
     current_selected_faces_2 = []
     selected_face_index = -1
     selected_face_index_2 = -1
+    state_manager.set_item('reference_face_dict', {})
+    state_manager.set_item('reference_face_dict_2', {})
 
 
 def clear_and_update_reference_face_position(event: gradio.SelectData) -> gradio.Gallery:
@@ -334,6 +419,7 @@ def update_reference_face_distance(reference_face_distance: float) -> None:
 
 def update_reference_frame_number(reference_frame_number: int) -> None:
     state_manager.set_item('reference_frame_number', reference_frame_number)
+    return update_reference_position_gallery()
 
 
 def clear_and_update_reference_position_gallery() -> Tuple[gradio.update, gradio.update]:
@@ -425,8 +511,10 @@ def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gra
             return gradio.update()
         selected_item = src_gallery[selector_face_index]
         face_data = current_reference_faces[selector_face_index]
-        if reference_frame_number not in state_manager.get_item('reference_face_dict'):
-            reference_face_dict = state_manager.get_item('reference_face_dict')
+        reference_face_dict = state_manager.get_item('reference_face_dict')
+        if not reference_face_dict:
+            reference_face_dict = {}
+        if reference_frame_number not in reference_face_dict:
             reference_face_dict[reference_frame_number] = []
             state_manager.set_item('reference_face_dict', reference_face_dict)
         found = False
@@ -436,7 +524,8 @@ def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gra
                 break
 
         if not found:
-            reference_face_dict = state_manager.get_item('reference_face_dict')
+            if not reference_face_dict:
+                reference_face_dict = {}
             reference_face_dict[reference_frame_number].append(face_data)
             state_manager.set_item('reference_face_dict', reference_face_dict)
             current_selected_faces.append(face_data)
@@ -464,6 +553,8 @@ def remove_reference_face(gallery: gradio.Gallery, preview_frame_number) -> grad
             new_items.append(item["name"])
         gallery_index += 1
     global_reference_faces = state_manager.get_item('reference_face_dict')
+    if not global_reference_faces:
+        global_reference_faces = {}
     face_to_remove = current_selected_faces[selected_face_index]
     found = False
     for frame_no, faces in global_reference_faces.items():
@@ -496,8 +587,10 @@ def add_reference_face_2(src_gallery, dest_gallery, reference_frame_number) -> g
             return gradio.update()
         selected_item = src_gallery[selector_face_index]
         face_data = current_reference_faces[selector_face_index]
-        if reference_frame_number not in state_manager.get_item('reference_face_dict_2'):
-            reference_face_dict = state_manager.get_item('reference_face_dict_2')
+        reference_face_dict = state_manager.get_item('reference_face_dict_2')
+        if not reference_face_dict:
+            reference_face_dict = {}
+        if reference_frame_number not in reference_face_dict:
             reference_face_dict[reference_frame_number] = []
             state_manager.set_item('reference_face_dict_2', reference_face_dict)
         found = False
@@ -507,7 +600,6 @@ def add_reference_face_2(src_gallery, dest_gallery, reference_frame_number) -> g
                 break
 
         if not found:
-            reference_face_dict = state_manager.get_item('reference_face_dict_2')
             reference_face_dict[reference_frame_number].append(face_data)
             state_manager.set_item('reference_face_dict_2', reference_face_dict)
             current_selected_faces_2.append(face_data)
@@ -535,6 +627,8 @@ def remove_reference_face_2(gallery: gradio.Gallery, preview_frame_number) -> gr
             new_items.append(item["name"])
         gallery_index += 1
     global_reference_faces = state_manager.get_item('reference_face_dict_2')
+    if not global_reference_faces:
+        global_reference_faces = {}
     face_to_remove = current_selected_faces[selected_face_index_2]
     found = False
     for frame_no, faces in global_reference_faces.items():
@@ -568,14 +662,42 @@ def reference_frame_forward(reference_frame_number: int) -> None:
         state_manager.get_item('target_path')))
     return update_reference_frame_number_and_gallery(reference_frame_number)
 
-def update_selector_face_index(idx: int) -> None:
+
+def update_selector_face_index(event_data: SelectData) -> None:
     global selector_face_index
-    selector_face_index = idx
-
-def update_selected_face_index(idx: int) -> None:
     global selected_face_index
-    selected_face_index = idx
-
-def update_selected_face_index_2(idx: int) -> None:
     global selected_face_index_2
-    selected_face_index_2 = idx
+
+    if isinstance(event_data, SelectData):
+        selector_face_index = event_data.index  # Extract index
+        selected_face_index = -1
+        selected_face_index_2 = -1
+        print(f"Selector face index updated to: {selector_face_index}")
+    else:
+        print(f"Unexpected event data: {event_data}")
+
+
+def update_selected_face_index(event_data: SelectData) -> None:
+    global selected_face_index
+    global selected_face_index_2
+    global selector_face_index
+    if isinstance(event_data, SelectData):
+        selected_face_index = event_data.index  # Extract index
+        selected_face_index_2 = -1
+        selector_face_index = -1
+        print(f"Selected face index updated to: {selected_face_index}")
+    else:
+        print(f"Unexpected event data: {event_data}")
+
+
+def update_selected_face_index_2(event_data: SelectData) -> None:
+    global selected_face_index_2
+    global selected_face_index
+    global selector_face_index
+    if isinstance(event_data, SelectData):
+        selected_face_index_2 = event_data.index  # Extract index
+        selected_face_index = -1
+        selector_face_index = -1
+        print(f"Selected face index 2 updated to: {selected_face_index_2}")
+    else:
+        print(f"Unexpected event data: {event_data}")

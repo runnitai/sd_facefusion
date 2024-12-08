@@ -32,7 +32,8 @@ def get_available_execution_provider_set() -> ExecutionProviderSet:
 def create_execution_providers(execution_device_id: str, execution_provider_keys: List[ExecutionProviderKey]) -> List[
     Any]:
     execution_providers: List[Any] = []
-
+    if not execution_device_id:
+        execution_device_id = '0'
     for execution_provider_key in execution_provider_keys:
         if execution_provider_key == 'cuda':
             execution_providers.append((execution_provider_set.get(execution_provider_key),

@@ -1,12 +1,14 @@
 import os
-
 import shutil
 import subprocess
-
 import tempfile
-from typing import List, Optional
+from typing import List
+from typing import Optional, Union
 
 import filetype
+from ffmpeg_progress_yield import FfmpegProgress
+from tqdm import tqdm
+
 from facefusion import logger, process_manager, state_manager
 from facefusion.filesystem import remove_file
 from facefusion.temp_helper import get_temp_file_path, get_temp_frames_pattern
@@ -14,23 +16,44 @@ from facefusion.typing import AudioBuffer, Fps, OutputVideoPreset
 from facefusion.vision import restrict_video_fps
 
 
-def run_ffmpeg(args: List[str]) -> subprocess.Popen[bytes]:
+class MockProcess:
+    def __init__(self, return_code: int):
+        self.returncode = return_code
+
+    def wait(self, timeout: float = None):
+        # No real process to wait for in this case, but mimic the behavior
+        return self.returncode
+
+
+def run_ffmpeg(args: List[str], show_progress: bool = False, description: str = "Processing") -> Union[subprocess.Popen, MockProcess]:
     commands = [shutil.which('ffmpeg'), '-hide_banner', '-loglevel', 'error']
     commands.extend(args)
-    process = subprocess.Popen(commands, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
-    while process_manager.is_processing():
+    if show_progress:
         try:
-            if state_manager.get_item('log_level') == 'debug':
-                log_debug(process)
-            process.wait(timeout=0.5)
-        except subprocess.TimeoutExpired:
-            continue
-        return process
+            with tqdm(total=100, position=1, desc=description) as pbar:
+                ff = FfmpegProgress(commands)
+                for progress in ff.run_command_with_progress():
+                    pbar.update(progress - pbar.n)
+            return MockProcess(return_code=0)  # Successful run
+        except Exception as e:
+            print(f"Error during progress tracking: {e}")
+            return MockProcess(return_code=1)  # Return non-zero for errors
+    else:
+        process = subprocess.Popen(commands, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
-    if process_manager.is_stopping():
-        process.terminate()
-    return process
+        while process_manager.is_processing():
+            try:
+                if state_manager.get_item('log_level') == 'debug':
+                    log_debug(process)
+                process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                continue
+
+        if process_manager.is_stopping():
+            process.terminate()
+
+        return process
 
 
 def open_ffmpeg(args: List[str]) -> subprocess.Popen[bytes]:
@@ -49,6 +72,7 @@ def log_debug(process: subprocess.Popen[bytes]) -> None:
 
 
 def extract_frames(target_path: str, temp_video_resolution: str, temp_video_fps: Fps) -> bool:
+    print(f"Extracting frames from video: {target_path}")
     trim_frame_start = state_manager.get_item('trim_frame_start')
     trim_frame_end = state_manager.get_item('trim_frame_end')
     temp_frames_pattern = get_temp_frames_pattern(target_path, '%08d')
@@ -64,7 +88,7 @@ def extract_frames(target_path: str, temp_video_resolution: str, temp_video_fps:
     else:
         commands.extend(['-vf', 'fps=' + str(temp_video_fps)])
     commands.extend(['-vsync', '0', temp_frames_pattern])
-    return run_ffmpeg(commands).returncode == 0
+    return run_ffmpeg(commands, True, "Extracting").returncode == 0
 
 
 def merge_video(target_path: str, output_video_resolution: str, output_video_fps: Fps) -> bool:

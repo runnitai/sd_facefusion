@@ -7,7 +7,8 @@ from facefusion.typing import ErrorCode
 
 
 def hard_exit(error_code: ErrorCode) -> None:
-    print(f'(Should be) exiting with error code: {error_code.value}')
+    print(f'(Should be) exiting with error code: {error_code}')
+    sys.exit(error_code)
 
 
 def conditional_exit(error_code: ErrorCode) -> None:

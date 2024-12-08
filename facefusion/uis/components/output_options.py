@@ -43,11 +43,11 @@ def render() -> None:
     if is_video(state_manager.get_item('target_path')):
         output_video_resolution = detect_video_resolution(state_manager.get_item('target_path'))
         output_video_resolutions = create_video_resolutions(output_video_resolution)
-    facefusion.globals.output_path = facefusion.globals.output_path or '.'
+    state_manager.set_item('output_path', facefusion.globals.output_path or '.')
     out_path = os.path.join(script_path, "outputs", "facefusion")
     if not os.path.exists(out_path):
         os.makedirs(out_path)
-    facefusion.globals.output_path = out_path
+    state_manager.set_item('output_path', out_path)
     OUTPUT_PATH_TEXTBOX = gradio.Textbox(
         label=wording.get('uis.output_path_textbox'),
         value=out_path,
@@ -142,27 +142,27 @@ def listen() -> None:
 
 
 def remote_update() -> Tuple[
-    gradio.Slider, gradio.Dropdown, gradio.Dropdown, gradio.Dropdown, gradio.Dropdown, gradio.Slider, gradio.Dropdown, gradio.Slider]:
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     if is_image(state_manager.get_item('target_path')):
         output_image_resolution = detect_image_resolution(state_manager.get_item('target_path'))
         output_image_resolutions = create_image_resolutions(output_image_resolution)
         state_manager.set_item('output_image_resolution', pack_resolution(output_image_resolution))
-        return gradio.Slider(visible=True), gradio.Dropdown(value=state_manager.get_item('output_image_resolution'),
+        return gradio.update(visible=True), gradio.update(value=state_manager.get_item('output_image_resolution'),
                                                             choices=output_image_resolutions,
-                                                            visible=True), gradio.Dropdown(
-            visible=False), gradio.Dropdown(visible=False), gradio.Dropdown(visible=False), gradio.Slider(
-            visible=False), gradio.Dropdown(visible=False), gradio.Slider(visible=False)
+                                                            visible=True), gradio.update(
+            visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(
+            visible=False), gradio.update(visible=False), gradio.update(visible=False)
     if is_video(state_manager.get_item('target_path')):
         output_video_resolution = detect_video_resolution(state_manager.get_item('target_path'))
         output_video_resolutions = create_video_resolutions(output_video_resolution)
         state_manager.set_item('output_video_resolution', pack_resolution(output_video_resolution))
         state_manager.set_item('output_video_fps', detect_video_fps(state_manager.get_item('target_path')))
-        return gradio.Slider(visible=False), gradio.Dropdown(visible=False), gradio.Dropdown(
-            visible=True), gradio.Dropdown(visible=True), gradio.Dropdown(visible=True), gradio.Slider(
+        return gradio.update(visible=False), gradio.update(visible=False), gradio.update(
+            visible=True), gradio.update(visible=True), gradio.Dropdown(visible=True), gradio.update(
             visible=True), gradio.Dropdown(value=state_manager.get_item('output_video_resolution'),
-                                           choices=output_video_resolutions, visible=True), gradio.Slider(
+                                           choices=output_video_resolutions, visible=True), gradio.update(
             value=state_manager.get_item('output_video_fps'), visible=True)
-    return gradio.Slider(visible=False), gradio.Dropdown(visible=False), gradio.Dropdown(
+    return gradio.update(visible=False), gradio.Dropdown(visible=False), gradio.Dropdown(
         visible=False), gradio.Dropdown(visible=False), gradio.Dropdown(visible=False), gradio.Slider(
         visible=False), gradio.Dropdown(visible=False), gradio.Slider(visible=False)
 

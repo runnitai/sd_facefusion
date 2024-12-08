@@ -32,6 +32,6 @@ def listen() -> None:
                                               outputs=JOB_LIST_JOB_STATUS_CHECKBOX_GROUP)
 
 
-def update_job_status_checkbox_group(job_statuses: List[JobStatus]) -> gradio.CheckboxGroup:
+def update_job_status_checkbox_group(job_statuses: List[JobStatus]) -> gradio.update:
     job_statuses = job_statuses or facefusion.choices.job_statuses
-    return gradio.CheckboxGroup(value=job_statuses)
+    return gradio.update(value=job_statuses)

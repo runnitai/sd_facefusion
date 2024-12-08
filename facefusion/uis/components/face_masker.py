@@ -146,21 +146,21 @@ def listen() -> None:
 
 
 def update_face_mask_types(face_mask_types: List[FaceMaskType]) -> Tuple[
-    gradio.CheckboxGroup, gradio.CheckboxGroup, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider]:
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.Slider, gradio.Slider]:
     face_mask_types = face_mask_types or facefusion.choices.face_mask_types
     state_manager.set_item('face_mask_types', face_mask_types)
     has_box_mask = 'box' in face_mask_types
     has_region_mask = 'region' in face_mask_types
-    return gradio.CheckboxGroup(value=state_manager.get_item('face_mask_types')), gradio.CheckboxGroup(
+    return gradio.update(value=state_manager.get_item('face_mask_types')), gradio.update(
         visible=has_region_mask), gradio.Slider(visible=has_box_mask), gradio.Slider(
         visible=has_box_mask), gradio.Slider(visible=has_box_mask), gradio.Slider(visible=has_box_mask), gradio.Slider(
         visible=has_box_mask)
 
 
-def update_face_mask_regions(face_mask_regions: List[FaceMaskRegion]) -> gradio.CheckboxGroup:
+def update_face_mask_regions(face_mask_regions: List[FaceMaskRegion]) -> gradio.update:
     face_mask_regions = face_mask_regions or facefusion.choices.face_mask_regions
     state_manager.set_item('face_mask_regions', face_mask_regions)
-    return gradio.CheckboxGroup(value=state_manager.get_item('face_mask_regions'))
+    return gradio.update(value=state_manager.get_item('face_mask_regions'))
 
 
 def update_face_mask_blur(face_mask_blur: float) -> None:

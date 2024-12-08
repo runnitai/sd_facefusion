@@ -46,19 +46,19 @@ def listen() -> None:
                                          outputs=[FACE_ENHANCER_MODEL_DROPDOWN, FACE_ENHANCER_BLEND_SLIDER])
 
 
-def remote_update(processors: List[str]) -> Tuple[gradio.Dropdown, gradio.Slider]:
+def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
     has_face_enhancer = 'face_enhancer' in processors
-    return gradio.Dropdown(visible=has_face_enhancer), gradio.Slider(visible=has_face_enhancer)
+    return gradio.update(visible=has_face_enhancer), gradio.update(visible=has_face_enhancer)
 
 
-def update_face_enhancer_model(face_enhancer_model: FaceEnhancerModel) -> gradio.Dropdown:
+def update_face_enhancer_model(face_enhancer_model: FaceEnhancerModel) -> gradio.update:
     face_enhancer_module = load_processor_module('face_enhancer')
     face_enhancer_module.clear_inference_pool()
     state_manager.set_item('face_enhancer_model', face_enhancer_model)
 
     if face_enhancer_module.pre_check():
-        return gradio.Dropdown(value=state_manager.get_item('face_enhancer_model'))
-    return gradio.Dropdown()
+        return gradio.update(value=state_manager.get_item('face_enhancer_model'))
+    return gradio.update()
 
 
 def update_face_enhancer_blend(face_enhancer_blend: float) -> None:

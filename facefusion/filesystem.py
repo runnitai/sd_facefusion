@@ -141,7 +141,6 @@ def list_directory(directory_path: str) -> Optional[List[str]]:
         path_parts.pop(0)
     dir_path = os.path.dirname(__file__)
     directory_path = os.path.join(dir_path, *path_parts)
-    print(f"Directory path: {directory_path}")
     if is_directory(directory_path):
         files = os.listdir(directory_path)
         files = [Path(file).stem for file in files if not Path(file).stem.startswith(('.', '__'))]

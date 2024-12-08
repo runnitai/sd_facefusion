@@ -11,6 +11,12 @@ from facefusion.face_landmarker import detect_face_landmarks, estimate_face_land
 from facefusion.face_recognizer import calc_embedding
 from facefusion.face_store import get_static_faces, set_static_faces
 from facefusion.typing import BoundingBox, Face, FaceLandmark5, FaceLandmarkSet, FaceScoreSet, Score, VisionFrame
+from facefusion.vision import read_static_images
+
+AVG_FACE_1: Optional[Face] = None
+AVG_FACE_2: Optional[Face] = None
+SOURCE_FRAMES_1: Optional[List[str]] = None
+SOURCE_FRAMES_2: Optional[List[str]] = None
 
 
 def create_faces(vision_frame: VisionFrame, bounding_boxes: List[BoundingBox], face_scores: List[Score],
@@ -119,10 +125,31 @@ def get_many_faces(vision_frames: List[VisionFrame]) -> List[Face]:
                     all_face_landmarks_5.extend(face_landmarks_5)
 
                 if all_bounding_boxes and all_face_scores and all_face_landmarks_5 and state_manager.get_item(
-                    'face_detector_score') > 0:
+                        'face_detector_score') > 0:
                     faces = create_faces(vision_frame, all_bounding_boxes, all_face_scores, all_face_landmarks_5)
 
                     if faces:
                         many_faces.extend(faces)
                         set_static_faces(vision_frame, faces)
     return many_faces
+
+
+def get_avg_faces():
+    global AVG_FACE_1, AVG_FACE_2, SOURCE_FRAMES_1, SOURCE_FRAMES_2
+    source_paths = state_manager.get_item('source_paths')
+    source_paths_2 = state_manager.get_item('source_paths_2')
+    if SOURCE_FRAMES_1 != source_paths or AVG_FACE_1 is None and source_paths and len(source_paths) > 0:
+        print("Updating AVG_FACE_1")
+        SOURCE_FRAMES_1 = source_paths
+        source_frames = read_static_images(source_paths)
+        faces = get_many_faces(source_frames)
+        AVG_FACE_1 = get_average_face(faces)
+
+    if SOURCE_FRAMES_2 != source_paths_2 or AVG_FACE_2 is None and source_paths_2 and len(source_paths_2) > 0:
+        print("Updating AVG_FACE_2")
+        SOURCE_FRAMES_2 = source_paths_2
+        source_frames_2 = read_static_images(source_paths_2)
+        faces_2 = get_many_faces(source_frames_2)
+        AVG_FACE_2 = get_average_face(faces_2)
+
+    return AVG_FACE_1, AVG_FACE_2

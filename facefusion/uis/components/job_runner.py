@@ -71,22 +71,22 @@ def listen() -> None:
                                              JOB_RUNNER_JOB_ID_DROPDOWN])
 
 
-def remote_update(ui_workflow: UiWorkflow) -> Tuple[gradio.Row, gradio.Dropdown, gradio.Dropdown]:
+def remote_update(ui_workflow: UiWorkflow) -> Tuple[gradio.Row, gradio.update, gradio.update]:
     is_job_runner = ui_workflow == 'job_runner'
     queued_job_ids = job_manager.find_job_ids('queued') or ['none']
 
-    return gradio.Row(visible=is_job_runner), gradio.Dropdown(value=get_first(uis_choices.job_runner_actions),
-                                                              choices=uis_choices.job_runner_actions), gradio.Dropdown(
+    return gradio.Row(visible=is_job_runner), gradio.update(value=get_first(uis_choices.job_runner_actions),
+                                                              choices=uis_choices.job_runner_actions), gradio.update(
         value=get_last(queued_job_ids), choices=queued_job_ids)
 
 
-def start() -> Tuple[gradio.Button, gradio.Button]:
+def start() -> Tuple[gradio.update, gradio.update]:
     while not process_manager.is_processing():
         sleep(0.5)
-    return gradio.Button(visible=False), gradio.Button(visible=True)
+    return gradio.update(visible=False), gradio.update(visible=True)
 
 
-def run(job_action: JobRunnerAction, job_id: str) -> Tuple[gradio.Button, gradio.Button, gradio.Dropdown]:
+def run(job_action: JobRunnerAction, job_id: str) -> Tuple[gradio.update, gradio.update, gradio.update]:
     job_id = convert_str_none(job_id)
 
     for key in job_store.get_job_keys():
@@ -100,7 +100,7 @@ def run(job_action: JobRunnerAction, job_id: str) -> Tuple[gradio.Button, gradio
             logger.info(wording.get('processing_job_failed').format(job_id=job_id), __name__)
         updated_job_ids = job_manager.find_job_ids('queued') or ['none']
 
-        return gradio.Button(visible=True), gradio.Button(visible=False), gradio.Dropdown(
+        return gradio.update(visible=True), gradio.update(visible=False), gradio.update(
             value=get_last(updated_job_ids), choices=updated_job_ids)
     if job_action == 'job-run-all':
         logger.info(wording.get('running_jobs'), __name__)
@@ -116,7 +116,7 @@ def run(job_action: JobRunnerAction, job_id: str) -> Tuple[gradio.Button, gradio
             logger.info(wording.get('processing_job_failed').format(job_id=job_id), __name__)
         updated_job_ids = job_manager.find_job_ids('failed') or ['none']
 
-        return gradio.Button(visible=True), gradio.Button(visible=False), gradio.Dropdown(
+        return gradio.update(visible=True), gradio.update(visible=False), gradio.update(
             value=get_last(updated_job_ids), choices=updated_job_ids)
     if job_action == 'job-retry-all':
         logger.info(wording.get('retrying_jobs'), __name__)
@@ -124,21 +124,21 @@ def run(job_action: JobRunnerAction, job_id: str) -> Tuple[gradio.Button, gradio
             logger.info(wording.get('processing_jobs_succeed'), __name__)
         else:
             logger.info(wording.get('processing_jobs_failed'), __name__)
-    return gradio.Button(visible=True), gradio.Button(visible=False), gradio.Dropdown()
+    return gradio.update(visible=True), gradio.update(visible=False), gradio.update()
 
 
-def stop() -> Tuple[gradio.Button, gradio.Button]:
+def stop() -> Tuple[gradio.update, gradio.update]:
     process_manager.stop()
-    return gradio.Button(visible=True), gradio.Button(visible=False)
+    return gradio.update(visible=True), gradio.update(visible=False)
 
 
-def update_job_action(job_action: JobRunnerAction) -> gradio.Dropdown:
+def update_job_action(job_action: JobRunnerAction) -> gradio.update:
     if job_action == 'job-run':
         updated_job_ids = job_manager.find_job_ids('queued') or ['none']
 
-        return gradio.Dropdown(value=get_last(updated_job_ids), choices=updated_job_ids, visible=True)
+        return gradio.update(value=get_last(updated_job_ids), choices=updated_job_ids, visible=True)
     if job_action == 'job-retry':
         updated_job_ids = job_manager.find_job_ids('failed') or ['none']
 
-        return gradio.Dropdown(value=get_last(updated_job_ids), choices=updated_job_ids, visible=True)
-    return gradio.Dropdown(visible=False)
+        return gradio.update(value=get_last(updated_job_ids), choices=updated_job_ids, visible=True)
+    return gradio.update(visible=False)

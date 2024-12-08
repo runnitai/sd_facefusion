@@ -31,10 +31,10 @@ def listen() -> None:
             getattr(target_video, method)(remote_update, outputs=TEMP_FRAME_FORMAT_DROPDOWN)
 
 
-def remote_update() -> gradio.Dropdown:
+def remote_update() -> gradio.update:
     if is_video(state_manager.get_item('target_path')):
-        return gradio.Dropdown(visible=True)
-    return gradio.Dropdown(visible=False)
+        return gradio.update(visible=True)
+    return gradio.update(visible=False)
 
 
 def update_temp_frame_format(temp_frame_format: TempFrameFormat) -> None:

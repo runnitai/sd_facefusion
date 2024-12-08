@@ -49,19 +49,19 @@ def listen() -> None:
                                                   EXPRESSION_RESTORER_FACTOR_SLIDER])
 
 
-def remote_update(processors: List[str]) -> Tuple[gradio.Dropdown, gradio.Slider]:
+def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
     has_expression_restorer = 'expression_restorer' in processors
-    return gradio.Dropdown(visible=has_expression_restorer), gradio.Slider(visible=has_expression_restorer)
+    return gradio.update(visible=has_expression_restorer), gradio.update(visible=has_expression_restorer)
 
 
-def update_expression_restorer_model(expression_restorer_model: ExpressionRestorerModel) -> gradio.Dropdown:
+def update_expression_restorer_model(expression_restorer_model: ExpressionRestorerModel) -> gradio.update:
     expression_restorer_module = load_processor_module('expression_restorer')
     expression_restorer_module.clear_inference_pool()
     state_manager.set_item('expression_restorer_model', expression_restorer_model)
 
     if expression_restorer_module.pre_check():
-        return gradio.Dropdown(value=state_manager.get_item('expression_restorer_model'))
-    return gradio.Dropdown()
+        return gradio.update(value=state_manager.get_item('expression_restorer_model'))
+    return gradio.update()
 
 
 def update_expression_restorer_factor(expression_restorer_factor: float) -> None:

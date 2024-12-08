@@ -8,6 +8,7 @@ from typing import Any, List
 
 import facefusion.globals
 from facefusion import logger, wording, state_manager
+from facefusion.face_analyser import get_avg_faces
 from facefusion.ff_status import FFStatus
 from facefusion.mytqdm import mytqdm as tqdm
 from facefusion.typing import ProcessFrames, QueuePayload
@@ -133,7 +134,6 @@ def pick_queue(queue: Queue[QueuePayload], queue_per_future: int) -> List[QueueP
 
 
 def create_queue_payloads(temp_frame_paths: List[str]) -> List[QueuePayload]:
-    from facefusion.uis.components.preview import get_avg_faces
     from facefusion.face_store import get_reference_faces
 
     queue_payloads = []

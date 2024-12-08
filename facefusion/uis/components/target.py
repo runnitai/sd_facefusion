@@ -92,77 +92,108 @@ def listen() -> None:
 
 
 def update_from_path(path: str) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
-    # Returns gr.Image, gr.Video, gr.Text, gr.Checkbox
     out_image = gradio.update(visible=False)
     out_video = gradio.update(visible=False)
     out_path = gradio.update(visible=False)
     out_file = gradio.update(visible=True)
 
-    root_path = state_manager.get_item('restricted_path') if state_manager.get_item('restricted_path') else "/mnt/private"
-    abs_path = os.path.abspath(path)
-    if not abs_path.startswith(root_path) and not abs_path.startswith(TEMP_DIRECTORY_PATH) and not is_url(path):
+    if not path:
+        return out_image, out_video, gradio.update(value=None, visible=True), out_file
+
+    try:
+        if is_url(path):
+            print(f"Downloading video from {path}")
+            downloaded_path = download_video(path)
+            if not downloaded_path:
+                raise ValueError("Failed to download video.")
+            path = downloaded_path
+
+        if is_image(path):
+            state_manager.set_item('target_path', path)
+            out_image = gradio.update(value=path, visible=True)
+
+        elif is_video(path):
+            if get_file_size(path) > FILE_SIZE_LIMIT:
+                raise ValueError("File size exceeds the limit.")
+            state_manager.set_item('target_path', path)
+            out_video = gradio.update(value=path, visible=True)
+
+        else:
+            raise ValueError("Unsupported file type.")
+
+    except Exception as e:
+        print(f"Error processing path: {e}")
         path = None
 
-    if is_url(path):
-        print(f"Downloading video from {path}")
-        path = download_video(path)
-
-    if not path:
-        out_path = gradio.update(value=None, visible=True)
-        return out_image, out_video, out_path, out_file
-
-    if is_image(path):
-        state_manager.set_item('target_path', path)
-        out_image = gradio.update(value=path, visible=True)
-        out_file = gradio.update(value=path, visible=True)
-
-    elif is_video(path):
-        print(f"Video path: {path}")
-        state_manager.set_item('target_path', path)
-        out_video = gradio.update(value=path, visible=True)
-        out_file = gradio.update(value=path, visible=True)
-
-    else:
-        state_manager.set_item('target_path', None)
-    return out_image, out_video, out_path, out_file
+    return out_image, out_video, gradio.update(value=path, visible=bool(path)), out_file
 
 
-def update(file: File) -> Tuple[gradio.Image, gradio.Video, gradio.Text, gradio.Checkbox]:
-    # Returns gr.Image, gr.Video, gr.Text, gr.Checkbox
+
+def update(file: File) -> Tuple[gradio.update, gradio.update, gradio.Text, gradio.Checkbox]:
     clear_reference_faces()
     clear_static_faces()
     clear_selected_faces()
     file_path = file.name if file else None
-    if file_path and is_image(file_path):
-        state_manager.set_item('target_path', file_path)
-        return (gradio.update(value=file_path, visible=False),
-                gradio.update(value=file_path, visible=True),
-                gradio.update(visible=False),
+
+    if not file_path:
+        state_manager.clear_item('target_path')
+        return (gradio.update(value=None, visible=False),
+                gradio.update(value=None, visible=False),
+                gradio.update(visible=True),
                 gradio.update(visible=False))
-    if file_path and is_video(file_path):
-        state_manager.set_item('target_path', file_path)
-        return (gradio.update(value=file_path, visible=False),
-                gradio.update(value=file_path, visible=True),
-                gradio.update(visible=False),
-                gradio.update(visible=True))
-    state_manager.clear_item('target_path')
+
+    try:
+        if is_image(file_path):
+            state_manager.set_item('target_path', file_path)
+            return (gradio.update(value=file_path, visible=True),
+                    gradio.update(value=None, visible=False),
+                    gradio.update(visible=False),
+                    gradio.update(visible=False))
+
+        if is_video(file_path):
+            state_manager.set_item('target_path', file_path)
+            return (gradio.update(value=None, visible=False),
+                    gradio.update(value=file_path, visible=True),
+                    gradio.update(visible=False),
+                    gradio.update(visible=True))
+
+        raise ValueError("Unsupported file type.")
+
+    except Exception as e:
+        print(f"Error updating file: {e}")
+        state_manager.clear_item('target_path')
+
     return (gradio.update(value=None, visible=False),
             gradio.update(value=None, visible=False),
             gradio.update(visible=True),
             gradio.update(visible=False))
 
 
-def update_sync_video_lip(sync_video_lip: bool, files: List[File]) -> None:
+
+def update_sync_video_lip(sync_video_lip: bool, files: List[File]) -> Optional[gradio.update]:
     state_manager.set_item("sync_video_lip", sync_video_lip)
+
     if sync_video_lip:
         target_video_path = state_manager.get_item('target_path')
-        if target_video_path and is_video(target_video_path) and os.path.exists(target_video_path):
+        if not target_video_path or not is_video(target_video_path):
+            print("No valid video path to sync.")
+            return gradio.update()
+
+        try:
             file_names = [file.name for file in files] if files else []
             target_video_extension = os.path.splitext(target_video_path)[1]
             audio_path = target_video_path.replace(target_video_extension, '.mp3')
+
             if not os.path.exists(audio_path):
                 audio_path = extract_audio_from_video(target_video_path)
-            if audio_path not in file_names:
+
+            if audio_path and audio_path not in file_names:
                 file_names.append(audio_path)
+
             return gradio.update(value=file_names)
+
+        except Exception as e:
+            print(f"Error syncing video lip: {e}")
+            return gradio.update()
+
     return gradio.update()

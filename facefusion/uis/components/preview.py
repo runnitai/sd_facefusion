@@ -5,14 +5,13 @@ from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import gradio
-import numpy
 
 from facefusion import wording, process_manager, state_manager
 from facefusion.audio import get_audio_frame, create_empty_audio_frame
 from facefusion.common_helper import get_first
 from facefusion.content_analyser import analyse_frame
 from facefusion.core import conditional_append_reference_faces
-from facefusion.face_analyser import get_average_face
+from facefusion.face_analyser import get_avg_faces
 from facefusion.face_store import clear_static_faces, get_reference_faces, clear_reference_faces
 from facefusion.filesystem import is_video, is_image, filter_audio_paths
 from facefusion.processors.core import load_processor_module
@@ -20,7 +19,7 @@ from facefusion.typing import Face, FaceSet, AudioFrame, VisionFrame
 from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component, get_ui_components
 from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, \
-    read_static_image, read_static_images, detect_video_fps, resize_frame_resolution, detect_frame_orientation
+    read_static_image, detect_video_fps, resize_frame_resolution
 
 PREVIEW_IMAGE: Optional[gradio.Image] = None
 PREVIEW_FRAME_SLIDER: Optional[gradio.Slider] = None
@@ -139,21 +138,21 @@ def listen() -> None:
     mask_clear = get_ui_component('mask_clear_button')
     all_update_elements = [PREVIEW_IMAGE, mask_enable_button, mask_disable_button]
     more_elements = [PREVIEW_FRAME_SLIDER] + all_update_elements
-    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, queue=False)
+    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, show_progress='hidden')
     PREVIEW_FRAME_BACK_FIVE_BUTTON.click(preview_back_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements,
-                                         queue=False)
-    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, queue=False)
+                                         show_progress='hidden')
+    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, show_progress='hidden')
     PREVIEW_FRAME_FORWARD_FIVE_BUTTON.click(preview_forward_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements,
-                                            queue=False)
+                                            show_progress='hidden')
     PREVIEW_FRAME_SLIDER.release(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
                                  show_progress='hidden')
-    PREVIEW_FRAME_SLIDER.change(slide_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
-                                show_progress='hidden')
+    # PREVIEW_FRAME_SLIDER.change(_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=[PREVIEW_IMAGE],
+    #                             show_progress='hidden')
     mask_disable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
-                              queue=False)
+                              show_progress='hidden')
     mask_enable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
-                             queue=False)
-    mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, queue=False)
+                             show_progress='hidden')
+    mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, show_progress='hidden')
     for ui_component in get_ui_components(
             [
                 'source_audio',
@@ -164,7 +163,7 @@ def listen() -> None:
             ]):
         for method in ['upload', 'change', 'clear']:
             getattr(ui_component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
-                                          queue=False)
+                                          show_progress='hidden')
 
     for ui_component in get_ui_components(
             [
@@ -184,7 +183,7 @@ def listen() -> None:
                 'face_mask_regions_checkbox_group'
             ]):
         ui_component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
-                            queue=False)
+                            show_progress='hidden')
     for ui_component in get_ui_components(
             [
                 'age_modifier_direction_slider',
@@ -249,26 +248,7 @@ def listen() -> None:
         ui_component.release(clear_and_update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
 
 
-def get_avg_faces():
-    global AVG_FACE_1, AVG_FACE_2, SOURCE_FRAMES_1, SOURCE_FRAMES_2
-    source_paths = state_manager.get_item('source_paths')
-    source_paths_2 = state_manager.get_item('source_paths_2')
-    if SOURCE_FRAMES_1 != source_paths or AVG_FACE_1 is None and source_paths and len(source_paths) > 0:
-        print("Updating AVG_FACE_1")
-        SOURCE_FRAMES_1 = source_paths
-        source_frames = read_static_images(source_paths)
-        AVG_FACE_1 = get_average_face(source_frames)
-
-    if SOURCE_FRAMES_2 != source_paths_2 or AVG_FACE_2 is None and source_paths_2 and len(source_paths_2) > 0:
-        print("Updating AVG_FACE_2")
-        SOURCE_FRAMES_2 = source_paths_2
-        source_frames_2 = read_static_images(source_paths_2)
-        AVG_FACE_2 = get_average_face(source_frames_2)
-
-    return AVG_FACE_1, AVG_FACE_2
-
-
-def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
+def clear_and_update_preview_image(frame_number: int = 0) -> gradio.update:
     global CURRENT_PREVIEW_FRAME_NUMBER
     CURRENT_PREVIEW_FRAME_NUMBER = -1
     clear_reference_faces()
@@ -276,58 +256,58 @@ def clear_and_update_preview_image(frame_number: int = 0) -> gradio.Image:
     return update_preview_image(frame_number)
 
 
-def slide_preview_image(frame_number: int = 0) -> gradio.Image:
+def slide_preview_image(frame_number: int = 0) -> gradio.update:
     if is_video(state_manager.get_item('target_path')):
         preview_vision_frame = normalize_frame_color(
             get_video_frame(state_manager.get_item('target_path'), frame_number))
         preview_vision_frame = resize_frame_resolution(preview_vision_frame, (1024, 1024))
-        return gradio.Image(value=preview_vision_frame)
-    return gradio.Image(value=None)
+        return gradio.update(value=preview_vision_frame)
+    return gradio.update(value=None)
 
 
 def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.update, gradio.update]:
     while process_manager.is_checking():
         sleep(0.5)
-    conditional_append_reference_faces()
-    reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
-        'face_selector_mode') else (None, None)
-    source_face, source_face_2 = get_avg_faces()
-    source_audio_path = get_first(filter_audio_paths(state_manager.get_item('source_paths')))
-    source_audio_path_2 = get_first(filter_audio_paths(state_manager.get_item('source_paths_2')))
-    source_audio_frame = create_empty_audio_frame()
-    source_audio_frame_2 = create_empty_audio_frame()
-    enable_button, disable_button = update_mask_buttons(frame_number)
 
-    if source_audio_path and state_manager.get_item('output_video_fps'):
-        temp_audio_frame = get_audio_frame(source_audio_path, state_manager.get_item('output_video_fps'), frame_number)
-        if numpy.any(temp_audio_frame):
-            source_audio_frame = temp_audio_frame
+    # Initialize placeholders
+    preview = gradio.update(value=None, visible=False)
+    enable_button, disable_button = gradio.update(), gradio.update()
 
-    if source_audio_path_2 and state_manager.get_item('output_video_fps'):
-        temp_audio_frame_2 = get_audio_frame(source_audio_path_2, state_manager.get_item('output_video_fps'),
-                                             frame_number)
-        if numpy.any(temp_audio_frame_2):
-            source_audio_frame_2 = temp_audio_frame_2
+    try:
+        conditional_append_reference_faces()
+        reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
+            'face_selector_mode') else (None, None)
+        source_face, source_face_2 = get_avg_faces()
+        source_audio_frame = create_empty_audio_frame()
+        source_audio_frame_2 = create_empty_audio_frame()
 
-    if is_image(state_manager.get_item('target_path')):
-        target_vision_frame = read_static_image(state_manager.get_item('target_path'))
-        preview_vision_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
-                                                     source_audio_frame, source_audio_frame_2,
-                                                     target_vision_frame)
-        preview_vision_frame = normalize_frame_color(preview_vision_frame)
-        preview = gradio.Image(value=preview_vision_frame,
-                               elem_classes=['image-preview', 'is-' + detect_frame_orientation(preview_vision_frame)])
+        if is_image(state_manager.get_item('target_path')):
+            target_vision_frame = read_static_image(state_manager.get_item('target_path'))
+            if target_vision_frame is not None:
+                preview_vision_frame = process_preview_frame(
+                    reference_faces, reference_faces_2, source_face, source_face_2,
+                    source_audio_frame, source_audio_frame_2, target_vision_frame
+                )
+                preview_vision_frame = normalize_frame_color(preview_vision_frame)
+                preview = gradio.update(value=preview_vision_frame, visible=True)
 
-    elif is_video(state_manager.get_item('target_path')):
-        temp_vision_frame = get_video_frame(state_manager.get_item('target_path'), frame_number)
-        preview_vision_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
-                                                     source_audio_frame, source_audio_frame_2,
-                                                     temp_vision_frame)
-        preview_vision_frame = normalize_frame_color(preview_vision_frame)
-        preview = gradio.Image(value=preview_vision_frame,
-                               elem_classes=['image-preview', 'is-' + detect_frame_orientation(preview_vision_frame)])
-    else:
-        preview = gradio.Image(value=None, elem_classes=None)
+        elif is_video(state_manager.get_item('target_path')):
+            temp_vision_frame = get_video_frame(state_manager.get_item('target_path'), frame_number)
+            if temp_vision_frame is not None:
+                preview_vision_frame = process_preview_frame(
+                    reference_faces, reference_faces_2, source_face, source_face_2,
+                    source_audio_frame, source_audio_frame_2, temp_vision_frame
+                )
+                preview_vision_frame = normalize_frame_color(preview_vision_frame)
+                preview = gradio.update(value=preview_vision_frame, visible=True)
+
+        # Update mask buttons
+        enable_button, disable_button = update_mask_buttons(frame_number)
+
+    except Exception as e:
+        print(f"Error in update_preview_image: {e}")
+        traceback.print_exc()
+
     return preview, enable_button, disable_button
 
 
@@ -428,6 +408,7 @@ def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, 
 
         for frame_processor in global_processors:
             try:
+                print(f"Processing with frame processor {frame_processor}")
                 frame_processor_module = load_processor_module(frame_processor)
                 if frame_processor_module.pre_process('preview'):
                     target_vision_frame = frame_processor_module.process_frame({
@@ -441,6 +422,7 @@ def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, 
                         'target_frame_number': frame_number,
                         'source_frame': source_frame,
                     })
+                    print("Do the damned thang...")
             except Exception as e:
                 print(f"Error processing with frame processor {frame_processor}: {e}")
                 traceback.print_exc()

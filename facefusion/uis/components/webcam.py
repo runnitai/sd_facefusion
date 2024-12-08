@@ -136,9 +136,9 @@ def multi_process_capture(source_face: Face, webcam_capture: cv2.VideoCapture, w
                     yield deque_capture_frames.popleft()
 
 
-def stop() -> gradio.Image:
+def stop() -> gradio.update:
     clear_webcam_capture()
-    return gradio.Image(value=None)
+    return gradio.update(value=None)
 
 
 def process_stream_frame(source_face: Face, target_vision_frame: VisionFrame) -> VisionFrame:

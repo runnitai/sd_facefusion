@@ -46,19 +46,19 @@ def listen() -> None:
                                          outputs=[AGE_MODIFIER_MODEL_DROPDOWN, AGE_MODIFIER_DIRECTION_SLIDER])
 
 
-def remote_update(processors: List[str]) -> Tuple[gradio.Dropdown, gradio.Slider]:
+def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
     has_age_modifier = 'age_modifier' in processors
-    return gradio.Dropdown(visible=has_age_modifier), gradio.Slider(visible=has_age_modifier)
+    return gradio.update(visible=has_age_modifier), gradio.update(visible=has_age_modifier)
 
 
-def update_age_modifier_model(age_modifier_model: AgeModifierModel) -> gradio.Dropdown:
+def update_age_modifier_model(age_modifier_model: AgeModifierModel) -> gradio.update:
     age_modifier_module = load_processor_module('age_modifier')
     age_modifier_module.clear_inference_pool()
     state_manager.set_item('age_modifier_model', age_modifier_model)
 
     if age_modifier_module.pre_check():
-        return gradio.Dropdown(value=state_manager.get_item('age_modifier_model'))
-    return gradio.Dropdown()
+        return gradio.update(value=state_manager.get_item('age_modifier_model'))
+    return gradio.update()
 
 
 def update_age_modifier_direction(age_modifier_direction: float) -> None:

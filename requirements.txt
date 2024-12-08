@@ -1,6 +1,6 @@
 basicsr>=1.4.2
 filetype==1.2.0
-ffmpeg_progress_yield
+ffmpeg_progress_yield>=0.11.1
 onnx>=1.17.0
 onnxruntime-gpu>=1.20.1
 opencv-python>=4.10.0.84

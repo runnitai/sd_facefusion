@@ -135,9 +135,9 @@ def conditional_process() -> ErrorCode:
 
 
 def average_reference_faces():
-    for ref_faces, face_dict_key in [(state_manager.get_item('reference_faces'), 'reference_face_dict'),
-                                     (state_manager.get_item('reference_faces_2'), 'reference_face_dict_2')]:
-        if len(ref_faces) > 1:
+    for ref_faces, face_dict_key in [(state_manager.get_item('reference_face_dict'), 'reference_face_dict'),
+                                     (state_manager.get_item('reference_face_dict_2'), 'reference_face_dict_2')]:
+        if len(ref_faces.keys()) > 1:
             all_faces = []
             embedding_list = []
             normed_embedding_list = []
@@ -383,7 +383,7 @@ def process_image(start_time: float) -> ErrorCode:
     temp_file_path = get_temp_file_path(state_manager.get_item('target_path'))
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         logger.info(wording.get('processing'), processor_module.__name__)
-        processor_module.process_image(state_manager.get_item('source_paths'), temp_file_path, temp_file_path)
+        processor_module.process_image(state_manager.get_item('source_paths'), state_manager.get_item('source_paths_2'), temp_file_path, temp_file_path)
         processor_module.post_process()
     if is_process_stopping():
         process_manager.end()
@@ -444,7 +444,7 @@ def process_video(start_time: float) -> ErrorCode:
     if temp_frame_paths:
         for processor_module in get_processors_modules(state_manager.get_item('processors')):
             logger.info(wording.get('processing'), processor_module.__name__)
-            processor_module.process_video(state_manager.get_item('source_paths'), temp_frame_paths)
+            processor_module.process_video(state_manager.get_item('source_paths'), state_manager.get_item('source_paths_2'), temp_frame_paths)
             processor_module.post_process()
         if is_process_stopping():
             return 4
