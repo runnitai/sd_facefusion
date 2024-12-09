@@ -2,6 +2,7 @@ let ffProgressTimeout = null;
 let stoppedCount = 0;
 
 function start_status() {
+    console.log("Start status...");
     stoppedCount = 0;
     ffProgressTimeout = setTimeout(recheck_status, 2000);
 }

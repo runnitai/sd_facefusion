@@ -6,7 +6,7 @@ import facefusion.choices
 from facefusion import wording, state_manager
 from facefusion.common_helper import calc_int_step, calc_float_step
 from facefusion.typing import FaceMaskType, FaceMaskRegion
-from facefusion.uis.core import register_ui_component, get_ui_component
+from facefusion.uis.core import register_ui_component, get_ui_component, get_ui_components
 
 FACE_MASK_TYPES_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
 FACE_MASK_REGIONS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
@@ -144,16 +144,30 @@ def listen() -> None:
         outputs=mask_elements
     )
 
+    for ui_component in get_ui_components(
+            [
+                'target_image',
+                'target_video'
+            ]):
+        for method in ['upload', 'change', 'clear']:
+            getattr(ui_component, method)(clear_mask_times,
+                                          outputs=mask_elements)
+
+    for method in ['change', 'release']:
+        getattr(preview_frame_slider, method)(update_mask_buttons,
+                                     inputs=preview_frame_slider,
+                                     outputs=[MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON])
+
 
 def update_face_mask_types(face_mask_types: List[FaceMaskType]) -> Tuple[
-    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.Slider, gradio.Slider]:
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     face_mask_types = face_mask_types or facefusion.choices.face_mask_types
     state_manager.set_item('face_mask_types', face_mask_types)
     has_box_mask = 'box' in face_mask_types
     has_region_mask = 'region' in face_mask_types
     return gradio.update(value=state_manager.get_item('face_mask_types')), gradio.update(
-        visible=has_region_mask), gradio.Slider(visible=has_box_mask), gradio.Slider(
-        visible=has_box_mask), gradio.Slider(visible=has_box_mask), gradio.Slider(visible=has_box_mask), gradio.Slider(
+        visible=has_region_mask), gradio.update(visible=has_box_mask), gradio.update(
+        visible=has_box_mask), gradio.update(visible=has_box_mask), gradio.update(visible=has_box_mask), gradio.update(
         visible=has_box_mask)
 
 
@@ -185,7 +199,7 @@ def generate_frame_html(return_value: bool = False) -> gradio.update:
     return gradio.update(value=full_string)
 
 
-def set_disable_mask_time(preview_frame_slider: gradio.Slider) -> gradio.update:
+def set_disable_mask_time(preview_frame_slider: gradio.update) -> gradio.update:
     disabled_times = state_manager.get_item('mask_disabled_times')
     enabled_times = state_manager.get_item('mask_enabled_times')
     current_frame = preview_frame_slider
@@ -201,7 +215,7 @@ def set_disable_mask_time(preview_frame_slider: gradio.Slider) -> gradio.update:
     return generate_frame_html(state_manager), show_enable_btn, show_disable_btn
 
 
-def set_enable_mask_time(preview_frame_slider: gradio.Slider) -> gradio.update:
+def set_enable_mask_time(preview_frame_slider: gradio.update) -> gradio.update:
     disabled_times = state_manager.get_item('mask_disabled_times')
     enabled_times = state_manager.get_item('mask_enabled_times')
     current_frame = preview_frame_slider

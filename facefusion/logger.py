@@ -16,11 +16,15 @@ def get_package_logger() -> Logger:
 
 
 def debug(message: str, module_name: str) -> None:
-    get_package_logger().debug(create_message(message, module_name))
+    message = create_message(message, module_name)
+    print(message)
+    get_package_logger().debug(message)
 
 
 def info(message: str, module_name: str) -> None:
-    get_package_logger().info(create_message(message, module_name))
+    message = create_message(message, module_name)
+    print(message)
+    get_package_logger().info(message)
 
 
 def warn(message: str, module_name: str) -> None:

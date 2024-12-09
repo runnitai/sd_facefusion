@@ -86,7 +86,7 @@ def load_facefusion():
     apply_args(globals_dict, False)
     state_manager.init_item("config_path", ff_ini)
 
-    run_pre_checks(facefusion)
+    #run_pre_checks(facefusion)
     tune_performance()
 
     with gr.Blocks() as ff_ui:

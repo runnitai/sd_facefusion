@@ -219,15 +219,15 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[
-    gradio.update, gradio.update, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider, gradio.Slider]:
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     has_face_editor = 'face_editor' in processors
-    return gradio.update(visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
-        visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
-        visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
-        visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
-        visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
-        visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(
-        visible=has_face_editor), gradio.Slider(visible=has_face_editor), gradio.Slider(visible=has_face_editor)
+    return gradio.update(visible=has_face_editor), gradio.update(visible=has_face_editor), gradio.update(
+        visible=has_face_editor), gradio.update(visible=has_face_editor), gradio.update(
+        visible=has_face_editor), gradio.update(visible=has_face_editor), gradio.update(
+        visible=has_face_editor), gradio.update(visible=has_face_editor), gradio.update(
+        visible=has_face_editor), gradio.update(visible=has_face_editor), gradio.update(
+        visible=has_face_editor), gradio.update(visible=has_face_editor), gradio.update(
+        visible=has_face_editor), gradio.update(visible=has_face_editor), gradio.update(visible=has_face_editor)
 
 
 def update_face_editor_model(face_editor_model: FaceEditorModel) -> gradio.update:

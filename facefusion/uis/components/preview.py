@@ -138,12 +138,21 @@ def listen() -> None:
     mask_clear = get_ui_component('mask_clear_button')
     all_update_elements = [PREVIEW_IMAGE, mask_enable_button, mask_disable_button]
     more_elements = [PREVIEW_FRAME_SLIDER] + all_update_elements
-    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, show_progress='hidden')
+    PREVIEW_FRAME_BACK_BUTTON.click(preview_back, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements,
+                                    show_progress='hidden').then(update_preview_image, inputs=PREVIEW_FRAME_SLIDER,
+                                                                 outputs=all_update_elements, show_progress='hidden')
     PREVIEW_FRAME_BACK_FIVE_BUTTON.click(preview_back_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements,
-                                         show_progress='hidden')
-    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements, show_progress='hidden')
+                                         show_progress='hidden').then(update_preview_image, inputs=PREVIEW_FRAME_SLIDER,
+                                                                      outputs=all_update_elements,
+                                                                      show_progress='hidden')
+    PREVIEW_FRAME_FORWARD_BUTTON.click(preview_forward, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements,
+                                       show_progress='hidden').then(update_preview_image, inputs=PREVIEW_FRAME_SLIDER,
+                                                                    outputs=all_update_elements, show_progress='hidden')
     PREVIEW_FRAME_FORWARD_FIVE_BUTTON.click(preview_forward_five, inputs=PREVIEW_FRAME_SLIDER, outputs=more_elements,
-                                            show_progress='hidden')
+                                            show_progress='hidden').then(update_preview_image,
+                                                                         inputs=PREVIEW_FRAME_SLIDER,
+                                                                         outputs=all_update_elements,
+                                                                         show_progress='hidden')
     PREVIEW_FRAME_SLIDER.release(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
                                  show_progress='hidden')
     # PREVIEW_FRAME_SLIDER.change(_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=[PREVIEW_IMAGE],
@@ -152,7 +161,8 @@ def listen() -> None:
                               show_progress='hidden')
     mask_enable_button.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
                              show_progress='hidden')
-    mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements, show_progress='hidden')
+    mask_clear.click(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
+                     show_progress='hidden')
     for ui_component in get_ui_components(
             [
                 'source_audio',
@@ -162,7 +172,8 @@ def listen() -> None:
                 'target_video'
             ]):
         for method in ['upload', 'change', 'clear']:
-            getattr(ui_component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
+            getattr(ui_component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER,
+                                          outputs=all_update_elements,
                                           show_progress='hidden')
 
     for ui_component in get_ui_components(
@@ -180,7 +191,8 @@ def listen() -> None:
                 'face_debugger_items_checkbox_group',
                 'frame_colorizer_size_dropdown',
                 'face_mask_types_checkbox_group',
-                'face_mask_regions_checkbox_group'
+                'face_mask_regions_checkbox_group',
+                'style_changer_target_radio',
             ]):
         ui_component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
                             show_progress='hidden')
@@ -235,7 +247,8 @@ def listen() -> None:
                 'face_detector_model_dropdown',
                 'face_detector_size_dropdown',
                 'face_detector_angles_checkbox_group',
-                'face_landmarker_model_dropdown'
+                'face_landmarker_model_dropdown',
+                'style_changer_model_dropdown'
             ]):
         if ui_component:
             ui_component.change(clear_and_update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
@@ -253,7 +266,8 @@ def clear_and_update_preview_image(frame_number: int = 0) -> gradio.update:
     CURRENT_PREVIEW_FRAME_NUMBER = -1
     clear_reference_faces()
     clear_static_faces()
-    return update_preview_image(frame_number)
+    preview, _, _ = update_preview_image(frame_number)
+    return preview
 
 
 def slide_preview_image(frame_number: int = 0) -> gradio.update:
@@ -309,42 +323,6 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
         traceback.print_exc()
 
     return preview, enable_button, disable_button
-
-
-# def update_preview_image_old(frame_number: int = 0) -> Tuple[gradio.update, gradio.update, gradio.update]:
-#     global CURRENT_PREVIEW_FRAME_NUMBER
-#     while process_manager.is_checking():
-#         sleep(0.5)
-#     conditional_append_reference_faces()
-#     reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
-#     source_face, source_face_2 = get_avg_faces()
-#     source_audio_path = get_first(filter_audio_paths(state_manager.get_item('source_paths')))
-#     if source_audio_path and facefusion.globals.output_video_fps:
-#         source_audio_frame = get_audio_frame(source_audio_path, facefusion.globals.output_video_fps, frame_number)
-#     else:
-#         source_audio_frame = None
-#
-#     enable_button, disable_button = update_mask_buttons(frame_number)
-#     reference_faces, reference_faces_2 = (
-#         get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
-#     if is_image(state_manager.get_item('target_path')):
-#         target_frame = read_static_image(state_manager.get_item('target_path'))
-#         preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
-#                                               source_audio_frame, target_frame, -1)
-#         preview_frame = normalize_frame_color(preview_frame)
-#         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
-#     if is_video(state_manager.get_item('target_path')):
-#         temp_frame = get_video_frame(state_manager.get_item('target_path'), frame_number)
-#         try:
-#             preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
-#                                                   source_audio_frame, temp_frame, frame_number)
-#             preview_frame = normalize_frame_color(preview_frame)
-#         except Exception as e:
-#             print("Error processing preview frame: ", e)
-#             traceback.print_exc()
-#             preview_frame = temp_frame
-#         return gradio.update(value=preview_frame, visible=True), enable_button, disable_button
-#     return gradio.update(value=None, visible=True), enable_button, disable_button
 
 
 def preview_back(reference_frame_number: int = 0) -> gradio.update:

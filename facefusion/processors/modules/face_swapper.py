@@ -564,6 +564,8 @@ def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
             target_vision_frame = swap_face(source_face, target_face, target_vision_frame)
     if state_manager.get_item('face_selector_mode') == 'reference':
         for ref_faces, src_face in [(reference_faces, source_face), (reference_faces_2, source_face_2)]:
+            if not ref_faces or not src_face:
+                continue
             similar_faces = find_similar_faces(many_faces, ref_faces,
                                                state_manager.get_item('reference_face_distance'))
             if similar_faces:

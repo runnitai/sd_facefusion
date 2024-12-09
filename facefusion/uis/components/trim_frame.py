@@ -37,19 +37,21 @@ def render() -> None:
         trim_frame_range_slider_options['maximum'] = video_frame_total
         trim_frame_range_slider_options['value'] = (trim_frame_start, trim_frame_end)
         trim_frame_range_slider_options['visible'] = True
-    TRIM_FRAME_START_SLIDER = Slider(
-        label=wording.get('uis.trim_frame_start_slider'),
-        minimum=0,
-        step=1,
-        visible=False
-    )
+    with gradio.Group():
+        with gradio.Row():
+            TRIM_FRAME_START_SLIDER = Slider(
+                label=wording.get('uis.trim_frame_start_slider'),
+                minimum=0,
+                step=1,
+                visible=False
+            )
 
-    TRIM_FRAME_END_SLIDER = Slider(
-        label=wording.get('uis.trim_frame_end_slider'),
-        minimum=0,
-        step=1,
-        visible=False
-    )
+            TRIM_FRAME_END_SLIDER = Slider(
+                label=wording.get('uis.trim_frame_end_slider'),
+                minimum=0,
+                step=1,
+                visible=False
+            )
     register_ui_component('trim_frame_start_slider', TRIM_FRAME_START_SLIDER)
     register_ui_component('trim_frame_end_slider', TRIM_FRAME_END_SLIDER)
 
@@ -57,7 +59,6 @@ def render() -> None:
 def listen() -> None:
     TRIM_FRAME_START_SLIDER.release(update_trim_frame_start, inputs=TRIM_FRAME_START_SLIDER)
     TRIM_FRAME_END_SLIDER.release(update_trim_frame_end, inputs=TRIM_FRAME_END_SLIDER)
-    # TRIM_FRAME_RANGE_SLIDER.release(update_trim_frame, inputs=TRIM_FRAME_RANGE_SLIDER)
     for ui_component in get_ui_components(
             [
                 'target_image',
@@ -68,8 +69,10 @@ def listen() -> None:
             getattr(ui_component, method)(remote_update, outputs=[TRIM_FRAME_START_SLIDER, TRIM_FRAME_END_SLIDER])
 
 
-def remote_update() -> Tuple[Slider, Slider]:
+def remote_update() -> Tuple[gradio.update, gradio.update]:
+    print('remote_update (trimframe)')
     if is_video(state_manager.get_item('target_path')):
+        print('remote_update (trimframe) - is_video')
         video_frame_total = count_video_frame_total(state_manager.get_item('target_path'))
         state_manager.clear_item('trim_frame_start')
         state_manager.clear_item('trim_frame_end')

@@ -423,6 +423,7 @@ def process_video(start_time: float) -> ErrorCode:
     logger.debug(wording.get('creating_temp'), __name__)
     create_temp_directory(state_manager.get_item('target_path'))
     # extract frames
+    print(f"Starting process manager")
     process_manager.start()
     temp_video_resolution = pack_resolution(restrict_video_resolution(state_manager.get_item('target_path'),
                                                                       unpack_resolution(state_manager.get_item(
@@ -443,9 +444,12 @@ def process_video(start_time: float) -> ErrorCode:
     temp_frame_paths = get_temp_frame_paths(state_manager.get_item('target_path'))
     if temp_frame_paths:
         for processor_module in get_processors_modules(state_manager.get_item('processors')):
+            print(f"Processing {processor_module.__name__}")
             logger.info(wording.get('processing'), processor_module.__name__)
             processor_module.process_video(state_manager.get_item('source_paths'), state_manager.get_item('source_paths_2'), temp_frame_paths)
+            print(f"Post processing {processor_module.__name__}")
             processor_module.post_process()
+            print(f"Post processing {processor_module.__name__} done in {time() - start_time} seconds")
         if is_process_stopping():
             return 4
     else:
@@ -455,14 +459,17 @@ def process_video(start_time: float) -> ErrorCode:
     # merge video
     logger.info(wording.get('merging_video').format(resolution=state_manager.get_item('output_video_resolution'),
                                                     fps=state_manager.get_item('output_video_fps')), __name__)
+    print(f"Merging video")
     if merge_video(state_manager.get_item('target_path'), state_manager.get_item('output_video_resolution'),
                    state_manager.get_item('output_video_fps')):
         logger.debug(wording.get('merging_video_succeed'), __name__)
+        print(f"Merging video succeed")
     else:
         if is_process_stopping():
             process_manager.end()
             return 4
         logger.error(wording.get('merging_video_failed'), __name__)
+        print(f"Merging video failed")
         process_manager.end()
         return 1
     # handle audio
@@ -472,6 +479,7 @@ def process_video(start_time: float) -> ErrorCode:
     else:
         source_audio_path = get_first(filter_audio_paths(state_manager.get_item('source_paths')))
         if source_audio_path:
+            print(f"Replacing audio")
             if replace_audio(state_manager.get_item('target_path'), source_audio_path,
                              state_manager.get_item('output_path')):
                 logger.debug(wording.get('replacing_audio_succeed'), __name__)
@@ -482,14 +490,17 @@ def process_video(start_time: float) -> ErrorCode:
                 logger.warn(wording.get('replacing_audio_skipped'), __name__)
                 move_temp_file(state_manager.get_item('target_path'), state_manager.get_item('output_path'))
         else:
+            print(f"Restoring audio")
             if restore_audio(state_manager.get_item('target_path'), state_manager.get_item('output_path'),
                              state_manager.get_item('output_video_fps')):
                 logger.debug(wording.get('restoring_audio_succeed'), __name__)
+                print(f"Restoring audio succeed")
             else:
                 if is_process_stopping():
                     process_manager.end()
                     return 4
                 logger.warn(wording.get('restoring_audio_skipped'), __name__)
+                print(f"Restoring audio skipped")
                 move_temp_file(state_manager.get_item('target_path'), state_manager.get_item('output_path'))
     # clear temp
     logger.debug(wording.get('clearing_temp'), __name__)

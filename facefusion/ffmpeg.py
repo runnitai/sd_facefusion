@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime
 from typing import List
 from typing import Optional, Union
 
@@ -25,19 +26,26 @@ class MockProcess:
         return self.returncode
 
 
-def run_ffmpeg(args: List[str], show_progress: bool = False, description: str = "Processing") -> Union[subprocess.Popen, MockProcess]:
-    commands = [shutil.which('ffmpeg'), '-hide_banner', '-loglevel', 'error']
+def run_ffmpeg(args: List[str], show_progress: bool = True, description: str = "Processing") -> Union[subprocess.Popen, MockProcess]:
+    commands = [shutil.which('ffmpeg'), '-hide_banner', '-loglevel', 'error'] if not show_progress else [shutil.which('ffmpeg')]
     commands.extend(args)
-
+    start_time = datetime.now()
+    try:
+        print(f"Running ffmpeg: '{' '.join(commands)}'")
+    except:
+        pass
     if show_progress:
         try:
             with tqdm(total=100, position=1, desc=description) as pbar:
                 ff = FfmpegProgress(commands)
                 for progress in ff.run_command_with_progress():
                     pbar.update(progress - pbar.n)
+            end_time = datetime.now()
+            print(f"FFMPEG process took: {end_time - start_time}")
             return MockProcess(return_code=0)  # Successful run
         except Exception as e:
-            print(f"Error during progress tracking: {e}")
+            end_time = datetime.now()
+            print(f"FFMPEG error during progress tracking: {e} ({end_time - start_time})")
             return MockProcess(return_code=1)  # Return non-zero for errors
     else:
         process = subprocess.Popen(commands, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -52,7 +60,8 @@ def run_ffmpeg(args: List[str], show_progress: bool = False, description: str = 
 
         if process_manager.is_stopping():
             process.terminate()
-
+        end_time = datetime.now()
+        print(f"FFMPEG process took: {end_time - start_time}")
         return process
 
 

@@ -24,6 +24,8 @@ AgeModifierInputs = TypedDict('AgeModifierInputs',
                               {
                                   'reference_faces': FaceSet,
                                   'reference_faces_2': FaceSet,
+                                  'source_face': Face,
+                                  'source_face_2': Face,
                                   'target_vision_frame': VisionFrame
                               })
 ExpressionRestorerInputs = TypedDict('ExpressionRestorerInputs',

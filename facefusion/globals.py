@@ -66,9 +66,10 @@ face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
 # frame extraction
 trim_frame_start: Optional[int] = None
 trim_frame_end: Optional[int] = None
-temp_frame_format: Optional[TempFrameFormat] = 'bmp'
+temp_frame_format: Optional[TempFrameFormat] = 'png'
 keep_temp: Optional[bool] = False
 # output creation
+output_audio_encoder: Optional[str] = 'aac'
 output_image_quality: Optional[int] = 60
 output_image_resolution: Optional[str] = None
 output_video_encoder: Optional[OutputVideoEncoder] = 'libx264'

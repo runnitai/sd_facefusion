@@ -1,4 +1,5 @@
 import os.path
+import traceback
 from typing import Tuple, Optional, List
 
 import gradio
@@ -38,7 +39,7 @@ def render() -> None:
         elem_id='ff_target_path',
     )
     TARGET_FILE = gradio.File(
-        label = wording.get('uis.target_file'),
+        label=wording.get('uis.target_file'),
         file_count='single',
         file_types=
         [
@@ -56,7 +57,7 @@ def render() -> None:
         {
             'show_label': False,
             'visible': False
-        }	
+        }
     if is_target_image:
         target_image_options['value'] = TARGET_FILE.value.get('path')
         target_image_options['visible'] = True
@@ -83,22 +84,20 @@ def render() -> None:
 
 
 def listen() -> None:
-    TARGET_PATH.input(update_from_path, inputs=TARGET_PATH,
-                      outputs=[TARGET_IMAGE, TARGET_VIDEO, TARGET_PATH, TARGET_FILE])
+    TARGET_PATH.input(update_from_path, inputs=TARGET_PATH, outputs=[TARGET_PATH, TARGET_FILE])
     TARGET_FILE.change(update, inputs=TARGET_FILE, outputs=[TARGET_IMAGE, TARGET_VIDEO, TARGET_PATH, SYNC_VIDEO_LIP])
     global SOURCE_FILES
     SOURCE_FILES = get_ui_component('source_file')
     SYNC_VIDEO_LIP.change(update_sync_video_lip, inputs=[SYNC_VIDEO_LIP, SOURCE_FILES], outputs=[SOURCE_FILES])
 
 
-def update_from_path(path: str) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
-    out_image = gradio.update(visible=False)
-    out_video = gradio.update(visible=False)
-    out_path = gradio.update(visible=False)
+def update_from_path(path: str) -> Tuple[gradio.update, gradio.update]:
+    # TARGET_IMAGE, TARGET_VIDEO, TARGET_PATH, TARGET_FILE
+    out_path = gradio.update(visible=True)
     out_file = gradio.update(visible=True)
 
     if not path:
-        return out_image, out_video, gradio.update(value=None, visible=True), out_file
+        return out_path, out_file
 
     try:
         if is_url(path):
@@ -110,28 +109,37 @@ def update_from_path(path: str) -> Tuple[gradio.update, gradio.update, gradio.up
 
         if is_image(path):
             state_manager.set_item('target_path', path)
-            out_image = gradio.update(value=path, visible=True)
+            out_path = gradio.update(visible=False)
+            out_file = gradio.update(value=path, visible=True)
 
         elif is_video(path):
             if get_file_size(path) > FILE_SIZE_LIMIT:
                 raise ValueError("File size exceeds the limit.")
             state_manager.set_item('target_path', path)
-            out_video = gradio.update(value=path, visible=True)
+            out_path = gradio.update(visible=False)
+            out_file = gradio.update(value=path, visible=True)
 
         else:
             raise ValueError("Unsupported file type.")
 
     except Exception as e:
         print(f"Error processing path: {e}")
+        state_manager.clear_item('target_path')
+        out_file = gradio.update(value=None, visible=True)
+        out_path = gradio.update(value=path, visible=True)
         path = None
+    calling_method = traceback.extract_stack()[-2].name
+    print(f"Calling method: {calling_method}")
+    return out_path, out_file
 
-    return out_image, out_video, gradio.update(value=path, visible=bool(path)), out_file
 
-
-
-def update(file: File) -> Tuple[gradio.update, gradio.update, gradio.Text, gradio.Checkbox]:
+def update(file: File) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
+    # Returns: TARGET_IMAGE, TARGET_VIDEO, TARGET_PATH, SYNC_VIDEO_LIP
+    print("crf")
     clear_reference_faces()
+    print("csf")
     clear_static_faces()
+    print("cssf")
     clear_selected_faces()
     file_path = file.name if file else None
 
@@ -151,7 +159,9 @@ def update(file: File) -> Tuple[gradio.update, gradio.update, gradio.Text, gradi
                     gradio.update(visible=False))
 
         if is_video(file_path):
+            print(f"Set tgt")
             state_manager.set_item('target_path', file_path)
+            print("Returning")
             return (gradio.update(value=None, visible=False),
                     gradio.update(value=file_path, visible=True),
                     gradio.update(visible=False),
@@ -162,15 +172,14 @@ def update(file: File) -> Tuple[gradio.update, gradio.update, gradio.Text, gradi
     except Exception as e:
         print(f"Error updating file: {e}")
         state_manager.clear_item('target_path')
-
+    print(f"Failed to update file: {file_path},returning")
     return (gradio.update(value=None, visible=False),
             gradio.update(value=None, visible=False),
             gradio.update(visible=True),
             gradio.update(visible=False))
 
 
-
-def update_sync_video_lip(sync_video_lip: bool, files: List[File]) -> Optional[gradio.update]:
+def update_sync_video_lip(sync_video_lip: bool, files: List[File]) -> gradio.update:
     state_manager.set_item("sync_video_lip", sync_video_lip)
 
     if sync_video_lip:

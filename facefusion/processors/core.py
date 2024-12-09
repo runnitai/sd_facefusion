@@ -42,11 +42,11 @@ def load_processor_module(processor: str) -> Any:
     except ModuleNotFoundError as exception:
         logger.error(wording.get('processor_not_loaded').format(processor=processor), __name__)
         logger.debug(exception.msg, __name__)
-        #hard_exit(1)
+        # hard_exit(1)
     except NotImplementedError:
         logger.error(wording.get('processor_not_implemented').format(processor=processor), __name__)
         print("Error: ", last_method_name)
-        #hard_exit(1)
+        # hard_exit(1)
     return processor_module
 
 
@@ -54,7 +54,7 @@ def get_processors_modules(frame_processors: List[str]) -> List[ModuleType]:
     processor_modules = []
 
     # Priority list defining the order
-    priority_order = ['face_swapper', 'style_changer', 'lip_syncer', 'face_enhancer', 'frame_enhancer', 'face_debugger']
+    priority_order = ['face_swapper', 'age_modifier', 'lip_syncer', 'face_editor', 'expression_restorer', 'style_changer', 'face_enhancer', 'frame_enhancer', 'frame_colorizer', 'face_debugger']
 
     # Sort the frame_processors list based on the priority_order
     ordered_processors = sorted(frame_processors,
@@ -66,10 +66,8 @@ def get_processors_modules(frame_processors: List[str]) -> List[ModuleType]:
     return processor_modules
 
 
-
 def clear_processors_modules(processors: List[str]) -> None:
     for processor in processors:
-
         processor_module = load_processor_module(processor)
         processor_module.clear_inference_pool()
 
@@ -117,6 +115,7 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
                     print("Error: ", e)
                     traceback.print_exc()
                     pass
+
 
 def create_queue(queue_payloads: List[QueuePayload]) -> Queue[QueuePayload]:
     queue: Queue[QueuePayload] = Queue()

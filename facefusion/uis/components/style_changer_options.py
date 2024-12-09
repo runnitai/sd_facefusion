@@ -24,7 +24,7 @@ def render() -> None:
         elem_id='style_changer_model_dropdown'
     )
     STYLE_TARGET_RADIO = gradio.Radio(
-        label=wording.get('uis.style_target_radio'),
+        label=wording.get('uis.style_changer_target_radio'),
         choices=["source", "target"],
         value=str(state_manager.get_item('style_changer_target')),
         visible='style_changer' in state_manager.get_item('processors'),
@@ -40,6 +40,16 @@ def listen() -> None:
     source_file_2 = get_ui_component('source_file_2')
     STYLE_TARGET_RADIO.change(update_style_target, inputs=[STYLE_TARGET_RADIO, source_file, source_file_2],
                               outputs=[source_file, source_file_2])
+
+    processors_checkbox_group = get_ui_component('processors_checkbox_group')
+    if processors_checkbox_group:
+        processors_checkbox_group.change(remote_update, inputs=processors_checkbox_group,
+                                         outputs=[STYLE_CHANGER_MODEL_DROPDOWN, STYLE_TARGET_RADIO])
+
+
+def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update, gradio.update]:
+    has_style_changer = 'style_changer' in processors
+    return gradio.update(visible=has_style_changer), gradio.update(visible=has_style_changer)
 
 
 def update_style_changer_model(style_changer_model: str):

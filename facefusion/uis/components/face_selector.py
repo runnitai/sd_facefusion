@@ -99,9 +99,9 @@ def render() -> None:
                     value="+2",
                     elem_id='ff_add_reference_face_button'
                 )
-        with gradio.Column():
-            REFERENCE_FACE_POSITION_GALLERY = gradio.Gallery(**reference_face_gallery_options,
-                                                             elem_id='ff_reference_face_position_gallery')
+            with gradio.Column():
+                REFERENCE_FACE_POSITION_GALLERY = gradio.Gallery(**reference_face_gallery_options,
+                                                                 elem_id='ff_reference_face_position_gallery')
         with gradio.Row():
             REMOVE_REFERENCE_FACE_BUTTON = gradio.Button(
                 value="-",
@@ -153,23 +153,16 @@ def render() -> None:
                                       facefusion.choices.face_selector_age_range[0]
             face_selector_age_end = state_manager.get_item('face_selector_age_end') or \
                                     facefusion.choices.face_selector_age_range[-1]
-            # FACE_SELECTOR_AGE_RANGE_SLIDER = RangeSlider(
-            #     label=wording.get('uis.face_selector_age_range_slider'),
-            #     minimum=facefusion.choices.face_selector_age_range[0],
-            #     maximum=facefusion.choices.face_selector_age_range[-1],
-            #     value=(face_selector_age_start, face_selector_age_end),
-            #     step=calc_int_step(facefusion.choices.face_selector_age_range)
-            # )
-            with gradio.Column():
+            with gradio.Row():
                 FACE_SELECTOR_AGE_RANGE_START_SLIDER = gradio.Slider(
-                    label=wording.get('uis.face_selector_age_range_slider'),
+                    label=wording.get('uis.face_selector_age_start'),
                     value=face_selector_age_start,
                     step=calc_int_step(facefusion.choices.face_selector_age_range),
                     minimum=facefusion.choices.face_selector_age_range[0],
                     maximum=facefusion.choices.face_selector_age_range[-1]
                 )
                 FACE_SELECTOR_AGE_RANGE_END_SLIDER = gradio.Slider(
-                    label=wording.get('uis.face_selector_age_range_slider'),
+                    label=wording.get('uis.face_selector_age_end'),
                     value=face_selector_age_end,
                     step=calc_int_step(facefusion.choices.face_selector_age_range),
                     minimum=facefusion.choices.face_selector_age_range[0],
@@ -192,9 +185,11 @@ def render() -> None:
     register_ui_component('face_selector_age_range_end_slider', FACE_SELECTOR_AGE_RANGE_END_SLIDER)
     register_ui_component('reference_face_position_gallery', REFERENCE_FACE_POSITION_GALLERY)
     register_ui_component('reference_faces_selection_gallery', REFERENCE_FACES_SELECTION_GALLERY)
+    register_ui_component('reference_faces_selection_gallery_2', REFERENCE_FACES_SELECTION_GALLERY_2)
     register_ui_component('reference_face_distance_slider', REFERENCE_FACE_DISTANCE_SLIDER)
     register_ui_component('add_reference_face_button', ADD_REFERENCE_FACE_BUTTON)
     register_ui_component('remove_reference_faces_button', REMOVE_REFERENCE_FACE_BUTTON)
+    register_ui_component('remove_reference_faces_button_2', REMOVE_REFERENCE_FACE_BUTTON_2)
     register_ui_component('reference_faces_selection_gallery', REFERENCE_FACES_SELECTION_GALLERY)
     register_ui_component('add_reference_face_button_2', ADD_REFERENCE_FACE_BUTTON_2)
 
@@ -298,6 +293,7 @@ def listen() -> None:
         ]
     )
 
+
     get_ui_component('preview_frame_back_button').click(
         reference_frame_back,
         inputs=get_ui_component('preview_frame_slider'),
@@ -309,6 +305,26 @@ def listen() -> None:
     )
 
     get_ui_component('preview_frame_forward_button').click(
+        reference_frame_forward,
+        inputs=get_ui_component('preview_frame_slider'),
+        outputs=[
+            get_ui_component('preview_frame_slider'),
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY
+        ]
+    )
+
+    get_ui_component('preview_frame_back_five_button').click(
+        reference_frame_back,
+        inputs=get_ui_component('preview_frame_slider'),
+        outputs=[
+            get_ui_component('preview_frame_slider'),
+            REFERENCE_FACE_POSITION_GALLERY,
+            REFERENCE_FACES_SELECTION_GALLERY
+        ]
+    )
+
+    get_ui_component('preview_frame_forward_five_button').click(
         reference_frame_forward,
         inputs=get_ui_component('preview_frame_slider'),
         outputs=[

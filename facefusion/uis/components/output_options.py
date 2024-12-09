@@ -158,13 +158,13 @@ def remote_update() -> Tuple[
         state_manager.set_item('output_video_resolution', pack_resolution(output_video_resolution))
         state_manager.set_item('output_video_fps', detect_video_fps(state_manager.get_item('target_path')))
         return gradio.update(visible=False), gradio.update(visible=False), gradio.update(
-            visible=True), gradio.update(visible=True), gradio.Dropdown(visible=True), gradio.update(
-            visible=True), gradio.Dropdown(value=state_manager.get_item('output_video_resolution'),
+            visible=True), gradio.update(visible=True), gradio.update(visible=True), gradio.update(
+            visible=True), gradio.update(value=state_manager.get_item('output_video_resolution'),
                                            choices=output_video_resolutions, visible=True), gradio.update(
             value=state_manager.get_item('output_video_fps'), visible=True)
-    return gradio.update(visible=False), gradio.Dropdown(visible=False), gradio.Dropdown(
-        visible=False), gradio.Dropdown(visible=False), gradio.Dropdown(visible=False), gradio.Slider(
-        visible=False), gradio.Dropdown(visible=False), gradio.Slider(visible=False)
+    return gradio.update(visible=False), gradio.update(visible=False), gradio.update(
+        visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(
+        visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
 
 def update_output_path(output_path: str) -> None:

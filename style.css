@@ -57,7 +57,7 @@
     height: 85px;
 }
 
-#ff_reference_faces_selection_gallery {
+#ff_reference_faces_selection_gallery, #ff_reference_faces_selection_gallery_2{
     max-height: 85px;
     width: calc(100% - 2.2em);
 }
@@ -69,6 +69,12 @@
     height: 2.4em;
     line-height: 1em;
     border-radius: 0.5em;
+}
+#ff_reference_faces_selection_gallery .grid-wrap.fixed-height,
+#ff_reference_faces_selection_gallery_2 .grid-wrap.fixed-height,
+#ff_reference_face_position_gallery .grid-wrap.fixed-height {
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 #ff_reference_face_position_gallery .grid-wrap.fixed-height {

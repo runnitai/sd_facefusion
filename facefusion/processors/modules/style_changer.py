@@ -10,12 +10,14 @@ import numpy as np
 import tensorflow as tf
 from PIL import ImageOps
 from PIL.Image import Image
-import facefusion.jobs.job_store
+
 import facefusion.globals
+import facefusion.jobs.job_store
 import facefusion.processors.core as frame_processors
-from facefusion import config, logger, wording, state_manager
+from facefusion import logger, wording, state_manager
 from facefusion.download import conditional_download_hashes, conditional_download_sources
-from facefusion.face_ana import get_f5p, warp_and_crop_face, get_reference_facial_points, FaceAna
+from facefusion.face_ana import warp_and_crop_face, get_reference_facial_points, FaceAna
+from facefusion.face_analyser import get_many_faces
 from facefusion.filesystem import is_image, is_video, resolve_relative_path
 from facefusion.processors.typing import StyleChangerInputs
 from facefusion.typing import ProcessMode, OptionsWithModel, VisionFrame, QueuePayload, Face, ModelSet, ModelOptions, \
@@ -426,11 +428,10 @@ class ImageCartoonPipelineCustom:
         res = bg_res[:pad_h, :pad_w, :]
 
         # Face detection and processing
-        landmarks = self.detect_face(img_resized)
-        if landmarks is not None:
-            for landmark in landmarks:
-                # Get facial 5 points for alignment
-                f5p = get_f5p(landmark, img_bgr)
+        landmarks_2 = get_many_faces([img])
+        if landmarks_2 is not None and len(landmarks_2) > 0:
+            for landmark in landmarks_2:
+                f5p = landmark.landmark_set.get('5')
 
                 # Face alignment
                 head_img, trans_inv = warp_and_crop_face(
@@ -451,21 +452,26 @@ class ImageCartoonPipelineCustom:
                 # Merge head and background
                 head_trans_inv = cv2.warpAffine(
                     head_res,
-                    trans_inv, (img.shape[1], img.shape[0]),
+                    trans_inv, (img_resized.shape[1], img_resized.shape[0]),
                     borderValue=(0, 0, 0)
                 )
                 mask = self.global_mask
                 mask_trans_inv = cv2.warpAffine(
                     mask,
-                    trans_inv, (img.shape[1], img.shape[0]),
+                    trans_inv, (img_resized.shape[1], img_resized.shape[0]),
                     borderValue=(0, 0, 0)
                 )
-                mask_trans_inv = np.expand_dims(mask_trans_inv, 2)
+
+                # Ensure mask dimensions match head dimensions
+                mask_trans_inv = cv2.resize(mask_trans_inv, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
+                mask_trans_inv = np.expand_dims(mask_trans_inv, 2)  # Add channel dimension
+
+                # Blend head and background
+                res = cv2.resize(res, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
                 res = mask_trans_inv * head_trans_inv + (1 - mask_trans_inv) * res
 
         # Postprocessing: Resize back to original dimensions
         res = cv2.resize(res, (ori_w, ori_h), interpolation=cv2.INTER_AREA)
-        # res = res[:, :, ::-1]  # Convert BGR to RGB
         return np.clip(res, 0, 255).astype(np.uint8)
 
 
@@ -552,11 +558,12 @@ def post_check() -> bool:
 
 
 def pre_process(mode: ProcessMode) -> bool:
-    if mode in ['output', 'preview'] and not is_image(facefusion.globals.target_path) and not is_video(
-            facefusion.globals.target_path):
+    target_path = state_manager.get_item('target_path')
+    output_path = state_manager.get_item('output_path')
+    if mode in ['output', 'preview'] and not is_image(target_path) and not is_video(target_path):
         logger.error(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
         return False
-    if mode == 'output' and not facefusion.globals.output_path:
+    if mode == 'output' and not output_path:
         logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True

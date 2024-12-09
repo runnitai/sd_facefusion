@@ -71,11 +71,11 @@ def listen() -> None:
                                              JOB_RUNNER_JOB_ID_DROPDOWN])
 
 
-def remote_update(ui_workflow: UiWorkflow) -> Tuple[gradio.Row, gradio.update, gradio.update]:
+def remote_update(ui_workflow: UiWorkflow) -> Tuple[gradio.update, gradio.update, gradio.update]:
     is_job_runner = ui_workflow == 'job_runner'
     queued_job_ids = job_manager.find_job_ids('queued') or ['none']
 
-    return gradio.Row(visible=is_job_runner), gradio.update(value=get_first(uis_choices.job_runner_actions),
+    return gradio.update(visible=is_job_runner), gradio.update(value=get_first(uis_choices.job_runner_actions),
                                                               choices=uis_choices.job_runner_actions), gradio.update(
         value=get_last(queued_job_ids), choices=queued_job_ids)
 
