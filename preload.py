@@ -8,6 +8,8 @@ logging.getLogger('httpcore').setLevel(logging.WARNING)
 
 def preload(parser: argparse.ArgumentParser):
     os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
+    # Ensure extension_sd_facefusion.facefusion is added to the PATH as 'facefusion'
+    os.environ['PATH'] = os.pathsep.join([os.environ['PATH'], os.path.abspath(os.path.join(os.path.dirname(__file__), 'facefusion'))])
     print(f"Preloading globals to state_manager...")
     try:
         from facefusion import globals, state_manager, args

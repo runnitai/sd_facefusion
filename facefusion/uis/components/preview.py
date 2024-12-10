@@ -369,7 +369,6 @@ def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, 
                           target_vision_frame: VisionFrame,
                           frame_number=-1) -> VisionFrame:
     with frame_processing_lock:
-        print("Processing preview frame")
         target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
         if analyse_frame(target_vision_frame):
             return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
@@ -400,7 +399,6 @@ def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, 
                         'target_frame_number': frame_number,
                         'source_frame': source_frame,
                     })
-                    print("Do the damned thang...")
             except Exception as e:
                 print(f"Error processing with frame processor {frame_processor}: {e}")
                 traceback.print_exc()

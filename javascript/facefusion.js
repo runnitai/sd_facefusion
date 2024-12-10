@@ -2,13 +2,11 @@ let ffProgressTimeout = null;
 let stoppedCount = 0;
 
 function start_status() {
-    console.log("Start status...");
     stoppedCount = 0;
     ffProgressTimeout = setTimeout(recheck_status, 2000);
 }
 
 function stop_status() {
-    console.log("Stop status...");
     clearTimeout(ffProgressTimeout);
 }
 
@@ -24,13 +22,10 @@ function recheck_status() {
         return;
     }
     btn.click();
-    console.log("Data-started value: ", status_element.dataset.started);
     let started = status_element.dataset.started === 'true';
     if (!started) {
-        console.log("Job not started, waiting...");
         ffProgressTimeout = setTimeout(recheck_status, 2000);
     } else {
-        console.log("Job started, awaiting progress stop...");
         await_progress_stop();
     }
 }
@@ -45,7 +40,6 @@ function await_progress_stop() {
     console.log("Data-started value: ", status_element.dataset.started);
     let started = status_element.dataset.started === 'true';
     if (started) {
-        console.log("Job still in progress...");
         let btn = gradioApp().getElementById("ff3_check_status");
         if (!btn) {
             console.log("Can't find the button.");
@@ -86,7 +80,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     e.target.parentElement.classList.add("selected");
                     let ff3_toggle_remove = gradioApp().getElementById("ff3_toggle_remove");
                     if (ff3_toggle_remove) {
-                        console.log("Clicking toggle remove");
                         ff3_toggle_remove.click();
                     } else {
                         console.log("Can't find toggle remove");
