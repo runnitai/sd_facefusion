@@ -9,8 +9,11 @@ logging.getLogger('httpcore').setLevel(logging.WARNING)
 def preload(parser: argparse.ArgumentParser):
     os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
     print(f"Preloading globals to state_manager...")
-    from facefusion import globals, state_manager, args
-    
+    try:
+        from facefusion import globals, state_manager, args
+    except ImportError:
+        from extensions.sd_facefusion.facefusion import globals, state_manager, args
+
     globals_dict = {}
     for key in globals.__dict__:
         if not key.startswith('__'):
