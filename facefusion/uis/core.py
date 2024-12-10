@@ -74,9 +74,10 @@ def get_ui_components(component_names: List[ComponentName]) -> Optional[List[Com
 
 
 def register_ui_component(component_name: ComponentName, component: Component) -> None:
-    component_elem_id = "ff_" + component_name
+    component_elem_id = "ff3_" + component_name
     try:
         setattr(component, 'elem_id', component_elem_id)
+        setattr(component, 'do_not_save_to_config', True)
     except AttributeError:
         component.elem_id = component_elem_id
     UI_COMPONENTS[component_name] = component
