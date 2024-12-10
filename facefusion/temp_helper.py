@@ -5,6 +5,7 @@ from typing import List
 
 from facefusion import state_manager, globals
 from facefusion.filesystem import create_directory, move_file, remove_directory
+from modules.paths_internal import script_path
 
 
 def get_temp_file_path(file_path: str) -> str:
@@ -25,13 +26,12 @@ def get_temp_frame_paths(target_path: str) -> List[str]:
 
 def get_temp_frames_pattern(target_path: str, temp_frame_prefix: str) -> str:
     temp_directory_path = get_temp_directory_path(target_path)
+    # If there's an extension, we need to remove it to get the correct pattern
     return os.path.join(temp_directory_path, temp_frame_prefix + '.' + state_manager.get_item('temp_frame_format'))
 
 
 def get_base_directory_path() -> str:
-    output_path = state_manager.get_item('output_path')
-    if not output_path:
-        output_path = globals.output_path
+    output_path = os.path.join(script_path, 'outputs', 'facefusion')
     temp_path = os.path.join(output_path, 'temp')
     os.makedirs(temp_path, exist_ok=True)
     return temp_path

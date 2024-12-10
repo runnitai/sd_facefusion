@@ -87,7 +87,7 @@ def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     step_args = collect_step_args()
     output_path = step_args.get('output_path')
     if is_directory(step_args.get('output_path')):
-        step_args['output_path'] = suggest_output_path(step_args.get('output_path'),
+        step_args['output_path'] = suggest_output_path(output_path,
                                                        state_manager.get_item('target_path'))
     if job_manager.init_jobs(state_manager.get_item('jobs_path')):
         create_and_run_job(step_args)

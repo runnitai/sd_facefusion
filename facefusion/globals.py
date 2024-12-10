@@ -9,6 +9,7 @@ from typing import List, Optional
 from modules.paths_internal import script_path
 from facefusion.choices import face_mask_regions
 age_modifier_model: Optional[str] = "styleganex_age"
+age_modifier_direction: Optional[str] = "0"
 batch_size: Optional[int] = 4
 # general
 source_paths: Optional[List[str]] = None

@@ -155,14 +155,14 @@ def render() -> None:
                                     facefusion.choices.face_selector_age_range[-1]
             with gradio.Row():
                 FACE_SELECTOR_AGE_RANGE_START_SLIDER = gradio.Slider(
-                    label=wording.get('uis.face_selector_age_start'),
+                    label=wording.get('uis.face_selector_age_start_slider'),
                     value=face_selector_age_start,
                     step=calc_int_step(facefusion.choices.face_selector_age_range),
                     minimum=facefusion.choices.face_selector_age_range[0],
                     maximum=facefusion.choices.face_selector_age_range[-1]
                 )
                 FACE_SELECTOR_AGE_RANGE_END_SLIDER = gradio.Slider(
-                    label=wording.get('uis.face_selector_age_end'),
+                    label=wording.get('uis.face_selector_age_end_slider'),
                     value=face_selector_age_end,
                     step=calc_int_step(facefusion.choices.face_selector_age_range),
                     minimum=facefusion.choices.face_selector_age_range[0],
