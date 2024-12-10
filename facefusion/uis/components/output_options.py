@@ -116,6 +116,9 @@ def render() -> None:
     register_ui_component('output_video_quality_slider', OUTPUT_VIDEO_QUALITY_SLIDER)
     register_ui_component('output_video_resolution_dropdown', OUTPUT_VIDEO_RESOLUTION_DROPDOWN)
     register_ui_component('output_video_fps_slider', OUTPUT_VIDEO_FPS_SLIDER)
+    register_ui_component('output_image_resolution_dropdown', OUTPUT_IMAGE_RESOLUTION_DROPDOWN)
+    register_ui_component('output_audio_encoder_dropdown', OUTPUT_AUDIO_ENCODER_DROPDOWN)
+    
 
 
 def listen() -> None:
