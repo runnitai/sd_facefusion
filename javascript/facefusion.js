@@ -18,7 +18,7 @@ function recheck_status() {
         console.log("Can't find the status element.");
         return;
     }
-    let btn = gradioApp().getElementById("ff_check_status");
+    let btn = gradioApp().getElementById("ff3_check_status");
     if (!btn) {
         console.log("Can't find the button.");
         return;
@@ -46,7 +46,7 @@ function await_progress_stop() {
     let started = status_element.dataset.started === 'true';
     if (started) {
         console.log("Job still in progress...");
-        let btn = gradioApp().getElementById("ff_check_status");
+        let btn = gradioApp().getElementById("ff3_check_status");
         if (!btn) {
             console.log("Can't find the button.");
             return;
@@ -84,10 +84,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 if (!selected) {
                     e.target.parentElement.classList.add("selected");
-                    let ff_toggle_remove = gradioApp().getElementById("ff_toggle_remove");
-                    if (ff_toggle_remove) {
+                    let ff3_toggle_remove = gradioApp().getElementById("ff3_toggle_remove");
+                    if (ff3_toggle_remove) {
                         console.log("Clicking toggle remove");
-                        ff_toggle_remove.click();
+                        ff3_toggle_remove.click();
                     } else {
                         console.log("Can't find toggle remove");
                     }
