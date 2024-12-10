@@ -38,7 +38,7 @@ def render() -> None:
         trim_frame_range_slider_options['value'] = (trim_frame_start, trim_frame_end)
         trim_frame_range_slider_options['visible'] = True
     with gradio.Group():
-        with gradio.Row():
+        with gradio.Row(visible=True):
             TRIM_FRAME_START_SLIDER = Slider(
                 label=wording.get('uis.trim_frame_start_slider'),
                 minimum=0,
@@ -62,8 +62,8 @@ def listen() -> None:
     for ui_component in get_ui_components(
             [
                 'target_image',
-                'target_image_2'
-                'target_video'
+                'target_video',
+                'target_file'
             ]):
         for method in ['upload', 'change', 'clear']:
             getattr(ui_component, method)(remote_update, outputs=[TRIM_FRAME_START_SLIDER, TRIM_FRAME_END_SLIDER])
