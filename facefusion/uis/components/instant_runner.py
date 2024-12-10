@@ -1,3 +1,4 @@
+import os
 from time import sleep
 from typing import Optional, Tuple
 
@@ -80,7 +81,11 @@ def start() -> Tuple[gradio.update, gradio.update]:
 def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     status = FFStatus()
     target_path = state_manager.get_item('target_path')
-    truncated_target_base_name = target_path.split('/')[-1].split('.')[0]
+    target_file = os.path.basename(target_path)
+    if len(target_file) > 50:
+        truncated_target_base_name = f"{target_file[:20]}...{target_file[-20:]}"
+    else:
+        truncated_target_base_name = target_file
 
     status.start(f"Processing target file: {truncated_target_base_name}")
 
