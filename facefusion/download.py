@@ -18,7 +18,10 @@ from facefusion.typing import DownloadSet
 
 
 def get_video_filename(title: str) -> str:
-    allowed_chars = set(string.ascii_letters + string.digits + '._-')
+    title = title.strip()
+    # Split extension from the title
+    title, ext = os.path.splitext(title)
+    allowed_chars = set(string.ascii_letters + string.digits + '_-')
     # Replace spaces with underscores
     safe_title = title.replace(" ", "_")
     # Normalize unicode characters to ASCII equivalents
@@ -50,16 +53,15 @@ def download_video(target_url: str) -> str:
 
         # Step 2: Sanitize filename
         video_filename = get_video_filename(video_title)  # Use your provided function
-        video_path = os.path.join(TEMP_DIRECTORY_PATH, f"{video_filename}.{ext}")
 
         # Step 3: Check if the file already exists
         if os.path.exists(video_path):
             print(f"Video already exists: {video_path}")
             return video_path
 
-        # Step 4: Set up download options with proper output path
+        # Step 4: Set up download options with proper output path, forcing mp4 format
         ydl_opts_download = {
-            'format': 'bestvideo+bestaudio/best',
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'outtmpl': video_path,  # Save to sanitized path
         }
         with YoutubeDL(ydl_opts_download) as ydl:
