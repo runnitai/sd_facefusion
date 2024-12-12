@@ -65,8 +65,6 @@ def load_facefusion():
         if state_manager.get_item('command'):
             logger.init(state_manager.get_item('log_level'))
             route(args)
-        else:
-            program.print_help()
 
     globals_dict = {}
     for key in globals.__dict__:
