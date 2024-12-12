@@ -1,5 +1,6 @@
 import threading
 import traceback
+from datetime import datetime
 from time import sleep
 from typing import Any, Dict, Optional, Tuple
 
@@ -390,7 +391,8 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
                     None, None))
 
             try:
-                print(f"Processing with frame processor {frame_processor}")
+                print(f"Processing with {frame_processor}")
+                start_time = datetime.now()
                 frame_processor_module = load_processor_module(frame_processor)
                 if frame_processor_module.pre_process('preview'):
                     target_vision_frame = frame_processor_module.process_frame({
@@ -404,6 +406,7 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
                         'target_frame_number': frame_number,
                         'source_frame': source_frame,
                     })
+                    print(f"Processed with {frame_processor} in {datetime.now() - start_time}")
             except Exception as e:
                 print(f"Error processing with frame processor {frame_processor}: {e}")
                 traceback.print_exc()

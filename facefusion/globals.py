@@ -5,7 +5,7 @@ from facefusion.choices import face_mask_regions
 from facefusion.typing import LogLevel, VideoMemoryStrategy, FaceSelectorMode, FaceSelectorOrder, FaceAnalyserAge, \
     FaceAnalyserGender, FaceMaskType, FaceMaskRegion, OutputVideoEncoder, OutputVideoPreset, FaceDetectorModel, \
     FaceRecognizerModel, TempFrameFormat, Padding
-from modules.paths_internal import script_path
+from modules.paths_internal import default_output_dir
 
 age_modifier_model: Optional[str] = "styleganex_age"
 age_modifier_direction: Optional[str] = "0"
@@ -13,7 +13,7 @@ batch_size: Optional[int] = 4
 # general
 source_paths: Optional[List[str]] = None
 target_path: Optional[str] = None
-output_path: Optional[str] = os.path.join(script_path, "outputs", "facefusion")
+output_path: Optional[str] = os.path.join(default_output_dir, 'facefusion')
 config_path: Optional[str] = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'facefusion.ini'))
 # misc
 skip_download: Optional[bool] = False

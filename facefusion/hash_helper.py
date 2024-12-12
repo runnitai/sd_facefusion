@@ -33,3 +33,15 @@ def get_hash_path(validate_path: str) -> Optional[str]:
 
         return os.path.join(validate_directory_path, validate_file_name + '.hash')
     return None
+
+
+def create_file_hash(validate_path: str) -> Optional[str]:
+    if is_file(validate_path):
+        with open(validate_path, 'rb') as validate_file:
+            validate_content = validate_file.read()
+        hashed = create_hash(validate_content)
+        hash_path = get_hash_path(validate_path)
+        with open(hash_path, 'w') as hash_file:
+            hash_file.write(hashed)
+        return hashed
+    return None

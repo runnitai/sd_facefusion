@@ -4,6 +4,7 @@ import gradio
 
 from facefusion import wording, state_manager
 from facefusion.processors import choices as frame_processors_choices
+from facefusion.processors.modules.style_changer import clear_inference_pool
 from facefusion.uis.components.source import check_swap_source_style
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import File
@@ -52,6 +53,7 @@ def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update, 
 
 
 def update_style_changer_model(style_changer_model: str):
+    clear_inference_pool()
     state_manager.set_item('style_changer_model', style_changer_model)
     return
 

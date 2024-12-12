@@ -79,7 +79,7 @@ def resolve_execution_provider_keys(model_context: str) -> List[ExecutionProvide
             'facefusion.processors.modules.frame_colorizer')):
         return ['cpu']
     if has_execution_provider('tensorrt') and has_execution_provider('cuda'):
-        cuda_keys = ["age_modifier", "frame_colorizer", "face_detector_model", "face_landmarker_model"]
+        cuda_keys = ["age_modifier", "frame_colorizer", "face_detector_model", "face_landmarker_model", "_head"]
         # cuda_keys = ["age_modifier", "frame_colorizer", "face_swapper"]
         if any(key in model_context for key in cuda_keys):
             #print(f"model_context: {model_context}, returning ['cuda']")

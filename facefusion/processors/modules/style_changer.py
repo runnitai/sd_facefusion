@@ -14,14 +14,14 @@ from PIL.Image import Image
 import facefusion.globals
 import facefusion.jobs.job_store
 import facefusion.processors.core as frame_processors
-from facefusion import logger, wording, state_manager
+from facefusion import logger, wording, state_manager, inference_manager
 from facefusion.download import conditional_download_hashes, conditional_download_sources
-from facefusion.face_ana import warp_and_crop_face, get_reference_facial_points, FaceAna
+from facefusion.face_ana import warp_and_crop_face, get_reference_facial_points
 from facefusion.face_analyser import get_many_faces
 from facefusion.filesystem import is_image, is_video, resolve_relative_path
 from facefusion.processors.typing import StyleChangerInputs
 from facefusion.typing import ProcessMode, OptionsWithModel, VisionFrame, QueuePayload, Face, ModelSet, ModelOptions, \
-    ApplyStateItem, Args
+    ApplyStateItem, Args, InferencePool
 from facefusion.vision import read_image, write_image, read_static_image
 
 FRAME_PROCESSOR = None
@@ -42,8 +42,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/anime_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/anime_bg.onnx')
                 }
             }
         },
@@ -56,8 +56,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/anime_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/anime_h.onnx')
                 }
             }
         },
@@ -70,8 +70,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/3d_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/3d_bg.onnx')
                 }
             }
         },
@@ -84,8 +84,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/3d_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/3d_h.onnx')
                 }
             }
         },
@@ -98,8 +98,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/handdrawn_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/handdrawn_bg.onnx')
                 }
             }
         },
@@ -112,8 +112,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/handdrawn_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/handdrawn_h.onnx')
                 }
             }
         },
@@ -126,8 +126,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/sketch_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/sketch_bg.onnx')
                 }
             }
         },
@@ -140,8 +140,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/sketch_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/sketch_h.onnx')
                 }
             }
         },
@@ -154,8 +154,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/artstyle_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/artstyle_bg.onnx')
                 }
             }
         },
@@ -168,8 +168,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/artstyle_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/artstyle_h.onnx')
                 }
             }
         },
@@ -182,8 +182,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/design_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/design_bg.onnx')
                 }
             }
         },
@@ -196,8 +196,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/design_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/design_h.onnx')
                 }
             }
         },
@@ -210,8 +210,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/illustration_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/illustration_bg.onnx')
                 }
             }
         },
@@ -224,8 +224,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/illustration_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/illustration_h.onnx')
                 }
             }
         },
@@ -238,8 +238,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/genshen_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/genshen_bg.onnx')
                 }
             }
         },
@@ -252,8 +252,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/genshen_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/genshen_h.onnx')
                 }
             }
         },
@@ -266,8 +266,8 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.pb',
-                    'path': resolve_relative_path('../.assets/models/style/anime2_bg.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/anime2_bg.onnx')
                 }
             }
         },
@@ -280,13 +280,27 @@ MODEL_SET: ModelSet = \
             },
             'sources': {
                 'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.pb',
-                    'path': resolve_relative_path('../.assets/models/style/anime2_h.pb')
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.onnx',
+                    'path': resolve_relative_path('../.assets/models/style/anime2_h.onnx')
                 }
             }
-        }
-    }
+        },
+        'alpha': {
+            'hashes': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/alpha.hash',
+                    'path': resolve_relative_path('../.assets/models/style/alpha.hash')
+                }
+            },
+            'sources': {
+                'model': {
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/alpha.jpg',
+                    'path': resolve_relative_path('../.assets/models/style/alpha.jpg')
+                }
+            }
+        },
 
+    }
 
 OPTIONS: Optional[OptionsWithModel] = None
 
@@ -344,7 +358,7 @@ def convert_to_ndarray(input) -> np.ndarray:
     return img
 
 
-class ImageCartoonPipelineCustom:
+class ImageCartoonPipelineCustomOnnx:
 
     def __init__(self, model: str):
         """
@@ -353,57 +367,32 @@ class ImageCartoonPipelineCustom:
             model: Model ID to load specific style models.
         """
         # Define model paths
-        style_model_dir = resolve_relative_path('../.assets/models/style')
-        model_head_path = os.path.join(style_model_dir, f"{model}_h.pb")
-        model_bg_path = os.path.join(style_model_dir, f"{model}_bg.pb")
+        self.reference_pts = get_reference_facial_points(default_square=True)
 
-        # Load models for head and background processing
-        self.facer = FaceAna(style_model_dir)
-        with tf.Graph().as_default():
-            self.sess_anime_head = self.load_sess(model_head_path, 'model_anime_head')
-            self.sess_anime_bg = self.load_sess(model_bg_path, 'model_anime_bg')
+        # Load ONNX models for head and background processing
 
         # Configuration for masks and dimensions
         self.box_width = 288
+        style_model_dir = resolve_relative_path('../.assets/models/style')
         global_mask = cv2.imread(os.path.join(style_model_dir, 'alpha.jpg'))
         global_mask = cv2.resize(global_mask, (self.box_width, self.box_width), interpolation=cv2.INTER_AREA)
         self.global_mask = cv2.cvtColor(global_mask, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
-    @staticmethod
-    def load_sess(model_path: str, name: str) -> tf.Session:
+    def run_onnx_model(self, session, input_name, input_data):
         """
-        Load a TensorFlow model into a session.
+        Run inference on an ONNX model.
         Args:
-            model_path: Path to the model file.
-            name: Name for the imported graph.
+            session: ONNX Runtime session.
+            input_name: Name of the input tensor.
+            input_data: Input data for inference.
         Returns:
-            A TensorFlow session with the loaded model.
+            Output of the model.
         """
-        model_config = tf.ConfigProto(allow_soft_placement=True)
-        model_config.gpu_options.allow_growth = True
-        sess = tf.Session(config=model_config)
-        with tf.io.gfile.GFile(model_path, 'rb') as f:
-            graph_def = tf.GraphDef()
-            graph_def.ParseFromString(f.read())
-            sess.graph.as_default()
-            tf.import_graph_def(graph_def, name=name)
-            sess.run(tf.global_variables_initializer())
-        return sess
+        # Ensure input is float32 and normalized
+        input_data = input_data.astype(np.float32)
+        return session.run(None, {input_name: input_data})[0]
 
-    def detect_face(self, img: np.ndarray) -> Any:
-        """
-        Detect faces in the input image using the FaceAna utility.
-        Args:
-            img: Input image in np.ndarray format.
-        Returns:
-            Landmarks of detected faces or None if no face is detected.
-        """
-        boxes, landmarks, _ = self.facer.run(img)
-        if boxes.shape[0] == 0:
-            return None
-        return landmarks
-
-    def __call__(self, img: np.ndarray) -> np.ndarray:
+    def __call__(self, model, img: np.ndarray) -> np.ndarray:
         """
         Process an image through the cartoonization pipeline.
         Args:
@@ -411,45 +400,42 @@ class ImageCartoonPipelineCustom:
         Returns:
             Processed cartoonized image in np.ndarray format (RGB).
         """
-        # Original dimensions
+        sess_head, sess_bg = get_inference_pool()
+        self.sess_head = sess_head.get("model")
+        self.sess_bg = sess_bg.get("model")
+
         img = convert_to_ndarray(img)
         ori_h, ori_w, _ = img.shape
 
-        # Preprocessing: Resize for processing
         img_resized = resize_size(img, size=720)
-        img_bgr = img_resized[:, :, ::-1]  # Convert RGB to BGR for OpenCV
+        img_bgr = img_resized[:, :, ::-1]
 
         # Background processing
         pad_bg, pad_h, pad_w = padTo16x(img_bgr)
-        bg_res = self.sess_anime_bg.run(
-            self.sess_anime_bg.graph.get_tensor_by_name('model_anime_bg/output_image:0'),
-            feed_dict={'model_anime_bg/input_image:0': pad_bg}
+        bg_res = self.run_onnx_model(
+            self.sess_bg,
+            "input_image:0",
+            pad_bg
         )
         res = bg_res[:pad_h, :pad_w, :]
 
-        # Face detection and processing
         landmarks_2 = get_many_faces([img])
         if landmarks_2 is not None and len(landmarks_2) > 0:
             for landmark in landmarks_2:
                 f5p = landmark.landmark_set.get('5')
-
-                # Face alignment
                 head_img, trans_inv = warp_and_crop_face(
                     img_resized,
                     f5p,
                     ratio=0.75,
-                    reference_pts=get_reference_facial_points(default_square=True),
+                    reference_pts=self.reference_pts,
                     crop_size=(self.box_width, self.box_width),
                     return_trans_inv=True
                 )
-
-                # Head processing
-                head_res = self.sess_anime_head.run(
-                    self.sess_anime_head.graph.get_tensor_by_name('model_anime_head/output_image:0'),
-                    feed_dict={'model_anime_head/input_image:0': head_img[:, :, ::-1]}
+                head_res = self.run_onnx_model(
+                    self.sess_head,
+                    "input_image:0",
+                    head_img[:, :, ::-1]
                 )
-
-                # Merge head and background
                 head_trans_inv = cv2.warpAffine(
                     head_res,
                     trans_inv, (img_resized.shape[1], img_resized.shape[0]),
@@ -461,18 +447,14 @@ class ImageCartoonPipelineCustom:
                     trans_inv, (img_resized.shape[1], img_resized.shape[0]),
                     borderValue=(0, 0, 0)
                 )
-
-                # Ensure mask dimensions match head dimensions
                 mask_trans_inv = cv2.resize(mask_trans_inv, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
-                mask_trans_inv = np.expand_dims(mask_trans_inv, 2)  # Add channel dimension
+                mask_trans_inv = np.expand_dims(mask_trans_inv, 2)
 
-                # Blend head and background
                 res = cv2.resize(res, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
                 res = mask_trans_inv * head_trans_inv + (1 - mask_trans_inv) * res
 
-        # Postprocessing: Resize back to original dimensions
         res = cv2.resize(res, (ori_w, ori_h), interpolation=cv2.INTER_AREA)
-        return np.clip(res, 0, 255).astype(np.uint8)
+        return res
 
 
 def get_frame_processor() -> Any:
@@ -482,7 +464,7 @@ def get_frame_processor() -> Any:
         selected_model = state_manager.get_item('style_changer_model')
         if FRAME_PROCESSOR is None or selected_model != SELECTED_MODEL:
             print(f"Loading style changer model: {selected_model}")
-            FRAME_PROCESSOR = ImageCartoonPipelineCustom(model=selected_model)
+            FRAME_PROCESSOR = ImageCartoonPipelineCustomOnnx(model=selected_model)
             SELECTED_MODEL = selected_model
     return FRAME_PROCESSOR
 
@@ -507,7 +489,7 @@ def model_names() -> List[str]:
     names = []
     for key in MODEL_SET.keys():
         model_name = key.split('_')[0]
-        if model_name not in names:
+        if model_name not in names and model_name != 'alpha':
             names.append(model_name)
     return names
 
@@ -546,8 +528,11 @@ def pre_check() -> bool:
     head_model_sources = head_model_options.get('sources')
     bg_model_hashes = bg_model_options.get('hashes')
     bg_model_sources = bg_model_options.get('sources')
-    all_hashes = {**head_model_hashes, **bg_model_hashes}
-    all_sources = {**head_model_sources, **bg_model_sources}
+    # Manually get the sources/hashes for detector and keypoints models and alpha.jpg
+    alpha_hashes = MODEL_SET.get('alpha').get('hashes')
+    alpha_sources = MODEL_SET.get('alpha').get('sources')
+    all_hashes = {**head_model_hashes, **bg_model_hashes, **alpha_hashes}
+    all_sources = {**head_model_sources, **bg_model_sources, **alpha_sources}
     return conditional_download_hashes(download_directory_path, all_hashes) and conditional_download_sources(
         download_directory_path, all_sources)
 
@@ -571,7 +556,8 @@ def pre_process(mode: ProcessMode) -> bool:
 
 def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
     frame_processor = get_frame_processor()
-    img = frame_processor(img=temp_vision_frame)
+    model = state_manager.get_item('style_changer_model')
+    img = frame_processor(model, img=temp_vision_frame)
 
     # Fallback to input frame if no output is generated
     if img is None:
@@ -644,9 +630,19 @@ def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame
     frame_processors.multi_process_frames(temp_frame_paths, process_frames)
 
 
-def get_inference_pool() -> List[str]:
-    return
+def get_inference_pool() -> InferencePool:
+    head_model_opts, bg_model_opts = get_model_options()
+    head_model_sources = head_model_opts.get('sources')
+    bg_model_sources = bg_model_opts.get('sources')
+    head_model_context = __name__ + '.' + state_manager.get_item('face_swapper_model') + '_head'
+    bg_model_context = __name__ + '.' + state_manager.get_item('face_swapper_model') + '_bg'
+    head_pool = inference_manager.get_inference_pool(head_model_context, head_model_sources)
+    bg_pool = inference_manager.get_inference_pool(bg_model_context, bg_model_sources)
+    return head_pool, bg_pool
 
 
 def clear_inference_pool() -> None:
-    clear_frame_processor()
+    head_model_context = __name__ + '.' + state_manager.get_item('face_swapper_model') + '_head'
+    bg_model_context = __name__ + '.' + state_manager.get_item('face_swapper_model') + '_bg'
+    inference_manager.clear_inference_pool(head_model_context)
+    inference_manager.clear_inference_pool(bg_model_context)
