@@ -248,17 +248,17 @@ def process_frame(inputs: AgeModifierInputs) -> VisionFrame:
         if target_face:
             target_vision_frame = modify_age(target_face, target_vision_frame)
     if state_manager.get_item('face_selector_mode') == 'reference':
-        if "face_swapper" in state_manager.get_item('processors'):
-            source_face = inputs.get('source_face')
-            source_face_2 = inputs.get('source_face_2')
-            if source_face:
-                reference_faces = {'src': [source_face]}
-            else:
-                reference_faces = {}
-            if source_face_2:
-                reference_faces_2 = {'src': [source_face_2]}
-            else:
-                reference_faces_2 = {}
+        # if "face_swapper" in state_manager.get_item('processors'):
+        #     source_face = inputs.get('source_face')
+        #     source_face_2 = inputs.get('source_face_2')
+        #     if source_face:
+        #         reference_faces = {'src': [source_face]}
+        #     else:
+        #         reference_faces = {}
+        #     if source_face_2:
+        #         reference_faces_2 = {'src': [source_face_2]}
+        #     else:
+        #         reference_faces_2 = {}
         for ref_faces in [reference_faces, reference_faces_2]:
             if ref_faces:
                 similar_faces = find_similar_faces(many_faces, ref_faces,
