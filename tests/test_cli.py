@@ -1,5 +1,6 @@
 import subprocess
 import sys
+
 import pytest
 
 from facefusion.download import conditional_download

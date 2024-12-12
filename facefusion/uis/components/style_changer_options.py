@@ -2,7 +2,6 @@ from typing import List, Optional, Tuple
 
 import gradio
 
-import facefusion.globals
 from facefusion import wording, state_manager
 from facefusion.processors import choices as frame_processors_choices
 from facefusion.uis.components.source import check_swap_source_style

@@ -16,7 +16,7 @@ from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
 from facefusion.face_masker import create_occlusion_mask, create_region_mask, create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
-from facefusion.filesystem import filter_image_paths, has_image, in_directory, is_image, is_video, \
+from facefusion.filesystem import has_image, in_directory, is_image, is_video, \
     resolve_relative_path, same_file_extension
 from facefusion.inference_manager import get_static_model_initializer
 from facefusion.processors import choices as processors_choices
@@ -26,7 +26,7 @@ from facefusion.program_helper import find_argument_group, suggest_face_swapper_
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Embedding, Face, InferencePool, ModelOptions, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame, Padding
-from facefusion.vision import read_image, read_static_image, read_static_images, unpack_resolution, write_image
+from facefusion.vision import read_image, read_static_image, unpack_resolution, write_image
 
 MODEL_SET: ModelSet = \
     {
@@ -600,7 +600,7 @@ def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
 
 def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
     reference_faces, reference_faces_2 = (
-        get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
+        get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
     source_face, source_face_2 = get_avg_faces()
     target_vision_frame = read_static_image(target_path)
     result_frame = process_frame(
@@ -617,3 +617,4 @@ def process_image(source_paths: List[str], source_paths_2: List[str], target_pat
 
 def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
     processors.multi_process_frames(temp_frame_paths, process_frames)
+

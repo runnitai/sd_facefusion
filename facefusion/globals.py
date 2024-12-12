@@ -1,13 +1,12 @@
 import os
+from typing import List, Optional
 
+from facefusion.choices import face_mask_regions
 from facefusion.typing import LogLevel, VideoMemoryStrategy, FaceSelectorMode, FaceSelectorOrder, FaceAnalyserAge, \
     FaceAnalyserGender, FaceMaskType, FaceMaskRegion, OutputVideoEncoder, OutputVideoPreset, FaceDetectorModel, \
     FaceRecognizerModel, TempFrameFormat, Padding
-from typing import List, Optional
-
-
 from modules.paths_internal import script_path
-from facefusion.choices import face_mask_regions
+
 age_modifier_model: Optional[str] = "styleganex_age"
 age_modifier_direction: Optional[str] = "0"
 batch_size: Optional[int] = 4

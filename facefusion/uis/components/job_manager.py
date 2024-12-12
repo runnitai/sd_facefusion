@@ -5,7 +5,7 @@ import gradio
 from facefusion import logger, state_manager, wording
 from facefusion.args import collect_step_args
 from facefusion.common_helper import get_first, get_last
-from facefusion.filesystem import is_directory
+from facefusion.filesystem import is_directory, get_output_path_auto
 from facefusion.jobs import job_manager
 from facefusion.typing import UiWorkflow
 from facefusion.uis import choices as uis_choices

@@ -1,4 +1,3 @@
-import os
 from typing import Optional, Tuple
 
 import gradio
@@ -6,12 +5,11 @@ import gradio
 import facefusion.globals
 from facefusion import wording, choices, state_manager
 from facefusion.common_helper import calc_int_step
-from facefusion.filesystem import is_image, is_video
+from facefusion.filesystem import is_image, is_video, get_output_path_auto
 from facefusion.typing import OutputVideoEncoder, OutputVideoPreset, Fps, OutputAudioEncoder
 from facefusion.uis.core import register_ui_component, get_ui_components
 from facefusion.vision import create_video_resolutions, detect_video_resolution, pack_resolution, detect_video_fps, \
     detect_image_resolution, create_image_resolutions
-from modules.paths_internal import script_path
 
 OUTPUT_PATH_TEXTBOX: Optional[gradio.Textbox] = None
 OUTPUT_IMAGE_QUALITY_SLIDER: Optional[gradio.Slider] = None

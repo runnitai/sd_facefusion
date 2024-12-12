@@ -1,5 +1,4 @@
 import shutil
-import signal
 import sys
 from time import time
 
@@ -11,7 +10,7 @@ from facefusion.args import apply_args, collect_job_args, reduce_step_args
 from facefusion.common_helper import get_first
 from facefusion.content_analyser import analyse_image, analyse_video
 from facefusion.download import conditional_download_hashes, conditional_download_sources
-from facefusion.exit_helper import conditional_exit, graceful_exit, hard_exit
+from facefusion.exit_helper import conditional_exit, hard_exit
 from facefusion.face_analyser import get_average_face, get_many_faces, get_one_face
 from facefusion.face_selector import sort_and_filter_faces
 from facefusion.face_store import append_reference_face, clear_reference_faces, get_reference_faces
@@ -21,16 +20,16 @@ from facefusion.jobs import job_helper, job_manager, job_runner
 from facefusion.jobs.job_list import compose_job_list
 from facefusion.memory import limit_system_memory
 from facefusion.processors.core import get_processors_modules
-#from facefusion.program import create_program
-
 from facefusion.processors.modules import style_changer
-from facefusion.program_helper import validate_args
 from facefusion.statistics import conditional_log_statistics
 from facefusion.temp_helper import clear_temp_directory, create_temp_directory, get_temp_file_path, \
     get_temp_frame_paths, move_temp_file
 from facefusion.typing import Args, ErrorCode, Face
 from facefusion.vision import get_video_frame, pack_resolution, read_image, read_static_images, \
     restrict_image_resolution, restrict_video_fps, restrict_video_resolution, unpack_resolution
+
+
+# from facefusion.program import create_program
 
 
 # def cli() -> None:

@@ -8,7 +8,7 @@ from facefusion import wording, state_manager
 from facefusion.download import download_video
 from facefusion.face_store import clear_reference_faces, clear_static_faces
 from facefusion.ffmpeg import extract_audio_from_video
-from facefusion.filesystem import is_image, is_video, is_url, TEMP_DIRECTORY_PATH, get_file_size
+from facefusion.filesystem import is_image, is_video, is_url, get_file_size
 from facefusion.uis.components.face_selector import clear_selected_faces
 from facefusion.uis.core import register_ui_component, get_ui_component
 from facefusion.uis.typing import File, ComponentOptions

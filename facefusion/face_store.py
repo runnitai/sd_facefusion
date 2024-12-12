@@ -1,5 +1,6 @@
-from typing import Optional, List, Tuple
 import hashlib
+from typing import Optional, List, Tuple
+
 import numpy
 
 from facefusion import state_manager

@@ -3,11 +3,11 @@ import platform
 import subprocess
 
 import pytest
-
-import facefusion.globals
 from facefusion.utilities import conditional_download, extract_frames, create_temp, get_temp_directory_path, clear_temp, \
     normalize_output_path, is_file, is_directory, is_image, is_video, get_download_size, is_download_done, \
     encode_execution_providers, decode_execution_providers
+
+import facefusion.globals
 
 
 @pytest.fixture(scope='module', autouse=True)

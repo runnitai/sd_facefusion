@@ -1,12 +1,13 @@
 import glob
 import subprocess
+
 import pytest
 
 import facefusion.globals
 from facefusion import process_manager
-from facefusion.filesystem import get_temp_directory_path, create_temp, clear_temp
 from facefusion.download import conditional_download
 from facefusion.ffmpeg import extract_frames, read_audio_buffer
+from facefusion.filesystem import get_temp_directory_path, create_temp, clear_temp
 
 
 @pytest.fixture(scope = 'module', autouse = True)

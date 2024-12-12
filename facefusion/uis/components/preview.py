@@ -15,7 +15,7 @@ from facefusion.face_analyser import get_avg_faces
 from facefusion.face_store import clear_static_faces, get_reference_faces, clear_reference_faces
 from facefusion.filesystem import is_video, is_image, filter_audio_paths
 from facefusion.processors.core import load_processor_module
-from facefusion.typing import Face, FaceSet, AudioFrame, VisionFrame
+from facefusion.typing import Face, AudioFrame, VisionFrame
 from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component, get_ui_components
 from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, \

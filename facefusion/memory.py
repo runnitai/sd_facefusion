@@ -1,6 +1,7 @@
 import platform
 
 import torch
+
 from facefusion import globals
 
 if platform.system().lower() == 'windows':

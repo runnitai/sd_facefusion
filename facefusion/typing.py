@@ -1,8 +1,7 @@
-import numpy
 from collections import namedtuple
-
 from typing import Any, Literal, Callable, List, Tuple, Dict, TypedDict, Optional
 
+import numpy
 from numpy._typing import NDArray
 from onnxruntime import InferenceSession
 

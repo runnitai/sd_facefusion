@@ -7,7 +7,6 @@ from facefusion import state_manager, wording
 from facefusion.face_store import clear_static_faces
 from facefusion.filesystem import is_video
 from facefusion.uis.core import get_ui_components, register_ui_component
-
 from facefusion.uis.typing import ComponentOptions
 from facefusion.vision import count_video_frame_total
 

@@ -2,19 +2,18 @@ import importlib
 import inspect
 import os
 import pkgutil
-import signal
 
 import gradio as gr
 
 from facefusion.args import apply_args
 from facefusion.core import route
 from facefusion.download import conditional_download
-from facefusion.exit_helper import graceful_exit
 from facefusion.memory import tune_performance
 from facefusion.program import create_program
 from facefusion.program_helper import validate_args
 from facefusion.uis.core import load_ui_layout_module
 from modules import script_callbacks
+from modules.paths_internal import script_path
 
 # export CUDA_MODULE_LOADING=LAZY
 os.environ['CUDA_MODULE_LOADING'] = 'LAZY'

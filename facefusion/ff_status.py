@@ -3,7 +3,6 @@ import time
 
 from facefusion import state_manager
 from facefusion.vision import count_video_frame_total, detect_video_fps
-from facefusion.job_params import JobParams
 
 
 class FFStatus:

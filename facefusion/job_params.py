@@ -2,6 +2,7 @@ import json
 import os
 from typing import List, Optional
 
+from facefusion.choices import face_mask_regions
 from facefusion.memory import tune_performance
 # Assuming the necessary imports are available in the environment:
 from facefusion.typing import (
@@ -9,9 +10,7 @@ from facefusion.typing import (
     FaceAnalyserGender, TempFrameFormat, OutputVideoEncoder, FaceSelectorMode, FaceDetectorModel, FaceRecognizerModel,
     Padding, FaceMaskType, FaceMaskRegion, LogLevel, OutputVideoPreset
 )
-from facefusion.choices import face_mask_regions
 from modules.paths_internal import script_path
-
 
 execution_thread_count, execution_queue_count, video_memory_strategy = tune_performance()
         

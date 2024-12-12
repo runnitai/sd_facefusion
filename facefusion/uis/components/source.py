@@ -5,8 +5,7 @@ import gradio
 
 from facefusion import wording, state_manager
 from facefusion.common_helper import get_first
-from facefusion.filesystem import TEMP_DIRECTORY_PATH, is_image
-from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths
+from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths, is_image
 from facefusion.processors.modules.style_changer import process_src_image
 from facefusion.uis.core import register_ui_component
 from facefusion.uis.typing import File
@@ -132,8 +131,6 @@ def update(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:
         files = check_swap_source_style(files, True)
         file_names = files
 
-    temp_dir = TEMP_DIRECTORY_PATH
-    os.makedirs(temp_dir, exist_ok=True)
     has_source_audio = has_audio(file_names)
     has_source_image = has_image(file_names)
     # If we have a source_image, and style_changer is one of our frame_processors, we need to check the style_changer_target
@@ -153,8 +150,6 @@ def update_2(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:
         files = check_swap_source_style(files, True)
         file_names = files
 
-    temp_dir = TEMP_DIRECTORY_PATH
-    os.makedirs(temp_dir, exist_ok=True)
     has_source_image = has_image(file_names)
     if has_source_image:
         source_image_path = get_first(filter_image_paths(file_names))

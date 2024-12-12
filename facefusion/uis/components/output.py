@@ -1,5 +1,4 @@
 import os
-import tempfile
 import time
 from typing import Optional
 
@@ -7,6 +6,7 @@ import gradio
 
 from facefusion import state_manager, wording
 from facefusion.ff_status import FFStatus
+from facefusion.filesystem import get_output_path_auto
 from facefusion.uis.core import register_ui_component, get_ui_component
 
 OUTPUT_IMAGE: Optional[gradio.Image] = None
