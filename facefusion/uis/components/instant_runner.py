@@ -91,7 +91,7 @@ def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     status.start(f"Processing target file: {truncated_target_base_name}")
 
     step_args = collect_step_args()
-    output_path = step_args.get('output_path')
+    output_path = get_output_path_auto()
     if is_directory(step_args.get('output_path')):
         step_args['output_path'] = suggest_output_path(output_path,
                                                        state_manager.get_item('target_path'))

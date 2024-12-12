@@ -50,10 +50,12 @@ def run_pre_checks(package):
 
 
 def load_facefusion():
-    import facefusion
-    from facefusion import logger, globals, state_manager, args
-
-    signal.signal(signal.SIGINT, lambda signal_number, frame: graceful_exit(0))
+    from facefusion import logger, globals, state_manager
+    from modules.paths_internal import default_output_dir
+    out_dir = os.path.join(script_path, default_output_dir, 'facefusion')
+    globals.output_path = out_dir
+    state_manager.init_item('output_path', out_dir)
+    #signal.signal(signal.SIGINT, lambda signal_number, frame: graceful_exit(0))
     program = create_program()
 
     if validate_args(program):

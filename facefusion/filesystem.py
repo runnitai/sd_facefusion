@@ -168,6 +168,10 @@ def resolve_relative_path_auto(path: str) -> str:
     return os.path.join(models_path, "facefusion", *cleaned_parts)
 
 
+def get_output_path_auto() -> str:
+    return os.path.join(default_output_dir, 'facefusion')
+
+
 def remove_directory(directory_path: str) -> bool:
     if is_directory(directory_path):
         shutil.rmtree(directory_path, ignore_errors=True)

@@ -41,16 +41,16 @@ def render() -> None:
     if is_video(state_manager.get_item('target_path')):
         output_video_resolution = detect_video_resolution(state_manager.get_item('target_path'))
         output_video_resolutions = create_video_resolutions(output_video_resolution)
-    state_manager.set_item('output_path', facefusion.globals.output_path or '.')
-    out_path = os.path.join(script_path, "outputs", "facefusion")
-    if not os.path.exists(out_path):
-        os.makedirs(out_path)
-    state_manager.set_item('output_path', out_path)
+    out_path = get_output_path_auto()
+    #out_path = os.path.join(script_path, out_dir, 'facefusion')
+    state_manager.init_item('output_path', out_path)
+
     OUTPUT_PATH_TEXTBOX = gradio.Textbox(
         label=wording.get('uis.output_path_textbox'),
         value=out_path,
         max_lines=1,
-        elem_id='output_path_textbox'
+        elem_id='output_path_textbox',
+        visible=False
     )
     OUTPUT_IMAGE_QUALITY_SLIDER = gradio.Slider(
         label=wording.get('uis.output_image_quality_slider'),

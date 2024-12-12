@@ -21,8 +21,8 @@ def render() -> None:
     global OUTPUT_STATUS
     global CHECK_STATUS_BUTTON
 
-    if not state_manager.get_item('output_path'):
-        state_manager.set_item('output_path', tempfile.gettempdir())
+    out_dir = get_output_path_auto()
+    state_manager.init_item('output_path', out_dir)
     OUTPUT_STATUS = gradio.HTML(elem_id="ff_status", value=format_status(), visible=False)
     OUTPUT_IMAGE = gradio.Image(
         label=wording.get('uis.output_image_or_video'),

@@ -30,8 +30,8 @@ def get_temp_frames_pattern(target_path: str, temp_frame_prefix: str) -> str:
 
 
 def get_base_directory_path() -> str:
-    output_path = os.path.join(script_path, 'outputs', 'facefusion')
-    temp_path = os.path.join(output_path, 'temp')
+    temp_path = get_output_path_auto()
+    temp_path = os.path.join(temp_path, 'temp')
     os.makedirs(temp_path, exist_ok=True)
     return temp_path
 

@@ -99,8 +99,8 @@ def apply(job_action: JobManagerAction, created_job_id: str, selected_job_id: st
     selected_job_id = convert_str_none(selected_job_id)
     selected_step_index = convert_int_none(selected_step_index)
     step_args = collect_step_args()
+    step_args['output_path'] = get_output_path_auto()
     output_path = step_args.get('output_path')
-
     if is_directory(step_args.get('output_path')):
         step_args['output_path'] = suggest_output_path(step_args.get('output_path'),
                                                        state_manager.get_item('target_path'))
