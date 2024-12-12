@@ -24,289 +24,235 @@ from facefusion.typing import ProcessMode, OptionsWithModel, VisionFrame, QueueP
     ApplyStateItem, Args, InferencePool
 from facefusion.vision import read_image, write_image, read_static_image
 
-FRAME_PROCESSOR = None
-SELECTED_MODEL = None
-
 THREAD_LOCK: threading.Lock = threading.Lock()
 NAME = __name__.upper()
 
-# Available models
-MODEL_SET: ModelSet = \
-    {
-        'anime_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/anime_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/anime_bg.onnx')
-                }
+MODEL_SET: ModelSet = {
+    'anime_bg': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.hash',
+                'path': resolve_relative_path('../.assets/models/style/anime_bg.hash')
             }
         },
-        'anime_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/anime_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/anime_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_bg.onnx',
+                'path': resolve_relative_path('../.assets/models/style/anime_bg.onnx')
+            }
+        }
+    },
+    'anime_h': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.hash',
+                'path': resolve_relative_path('../.assets/models/style/anime_h.hash')
             }
         },
-        '3d_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/3d_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/3d_bg.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime_h.onnx',
+                'path': resolve_relative_path('../.assets/models/style/anime_h.onnx')
+            }
+        }
+    },
+    '3d_bg': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.hash',
+                'path': resolve_relative_path('../.assets/models/style/3d_bg.hash')
             }
         },
-        '3d_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/3d_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/3d_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_bg.onnx',
+                'path': resolve_relative_path('../.assets/models/style/3d_bg.onnx')
+            }
+        }
+    },
+    '3d_h': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.hash',
+                'path': resolve_relative_path('../.assets/models/style/3d_h.hash')
             }
         },
-        'handdrawn_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/handdrawn_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/handdrawn_bg.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/3d_h.onnx',
+                'path': resolve_relative_path('../.assets/models/style/3d_h.onnx')
+            }
+        }
+    },
+    'handdrawn_bg': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.hash',
+                'path': resolve_relative_path('../.assets/models/style/handdrawn_bg.hash')
             }
         },
-        'handdrawn_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/handdrawn_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/handdrawn_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_bg.onnx',
+                'path': resolve_relative_path('../.assets/models/style/handdrawn_bg.onnx')
+            }
+        }
+    },
+    'handdrawn_h': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.hash',
+                'path': resolve_relative_path('../.assets/models/style/handdrawn_h.hash')
             }
         },
-        'sketch_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/sketch_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/sketch_bg.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/handdrawn_h.onnx',
+                'path': resolve_relative_path('../.assets/models/style/handdrawn_h.onnx')
+            }
+        }
+    },
+    'sketch_bg': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.hash',
+                'path': resolve_relative_path('../.assets/models/style/sketch_bg.hash')
             }
         },
-        'sketch_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/sketch_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/sketch_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_bg.onnx',
+                'path': resolve_relative_path('../.assets/models/style/sketch_bg.onnx')
+            }
+        }
+    },
+    'sketch_h': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.hash',
+                'path': resolve_relative_path('../.assets/models/style/sketch_h.hash')
             }
         },
-        'artstyle_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/artstyle_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/artstyle_bg.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/sketch_h.onnx',
+                'path': resolve_relative_path('../.assets/models/style/sketch_h.onnx')
+            }
+        }
+    },
+    'artstyle_bg': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.hash',
+                'path': resolve_relative_path('../.assets/models/style/artstyle_bg.hash')
             }
         },
-        'artstyle_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/artstyle_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/artstyle_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_bg.onnx',
+                'path': resolve_relative_path('../.assets/models/style/artstyle_bg.onnx')
+            }
+        }
+    },
+    'artstyle_h': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.hash',
+                'path': resolve_relative_path('../.assets/models/style/artstyle_h.hash')
             }
         },
-        'design_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/design_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/design_bg.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/artstyle_h.onnx',
+                'path': resolve_relative_path('../.assets/models/style/artstyle_h.onnx')
+            }
+        }
+    },
+    'design_bg': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.hash',
+                'path': resolve_relative_path('../.assets/models/style/design_bg.hash')
             }
         },
-        'design_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/design_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/design_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_bg.onnx',
+                'path': resolve_relative_path('../.assets/models/style/design_bg.onnx')
+            }
+        }
+    },
+    'design_h': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.hash',
+                'path': resolve_relative_path('../.assets/models/style/design_h.hash')
             }
         },
-        'illustration_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/illustration_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/illustration_bg.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/design_h.onnx',
+                'path': resolve_relative_path('../.assets/models/style/design_h.onnx')
+            }
+        }
+    },
+    'illustration_bg': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.hash',
+                'path': resolve_relative_path('../.assets/models/style/illustration_bg.hash')
             }
         },
-        'illustration_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/illustration_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/illustration_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_bg.onnx',
+                'path': resolve_relative_path('../.assets/models/style/illustration_bg.onnx')
+            }
+        }
+    },
+    'illustration_h': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.hash',
+                'path': resolve_relative_path('../.assets/models/style/illustration_h.hash')
             }
         },
-        'genshen_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/genshen_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/genshen_bg.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/illustration_h.onnx',
+                'path': resolve_relative_path('../.assets/models/style/illustration_h.onnx')
+            }
+        }
+    },
+    'alpha': {
+        'hashes': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/alpha.hash',
+                'path': resolve_relative_path('../.assets/models/style/alpha.hash')
             }
         },
-        'genshen_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/genshen_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/genshen_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/genshen_h.onnx')
-                }
+        'sources': {
+            'model': {
+                'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/alpha.jpg',
+                'path': resolve_relative_path('../.assets/models/style/alpha.jpg')
             }
-        },
-        'anime2_bg': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.hash',
-                    'path': resolve_relative_path('../.assets/models/style/anime2_bg.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_bg.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/anime2_bg.onnx')
-                }
-            }
-        },
-        'anime2_h': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.hash',
-                    'path': resolve_relative_path('../.assets/models/style/anime2_h.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/anime2_h.onnx',
-                    'path': resolve_relative_path('../.assets/models/style/anime2_h.onnx')
-                }
-            }
-        },
-        'alpha': {
-            'hashes': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/alpha.hash',
-                    'path': resolve_relative_path('../.assets/models/style/alpha.hash')
-                }
-            },
-            'sources': {
-                'model': {
-                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/alpha.jpg',
-                    'path': resolve_relative_path('../.assets/models/style/alpha.jpg')
-                }
-            }
-        },
-
+        }
     }
+}
 
 OPTIONS: Optional[OptionsWithModel] = None
 
 if tf.__version__ >= '2.0':
     tf = tf.compat.v1
     tf.disable_eager_execution()
+
+# Global initialization similar to face_swapper structure
+REFERENCE_PTS = get_reference_facial_points(default_square=True)
+BOX_WIDTH = 288
+STYLE_MODEL_DIR = resolve_relative_path('../.assets/models/style')
+GLOBAL_MASK = cv2.imread(os.path.join(STYLE_MODEL_DIR, 'alpha.jpg'))
+GLOBAL_MASK = cv2.resize(GLOBAL_MASK, (BOX_WIDTH, BOX_WIDTH), interpolation=cv2.INTER_AREA)
+GLOBAL_MASK = cv2.cvtColor(GLOBAL_MASK, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
 
 def padTo16x(image):
@@ -316,7 +262,6 @@ def padTo16x(image):
     nh, nw = (h // 16 + 1) * 16, (w // 16 + 1) * 16
     img_new = np.ones((nh, nw, 3), np.uint8) * 255
     img_new[:h, :w, :] = image
-
     return img_new, h, w
 
 
@@ -353,129 +298,8 @@ def convert_to_ndarray(input) -> np.ndarray:
         if img:
             img = np.array(load_image(img))
     else:
-        raise TypeError(f'input should be either str, PIL.Image,'
-                        f' np.array, but got {type(input)}')
+        raise TypeError(f'input should be either str, PIL.Image, np.array, but got {type(input)}')
     return img
-
-
-class ImageCartoonPipelineCustomOnnx:
-
-    def __init__(self, model: str):
-        """
-        Initialize the cartoon pipeline.
-        Args:
-            model: Model ID to load specific style models.
-        """
-        # Define model paths
-        self.reference_pts = get_reference_facial_points(default_square=True)
-
-        # Load ONNX models for head and background processing
-
-        # Configuration for masks and dimensions
-        self.box_width = 288
-        style_model_dir = resolve_relative_path('../.assets/models/style')
-        global_mask = cv2.imread(os.path.join(style_model_dir, 'alpha.jpg'))
-        global_mask = cv2.resize(global_mask, (self.box_width, self.box_width), interpolation=cv2.INTER_AREA)
-        self.global_mask = cv2.cvtColor(global_mask, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
-
-    def run_onnx_model(self, session, input_name, input_data):
-        """
-        Run inference on an ONNX model.
-        Args:
-            session: ONNX Runtime session.
-            input_name: Name of the input tensor.
-            input_data: Input data for inference.
-        Returns:
-            Output of the model.
-        """
-        # Ensure input is float32 and normalized
-        input_data = input_data.astype(np.float32)
-        return session.run(None, {input_name: input_data})[0]
-
-    def __call__(self, model, img: np.ndarray) -> np.ndarray:
-        """
-        Process an image through the cartoonization pipeline.
-        Args:
-            img: Input image in np.ndarray format (RGB).
-        Returns:
-            Processed cartoonized image in np.ndarray format (RGB).
-        """
-        sess_head, sess_bg = get_inference_pool()
-        self.sess_head = sess_head.get("model")
-        self.sess_bg = sess_bg.get("model")
-
-        img = convert_to_ndarray(img)
-        ori_h, ori_w, _ = img.shape
-
-        img_resized = resize_size(img, size=720)
-        img_bgr = img_resized[:, :, ::-1]
-
-        # Background processing
-        pad_bg, pad_h, pad_w = padTo16x(img_bgr)
-        bg_res = self.run_onnx_model(
-            self.sess_bg,
-            "input_image:0",
-            pad_bg
-        )
-        res = bg_res[:pad_h, :pad_w, :]
-
-        landmarks_2 = get_many_faces([img])
-        if landmarks_2 is not None and len(landmarks_2) > 0:
-            for landmark in landmarks_2:
-                f5p = landmark.landmark_set.get('5')
-                head_img, trans_inv = warp_and_crop_face(
-                    img_resized,
-                    f5p,
-                    ratio=0.75,
-                    reference_pts=self.reference_pts,
-                    crop_size=(self.box_width, self.box_width),
-                    return_trans_inv=True
-                )
-                head_res = self.run_onnx_model(
-                    self.sess_head,
-                    "input_image:0",
-                    head_img[:, :, ::-1]
-                )
-                head_trans_inv = cv2.warpAffine(
-                    head_res,
-                    trans_inv, (img_resized.shape[1], img_resized.shape[0]),
-                    borderValue=(0, 0, 0)
-                )
-                mask = self.global_mask
-                mask_trans_inv = cv2.warpAffine(
-                    mask,
-                    trans_inv, (img_resized.shape[1], img_resized.shape[0]),
-                    borderValue=(0, 0, 0)
-                )
-                mask_trans_inv = cv2.resize(mask_trans_inv, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
-                mask_trans_inv = np.expand_dims(mask_trans_inv, 2)
-
-                res = cv2.resize(res, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
-                res = mask_trans_inv * head_trans_inv + (1 - mask_trans_inv) * res
-
-        res = cv2.resize(res, (ori_w, ori_h), interpolation=cv2.INTER_AREA)
-        return res
-
-
-def get_frame_processor() -> Any:
-    global FRAME_PROCESSOR, SELECTED_MODEL
-
-    with THREAD_LOCK:
-        selected_model = state_manager.get_item('style_changer_model')
-        if FRAME_PROCESSOR is None or selected_model != SELECTED_MODEL:
-            print(f"Loading style changer model: {selected_model}")
-            FRAME_PROCESSOR = ImageCartoonPipelineCustomOnnx(model=selected_model)
-            SELECTED_MODEL = selected_model
-    return FRAME_PROCESSOR
-
-
-def clear_frame_processor() -> None:
-    global FRAME_PROCESSOR
-    if FRAME_PROCESSOR is not None:
-        print("Deleting frame processor")
-        del FRAME_PROCESSOR
-        print("Frame processor deleted")
-    FRAME_PROCESSOR = None
 
 
 def get_model_options() -> Tuple[ModelOptions, ModelOptions]:
@@ -510,13 +334,11 @@ def register_args(program: argparse.ArgumentParser) -> None:
     facefusion.jobs.job_store.register_step_keys(['style_changer_model', 'style_changer_target'])
 
 
-# Apply command-line arguments
 def apply_args(args: Args, apply_state_item: ApplyStateItem) -> None:
     apply_state_item('style_changer_model', args.get('style_changer_model'))
     apply_state_item('style_changer_target', args.get('style_changer_target'))
 
 
-# Pre-check before processing
 def pre_check() -> bool:
     model_name = facefusion.globals.style_changer_model
     if model_name not in model_names():
@@ -528,7 +350,6 @@ def pre_check() -> bool:
     head_model_sources = head_model_options.get('sources')
     bg_model_hashes = bg_model_options.get('hashes')
     bg_model_sources = bg_model_options.get('sources')
-    # Manually get the sources/hashes for detector and keypoints models and alpha.jpg
     alpha_hashes = MODEL_SET.get('alpha').get('hashes')
     alpha_sources = MODEL_SET.get('alpha').get('sources')
     all_hashes = {**head_model_hashes, **bg_model_hashes, **alpha_hashes}
@@ -537,7 +358,6 @@ def pre_check() -> bool:
         download_directory_path, all_sources)
 
 
-# Post-check after setup (not used here, but included for completeness)
 def post_check() -> bool:
     return True
 
@@ -552,82 +372,6 @@ def pre_process(mode: ProcessMode) -> bool:
         logger.error(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
         return False
     return True
-
-
-def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
-    frame_processor = get_frame_processor()
-    model = state_manager.get_item('style_changer_model')
-    img = frame_processor(model, img=temp_vision_frame)
-
-    # Fallback to input frame if no output is generated
-    if img is None:
-        print("No processed image returned; using input frame.")
-        return temp_vision_frame
-
-    return img
-
-
-def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
-    if state_manager.get_item('style_target') == 'source':
-        return temp_vision_frame
-    return change_style(temp_vision_frame)
-
-
-# Process an image
-def process_src_image(input_path: str, style: str):
-    # Output path is the input path, with _style_{style} appended to the file name
-    input_file, input_extension = os.path.splitext(input_path)
-    output_path = f"{input_file}_style_{style}{input_extension}"
-    processor = get_frame_processor()
-    result = processor(input_path)
-    cv2.imwrite(output_path, result)
-    print(f"Image processing complete. Output saved to {output_path}.")
-    return output_path
-
-
-# Post-process results (placeholder for cleanup actions)
-def post_process() -> None:
-    pass
-
-
-def process_frame(inputs: StyleChangerInputs) -> VisionFrame:
-    target_vision_frame = inputs.get('target_vision_frame')
-    converted = change_style(target_vision_frame)
-    return converted
-
-
-def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-    if state_manager.get_item('style_changer_target') == 'source':
-        print(f"Skipping processing for source target.")
-        return
-    output_frames = []
-    for queue_payload in queue_payloads:
-        target_vision_path = queue_payload['frame_path']
-        target_frame_number = queue_payload['frame_number']
-        target_vision_frame = read_image(target_vision_path)
-        output_vision_frame = process_frame(
-            {
-                'target_vision_frame': target_vision_frame
-            })
-        write_image(target_vision_path, output_vision_frame)
-        output_frames.append((target_frame_number, target_vision_path))
-    return output_frames
-
-
-def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
-    if state_manager.get_item('style_changer_target') == 'source':
-        return
-    target_vision_frame = read_static_image(target_path)
-    output_vision_frame = process_frame(
-        {
-            'target_vision_frame': target_vision_frame
-        })
-    write_image(output_path, output_vision_frame)
-
-
-def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
-    print("Processing video frames with style changer.")
-    frame_processors.multi_process_frames(temp_frame_paths, process_frames)
 
 
 def get_inference_pool() -> InferencePool:
@@ -646,3 +390,121 @@ def clear_inference_pool() -> None:
     bg_model_context = __name__ + '.' + state_manager.get_item('face_swapper_model') + '_bg'
     inference_manager.clear_inference_pool(head_model_context)
     inference_manager.clear_inference_pool(bg_model_context)
+
+
+def forward_bg_process(bg_session, img_bgr: np.ndarray) -> np.ndarray:
+    pad_bg, pad_h, pad_w = padTo16x(img_bgr)
+    input_data = pad_bg.astype(np.float32)
+    res = bg_session.run(None, {"input_image:0": input_data})[0]
+    res = res[:pad_h, :pad_w, :]
+    return res
+
+
+def forward_head_process(head_session, head_img: np.ndarray) -> np.ndarray:
+    head_input = head_img[:, :, ::-1].astype(np.float32)
+    result = head_session.run(None, {"input_image:0": head_input})[0]
+    return result
+
+
+def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
+    # Similar structure to face_swapper: get inference sessions
+    head_pool, bg_pool = get_inference_pool()
+    sess_head = head_pool.get("model")
+    sess_bg = bg_pool.get("model")
+
+    img = convert_to_ndarray(temp_vision_frame)
+    ori_h, ori_w, _ = img.shape
+
+    img_resized = resize_size(img, size=720)
+    img_bgr = img_resized[:, :, ::-1]
+
+    # Background inference
+    res = forward_bg_process(sess_bg, img_bgr)
+
+    # Faces and heads
+    landmarks_2 = get_many_faces([img])
+    if landmarks_2 is not None and len(landmarks_2) > 0:
+        for landmark in landmarks_2:
+            f5p = landmark.landmark_set.get('5')
+            head_img, trans_inv = warp_and_crop_face(
+                img_resized,
+                f5p,
+                ratio=0.75,
+                reference_pts=REFERENCE_PTS,
+                crop_size=(BOX_WIDTH, BOX_WIDTH),
+                return_trans_inv=True
+            )
+            head_res = forward_head_process(sess_head, head_img)
+
+            head_trans_inv = cv2.warpAffine(
+                head_res,
+                trans_inv, (img_resized.shape[1], img_resized.shape[0]),
+                borderValue=(0, 0, 0)
+            )
+            mask = GLOBAL_MASK
+            mask_trans_inv = cv2.warpAffine(
+                mask,
+                trans_inv, (img_resized.shape[1], img_resized.shape[0]),
+                borderValue=(0, 0, 0)
+            )
+            mask_trans_inv = cv2.resize(mask_trans_inv, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
+            mask_trans_inv = np.expand_dims(mask_trans_inv, 2)
+
+            res = cv2.resize(res, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
+            res = mask_trans_inv * head_trans_inv + (1 - mask_trans_inv) * res
+
+    res = cv2.resize(res, (ori_w, ori_h), interpolation=cv2.INTER_AREA)
+    return res
+
+
+def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
+    if state_manager.get_item('style_target') == 'source':
+        return temp_vision_frame
+    return change_style(temp_vision_frame)
+
+
+def process_src_image(input_path: str, style: str):
+    input_file, input_extension = os.path.splitext(input_path)
+    output_path = f"{input_file}_style_{style}{input_extension}"
+    result = change_style(input_path)
+    cv2.imwrite(output_path, result[:, :, ::-1])  # Convert back to BGR if needed
+    print(f"Image processing complete. Output saved to {output_path}.")
+    return output_path
+
+
+def post_process() -> None:
+    clear_inference_pool()
+
+
+def process_frame(inputs: StyleChangerInputs) -> VisionFrame:
+    target_vision_frame = inputs.get('target_vision_frame')
+    converted = change_style(target_vision_frame)
+    return converted
+
+
+def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
+    if state_manager.get_item('style_changer_target') == 'source':
+        print(f"Skipping processing for source target.")
+        return
+    output_frames = []
+    for queue_payload in queue_payloads:
+        target_vision_path = queue_payload['frame_path']
+        target_frame_number = queue_payload['frame_number']
+        target_vision_frame = read_image(target_vision_path)
+        output_vision_frame = process_frame({'target_vision_frame': target_vision_frame})
+        write_image(target_vision_path, output_vision_frame)
+        output_frames.append((target_frame_number, target_vision_path))
+    return output_frames
+
+
+def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
+    if state_manager.get_item('style_changer_target') == 'source':
+        return
+    target_vision_frame = read_static_image(target_path)
+    output_vision_frame = process_frame({'target_vision_frame': target_vision_frame})
+    write_image(output_path, output_vision_frame)
+
+
+def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
+    print("Processing video frames with style changer.")
+    frame_processors.multi_process_frames(temp_frame_paths, process_frames)
