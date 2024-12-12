@@ -2,8 +2,6 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from facefusion.logger import debug_to_file
-
 
 def get_step_output_path(job_id: str, step_index: int, output_path: str) -> Optional[str]:
     if output_path:
@@ -11,7 +9,6 @@ def get_step_output_path(job_id: str, step_index: int, output_path: str) -> Opti
         output_file_name, output_file_extension = os.path.splitext(_)
         output = os.path.join(output_directory_path,
                             output_file_name + '-' + job_id + '-' + str(step_index) + output_file_extension)
-        debug_to_file(f"Output path: {output}", 'job_manager')
         return output
     return None
 
