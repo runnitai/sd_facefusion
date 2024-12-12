@@ -36,6 +36,7 @@ REFERENCE_FACES_SELECTION_GALLERY: Optional[gradio.Gallery] = None
 ADD_REFERENCE_FACE_BUTTON_2: Optional[gradio.Button] = None
 REMOVE_REFERENCE_FACE_BUTTON_2: Optional[gradio.Button] = None
 REFERENCE_FACES_SELECTION_GALLERY_2: Optional[gradio.Gallery] = None
+FACE_SELECTOR_GROUP: Optional[gradio.Group] = None
 
 # Reference frame and faces
 current_reference_faces = []
@@ -67,6 +68,7 @@ def render() -> None:
     global REFERENCE_FACES_SELECTION_GALLERY_2
     global ADD_REFERENCE_FACE_BUTTON_2
     global REMOVE_REFERENCE_FACE_BUTTON_2
+    global FACE_SELECTOR_GROUP
 
     reference_face_gallery_options: ComponentOptions = \
         {
@@ -83,12 +85,20 @@ def render() -> None:
         reference_frame = get_video_frame(state_manager.get_item('target_path'),
                                           state_manager.get_item('reference_frame_number'))
         reference_face_gallery_options['value'] = extract_gallery_frames(reference_frame)
-    FACE_SELECTOR_MODE_DROPDOWN = gradio.Dropdown(
-        label=wording.get('uis.face_selector_mode_dropdown'),
-        choices=facefusion.choices.face_selector_modes,
-        value=state_manager.get_item('face_selector_mode')
-    )
-    with gradio.Group():
+    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    # Make the group visible if any face processor is selected
+    show_group = False
+    for processor in state_manager.get_item('processors'):
+        if processor not in non_face_processors:
+            show_group = True
+            break
+    with gradio.Group(visible=show_group) as FACE_SELECTOR_GROUP:
+        FACE_SELECTOR_MODE_DROPDOWN = gradio.Dropdown(
+            label=wording.get('uis.face_selector_mode_dropdown'),
+            choices=facefusion.choices.face_selector_modes,
+            value=state_manager.get_item('face_selector_mode')
+        )
+
         with gradio.Row():
             with gradio.Column(scale=0, min_width="33"):
                 ADD_REFERENCE_FACE_BUTTON = gradio.Button(
@@ -192,6 +202,7 @@ def render() -> None:
     register_ui_component('remove_reference_faces_button_2', REMOVE_REFERENCE_FACE_BUTTON_2)
     register_ui_component('reference_faces_selection_gallery', REFERENCE_FACES_SELECTION_GALLERY)
     register_ui_component('add_reference_face_button_2', ADD_REFERENCE_FACE_BUTTON_2)
+    register_ui_component('face_selector_group', FACE_SELECTOR_GROUP)
 
 
 def listen() -> None:
@@ -293,7 +304,6 @@ def listen() -> None:
         ]
     )
 
-
     get_ui_component('preview_frame_back_button').click(
         reference_frame_back,
         inputs=get_ui_component('preview_frame_slider'),
@@ -315,7 +325,7 @@ def listen() -> None:
     )
 
     get_ui_component('preview_frame_back_five_button').click(
-        reference_frame_back,
+        reference_frame_back_five,
         inputs=get_ui_component('preview_frame_slider'),
         outputs=[
             get_ui_component('preview_frame_slider'),
@@ -325,7 +335,7 @@ def listen() -> None:
     )
 
     get_ui_component('preview_frame_forward_five_button').click(
-        reference_frame_forward,
+        reference_frame_forward_five,
         inputs=get_ui_component('preview_frame_slider'),
         outputs=[
             get_ui_component('preview_frame_slider'),
@@ -373,6 +383,22 @@ def listen() -> None:
                 REFERENCE_FACES_SELECTION_GALLERY_2
             ]
         )
+    processors_checkbox_group = get_ui_component('processors_checkbox_group')
+    if processors_checkbox_group:
+        processors_checkbox_group.change(
+            toggle_selector_group,
+            inputs=processors_checkbox_group,
+            outputs=[FACE_SELECTOR_GROUP]
+        )
+
+
+def toggle_selector_group(processors: List[str]) -> gradio.update:
+    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    # Make the group visible if any face processor is selected
+    for processor in processors:
+        if processor not in non_face_processors:
+            return gradio.update(visible=True)
+    return gradio.update(visible=False)
 
 
 def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gradio.Gallery, gradio.update]:
@@ -675,6 +701,19 @@ def reference_frame_back(reference_frame_number: int) -> None:
 def reference_frame_forward(reference_frame_number: int) -> None:
     frames_per_second = int(detect_video_fps(state_manager.get_item('target_path')))
     reference_frame_number = min(reference_frame_number + frames_per_second, count_video_frame_total(
+        state_manager.get_item('target_path')))
+    return update_reference_frame_number_and_gallery(reference_frame_number)
+
+
+def reference_frame_back_five(reference_frame_number: int) -> None:
+    frames_per_second = int(detect_video_fps(state_manager.get_item('target_path')))
+    reference_frame_number = max(0, reference_frame_number - 5 * frames_per_second)
+    return update_reference_frame_number_and_gallery(reference_frame_number)
+
+
+def reference_frame_forward_five(reference_frame_number: int) -> None:
+    frames_per_second = int(detect_video_fps(state_manager.get_item('target_path')))
+    reference_frame_number = min(reference_frame_number + 5 * frames_per_second, count_video_frame_total(
         state_manager.get_item('target_path')))
     return update_reference_frame_number_and_gallery(reference_frame_number)
 

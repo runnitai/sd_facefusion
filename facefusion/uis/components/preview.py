@@ -93,7 +93,7 @@ def render() -> None:
         preview_frame_slider_args['visible'] = True
 
     PREVIEW_IMAGE = gradio.Image(**preview_image_args)
-    with gradio.Row() as PREVIEW_FRAME_ROW:
+    with gradio.Row(visible=is_video(state_manager.get_item('target_path'))) as PREVIEW_FRAME_ROW:
         PREVIEW_FRAME_BACK_FIVE_BUTTON = gradio.Button(
             value="-5s",
             elem_id='ff_preview_frame_back_five_button',
@@ -182,9 +182,7 @@ def listen() -> None:
             ]):
         for method in ['upload', 'change', 'clear']:
             getattr(ui_component, method)(update_preview_frame_slider,
-                                          outputs=[PREVIEW_FRAME_SLIDER, PREVIEW_FRAME_BACK_BUTTON,
-                                                   PREVIEW_FRAME_FORWARD_BUTTON, PREVIEW_FRAME_BACK_FIVE_BUTTON,
-                                                   PREVIEW_FRAME_FORWARD_FIVE_BUTTON, PREVIEW_FRAME_ROW])
+                                          outputs=[PREVIEW_FRAME_SLIDER, PREVIEW_FRAME_ROW])
     for ui_component in get_ui_components(
             [
                 'face_debugger_items_checkbox_group',
@@ -357,10 +355,8 @@ def preview_forward_five(reference_frame_number: int = 0) -> gradio.update:
 def update_preview_frame_slider() -> gradio.update:
     if is_video(state_manager.get_item('target_path')):
         video_frame_total = count_video_frame_total(state_manager.get_item('target_path'))
-        return gradio.update(maximum=video_frame_total, visible=True), gradio.update(visible=True), gradio.update(
-            visible=True), gradio.update(visible=True), gradio.update(visible=True), gradio.update(visible=True)
-    return gradio.update(value=None, maximum=None, visible=False), gradio.update(visible=False), gradio.update(
-        visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
+        return gradio.update(maximum=video_frame_total, visible=True), gradio.update(visible=True)
+    return gradio.update(value=None, maximum=None, visible=False), gradio.update(visible=False)
 
 
 def process_preview_frame(source_face: Face, source_face_2: Face,
@@ -391,7 +387,6 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
                     None, None))
 
             try:
-                print(f"Processing with {frame_processor}")
                 start_time = datetime.now()
                 frame_processor_module = load_processor_module(frame_processor)
                 if frame_processor_module.pre_process('preview'):

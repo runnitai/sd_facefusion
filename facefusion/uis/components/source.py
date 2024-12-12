@@ -16,6 +16,8 @@ SOURCE_AUDIO: Optional[gradio.Audio] = None
 SOURCE_AUDIO_2: Optional[gradio.Audio] = None
 SOURCE_IMAGE: Optional[gradio.Image] = None
 SOURCE_IMAGE_2: Optional[gradio.Image] = None
+AUDIO_ROW: Optional[gradio.Row] = None
+IMAGE_ROW: Optional[gradio.Row] = None
 
 
 def render() -> None:
@@ -25,6 +27,8 @@ def render() -> None:
     global SOURCE_AUDIO_2
     global SOURCE_IMAGE
     global SOURCE_IMAGE_2
+    global AUDIO_ROW
+    global IMAGE_ROW
 
     has_source_audio = has_audio(state_manager.get_item('source_paths'))
     has_source_image = has_image(state_manager.get_item('source_paths'))
@@ -59,13 +63,13 @@ def render() -> None:
     source_image_path = get_first(filter_image_paths(source_file_names))
     source_audio_path_2 = get_first(filter_audio_paths(source_file_names_2))
     source_image_path_2 = get_first(filter_image_paths(source_file_names_2))
-    with gradio.Row():
+    with gradio.Row(visible=has_source_audio) as AUDIO_ROW:
         SOURCE_AUDIO = gradio.Audio(
             value=source_audio_path if has_source_audio else None,
             visible=has_source_audio,
             show_label=False
         )
-    with gradio.Row():
+    with gradio.Row(visible=has_source_image or has_source_image_2) as IMAGE_ROW:
         SOURCE_IMAGE = gradio.Image(
             value=source_image_path if has_source_image else None,
             visible=has_source_image,
@@ -75,7 +79,7 @@ def render() -> None:
         )
         SOURCE_IMAGE_2 = gradio.Image(
             value=source_image_path_2 if has_source_image else None,
-            visible=has_source_image,
+            visible=has_source_image_2,
             show_label=False,
             elem_id='source_image_2',
             elem_classes=['source_image']
@@ -88,8 +92,8 @@ def render() -> None:
 
 
 def listen() -> None:
-    SOURCE_FILE.change(update, inputs=SOURCE_FILE, outputs=[SOURCE_AUDIO, SOURCE_IMAGE])
-    SOURCE_FILE_2.change(update_2, inputs=SOURCE_FILE_2, outputs=[SOURCE_IMAGE_2])
+    SOURCE_FILE.change(update, inputs=SOURCE_FILE, outputs=[SOURCE_AUDIO, SOURCE_IMAGE, AUDIO_ROW, IMAGE_ROW])
+    SOURCE_FILE_2.change(update_2, inputs=SOURCE_FILE_2, outputs=[SOURCE_IMAGE_2, IMAGE_ROW])
 
 
 def check_swap_source_style(files: List[File], return_files: bool = False) -> Union[gradio.update, List[str]]:
@@ -139,9 +143,11 @@ def update(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:
         source_image_path = get_first(filter_image_paths(file_names))
         state_manager.set_item('source_paths', file_names)
         return gradio.update(value=source_audio_path, visible=has_source_audio), gradio.update(value=source_image_path,
-                                                                                               visible=has_source_image)
+                                                                                               visible=has_source_image), gradio.update(
+            visible=has_source_audio), gradio.update(visible=has_source_image)
     state_manager.clear_item('source_paths')
-    return gradio.update(value=None, visible=False), gradio.update(value=None, visible=False)
+    return gradio.update(value=None, visible=False), gradio.update(value=None, visible=False), gradio.update(
+        visible=False), gradio.update(visible=False)
 
 
 def update_2(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:

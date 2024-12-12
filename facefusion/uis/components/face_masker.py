@@ -19,7 +19,7 @@ MASK_DISABLE_BUTTON: Optional[gradio.Button] = None
 MASK_ENABLE_BUTTON: Optional[gradio.Button] = None
 MASK_CLEAR_BUTTON: Optional[gradio.Button] = None
 BOTTOM_MASK_POSITIONS: Optional[gradio.HTML] = None
-
+FACE_MASK_PADDING_GROUP: Optional[gradio.Group] = None
 
 def render() -> None:
     global FACE_MASK_TYPES_CHECKBOX_GROUP
@@ -33,29 +33,37 @@ def render() -> None:
     global MASK_ENABLE_BUTTON
     global MASK_CLEAR_BUTTON
     global BOTTOM_MASK_POSITIONS
+    global FACE_MASK_PADDING_GROUP
 
     has_box_mask = 'box' in state_manager.get_item('face_mask_types')
     has_region_mask = 'region' in state_manager.get_item('face_mask_types')
-    FACE_MASK_TYPES_CHECKBOX_GROUP = gradio.CheckboxGroup(
-        label=wording.get('uis.face_mask_types_checkbox_group'),
-        choices=facefusion.choices.face_mask_types,
-        value=state_manager.get_item('face_mask_types')
-    )
-    FACE_MASK_REGIONS_CHECKBOX_GROUP = gradio.CheckboxGroup(
-        label=wording.get('uis.face_mask_regions_checkbox_group'),
-        choices=facefusion.choices.face_mask_regions,
-        value=state_manager.get_item('face_mask_regions'),
-        visible=has_region_mask
-    )
-    FACE_MASK_BLUR_SLIDER = gradio.Slider(
-        label=wording.get('uis.face_mask_blur_slider'),
-        step=calc_float_step(facefusion.choices.face_mask_blur_range),
-        minimum=facefusion.choices.face_mask_blur_range[0],
-        maximum=facefusion.choices.face_mask_blur_range[-1],
-        value=state_manager.get_item('face_mask_blur'),
-        visible=has_box_mask
-    )
-    with gradio.Group():
+    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    # Make the group visible if any face processor is selected
+    show_group = False
+    for processor in state_manager.get_item('processors'):
+        if processor not in non_face_processors:
+            show_group = True
+            break
+    with gradio.Group(visible=show_group) as FACE_MASK_PADDING_GROUP:
+        FACE_MASK_TYPES_CHECKBOX_GROUP = gradio.CheckboxGroup(
+            label=wording.get('uis.face_mask_types_checkbox_group'),
+            choices=facefusion.choices.face_mask_types,
+            value=state_manager.get_item('face_mask_types')
+        )
+        FACE_MASK_REGIONS_CHECKBOX_GROUP = gradio.CheckboxGroup(
+            label=wording.get('uis.face_mask_regions_checkbox_group'),
+            choices=facefusion.choices.face_mask_regions,
+            value=state_manager.get_item('face_mask_regions'),
+            visible=has_region_mask
+        )
+        FACE_MASK_BLUR_SLIDER = gradio.Slider(
+            label=wording.get('uis.face_mask_blur_slider'),
+            step=calc_float_step(facefusion.choices.face_mask_blur_range),
+            minimum=facefusion.choices.face_mask_blur_range[0],
+            maximum=facefusion.choices.face_mask_blur_range[-1],
+            value=state_manager.get_item('face_mask_blur'),
+            visible=has_box_mask
+        )
         with gradio.Row():
             MASK_DISABLE_BUTTON = gradio.Button(value="Disable Padding", variant="secondary", visible=False,
                                                 elem_classes=["maskBtn"])
@@ -155,8 +163,25 @@ def listen() -> None:
 
     for method in ['change', 'release']:
         getattr(preview_frame_slider, method)(update_mask_buttons,
-                                     inputs=preview_frame_slider,
-                                     outputs=[MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON])
+                                              inputs=preview_frame_slider,
+                                              outputs=[MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON])
+
+    processors_checkbox_group = get_ui_component('processors_checkbox_group')
+    if processors_checkbox_group:
+        processors_checkbox_group.change(
+            toggle_group,
+            inputs=processors_checkbox_group,
+            outputs=[FACE_MASK_PADDING_GROUP]
+        )
+
+
+def toggle_group(processors: List[str]) -> gradio.update:
+    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    # Make the group visible if any face processor is selected
+    for processor in processors:
+        if processor not in non_face_processors:
+            return gradio.update(visible=True)
+    return gradio.update(visible=False)
 
 
 def update_face_mask_types(face_mask_types: List[FaceMaskType]) -> Tuple[
@@ -262,8 +287,6 @@ def update_mask_buttons(frame_number) -> (gradio.update, gradio.update):
     if latest_disabled_frame is not None and (
             latest_enabled_frame is None or latest_disabled_frame > latest_enabled_frame):
         # We are currently disabled, so show the enable button, hide the disable button
-        print(f"Current frame {frame_number} is not within a padding interval, showing enable_mask_button")
         return gradio.update(visible=True), gradio.update(visible=False)
-    print(f"Current frame {frame_number} is within a padding interval, showing disable_mask_button")
     # We are currently enabled, so show the disable button, hide the enable button
     return gradio.update(visible=False), gradio.update(visible=True)

@@ -50,6 +50,8 @@ def render() -> gradio.Blocks:
                 with gradio.Blocks():
                     output_options.render()
                 with gradio.Blocks():
+                    common_options.render()
+                with gradio.Blocks():
                     output.render()
                 with gradio.Blocks():
                     #ui_workflow.render()
@@ -77,8 +79,7 @@ def render() -> gradio.Blocks:
                     face_detector.render()
                 with gradio.Blocks():
                     face_landmarker.render()
-                with gradio.Blocks():
-                    common_options.render()
+
     return layout
 
 
