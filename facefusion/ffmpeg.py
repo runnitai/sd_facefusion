@@ -141,7 +141,7 @@ def concat_video(output_path: str, temp_output_paths: List[str]) -> bool:
         concat_video_file.close()
     commands = ['-f', 'concat', '-safe', '0', '-i', concat_video_file.name, '-c:v', 'copy', '-c:a',
                 state_manager.get_item('output_audio_encoder'), '-y', os.path.abspath(output_path)]
-    process = run_ffmpeg(commands)
+    process = run_ffmpeg(commands, True, "Concatenating")
     if process.returncode != 0:
         print(f"Failed to concatenate videos: {process.returncode}")
     else:
