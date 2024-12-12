@@ -142,14 +142,22 @@ def get_avg_faces():
         print("Updating AVG_FACE_1")
         SOURCE_FRAMES_1 = source_paths
         source_frames = read_static_images(source_paths)
-        faces = get_many_faces(source_frames)
+        faces = []
+        for frame in source_frames:
+            face = get_one_face(get_many_faces([frame]))
+            if face:
+                faces.append(face)
         AVG_FACE_1 = get_average_face(faces)
 
     if SOURCE_FRAMES_2 != source_paths_2 or AVG_FACE_2 is None and source_paths_2 and len(source_paths_2) > 0:
         print("Updating AVG_FACE_2")
         SOURCE_FRAMES_2 = source_paths_2
         source_frames_2 = read_static_images(source_paths_2)
-        faces_2 = get_many_faces(source_frames_2)
-        AVG_FACE_2 = get_average_face(faces_2)
+        faces = []
+        for frame in source_frames_2:
+            face = get_one_face(get_many_faces([frame]))
+            if face:
+                faces.append(face)
+        AVG_FACE_2 = get_average_face(faces)
 
     return AVG_FACE_1, AVG_FACE_2
