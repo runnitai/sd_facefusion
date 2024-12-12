@@ -57,6 +57,7 @@ def run_step(job_id: str, step_index: int, step: JobStep, process_step: ProcessS
     output_path = step_args.get('output_path')
     if job_manager.set_step_status(job_id, step_index, 'started') and process_step(job_id, step_index, step_args):
         if not os.path.exists(output_path):
+            os.makedirs(output_path, exist_ok=True)
         step_output_path = job_helper.get_step_output_path(job_id, step_index, output_path)
 
         return move_file(output_path, step_output_path) and job_manager.set_step_status(job_id, step_index, 'completed')
