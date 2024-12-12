@@ -61,8 +61,6 @@ def render() -> None:
             'visible': False
         }
     conditional_append_reference_faces()
-    reference_faces, reference_faces_2 = (
-        get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
 
     source_face, source_face_2 = get_avg_faces()
     source_audio_path = get_first(filter_audio_paths(state_manager.get_item('source_paths')))
@@ -78,14 +76,14 @@ def render() -> None:
     target_path = state_manager.get_item('target_path')
     if is_image(target_path):
         target_frame = read_static_image(target_path)
-        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
+        preview_frame = process_preview_frame(source_face, source_face_2,
                                               source_audio_frame, source_audio_frame_2, target_frame, -1)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
 
     if is_video(target_path):
         frame_number = 0
         temp_frame = get_video_frame(target_path, frame_number)
-        preview_frame = process_preview_frame(reference_faces, reference_faces_2, source_face, source_face_2,
+        preview_frame = process_preview_frame(source_face, source_face_2,
                                               source_audio_frame, source_audio_frame_2, temp_frame, frame_number)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
         preview_image_args['visible'] = True
@@ -299,7 +297,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
             target_vision_frame = read_static_image(state_manager.get_item('target_path'))
             if target_vision_frame is not None:
                 preview_vision_frame = process_preview_frame(
-                    reference_faces, reference_faces_2, source_face, source_face_2,
+                    source_face, source_face_2,
                     source_audio_frame, source_audio_frame_2, target_vision_frame
                 )
                 preview_vision_frame = normalize_frame_color(preview_vision_frame)
@@ -309,7 +307,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
             temp_vision_frame = get_video_frame(state_manager.get_item('target_path'), frame_number)
             if temp_vision_frame is not None:
                 preview_vision_frame = process_preview_frame(
-                    reference_faces, reference_faces_2, source_face, source_face_2,
+                    source_face, source_face_2,
                     source_audio_frame, source_audio_frame_2, temp_vision_frame
                 )
                 preview_vision_frame = normalize_frame_color(preview_vision_frame)
@@ -364,7 +362,7 @@ def update_preview_frame_slider() -> gradio.update:
         visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
 
-def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, source_face: Face, source_face_2: Face,
+def process_preview_frame(source_face: Face, source_face_2: Face,
                           source_audio_frame: AudioFrame, source_audio_frame_2: AudioFrame,
                           target_vision_frame: VisionFrame,
                           frame_number=-1) -> VisionFrame:
@@ -382,8 +380,15 @@ def process_preview_frame(reference_faces: FaceSet, reference_faces_2: FaceSet, 
             key=lambda fp: priority_order.index(fp) if fp in priority_order else len(priority_order)
         )
         source_frame = target_vision_frame.copy()
+        reference_faces, reference_faces_2 = (
+            get_reference_faces(False) if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
 
         for frame_processor in global_processors:
+            if frame_processor == 'face_swapper':
+                reference_faces, reference_faces_2 = (
+                    get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (
+                    None, None))
+
             try:
                 print(f"Processing with frame processor {frame_processor}")
                 frame_processor_module = load_processor_module(frame_processor)
