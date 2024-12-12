@@ -52,22 +52,31 @@ def create_frame_hash(vision_frame: VisionFrame) -> Optional[str]:
     return hashlib.sha1(vision_frame.tobytes()).hexdigest() if numpy.any(vision_frame) else None
 
 
-def get_reference_faces() -> Tuple[Optional[FaceSet], Optional[FaceSet]]:
+def get_reference_faces(is_face_swapper: bool = False) -> Tuple[Optional[FaceSet], Optional[FaceSet]]:
+    from facefusion.face_analyser import get_avg_faces
+
     set_out = {}
     set_out_2 = {}
     all_faces = []
+    all_faces_2 = []
+
+    if not is_face_swapper and 'face_swapper' in state_manager.get_item('processors'):
+        source_face, source_face_2 = get_avg_faces()
+        if source_face:
+            all_faces.append(source_face)
+        if source_face_2:
+            all_faces_2.append(source_face_2)
     reference_face_dict = state_manager.get_item('reference_face_dict')
     if reference_face_dict:
         for frame_number, faces in reference_face_dict.items():
             for face in faces:
                 all_faces.append(face)
         set_out['reference_faces'] = all_faces
-    all_faces = []
     reference_face_dict_2 = state_manager.get_item('reference_face_dict_2')
     if reference_face_dict_2:
         for frame_number, faces in reference_face_dict_2.items():
             for face in faces:
-                all_faces.append(face)
+                all_faces_2.append(face)
         set_out_2['reference_faces'] = all_faces
     return set_out, set_out_2
 
