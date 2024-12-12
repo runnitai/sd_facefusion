@@ -73,9 +73,17 @@ def get_static_model_initializer(model_path: str) -> ModelInitializer:
     return onnx.numpy_helper.to_array(model.graph.initializer[-1])
 
 
-def resolve_execution_provider_keys(model_context : str) -> List[ExecutionProviderKey]:
-    if has_execution_provider('coreml') and (model_context.startswith('facefusion.processors.modules.age_modifier') or model_context.startswith('facefusion.processors.modules.frame_colorizer')):
-        return [ 'cpu' ]
+def resolve_execution_provider_keys(model_context: str) -> List[ExecutionProviderKey]:
+    if has_execution_provider('coreml') and (
+            model_context.startswith('facefusion.processors.modules.age_modifier') or model_context.startswith(
+            'facefusion.processors.modules.frame_colorizer')):
+        return ['cpu']
+    if has_execution_provider('tensorrt') and has_execution_provider('cuda'):
+        cuda_keys = ["age_modifier", "frame_colorizer", "face_detector_model", "face_landmarker_model"]
+        # cuda_keys = ["age_modifier", "frame_colorizer", "face_swapper"]
+        if any(key in model_context for key in cuda_keys):
+            #print(f"model_context: {model_context}, returning ['cuda']")
+            return ['cuda']
     return state_manager.get_item('execution_providers')
 
 
