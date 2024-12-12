@@ -53,6 +53,7 @@ def download_video(target_url: str) -> str:
 
         # Step 2: Sanitize filename
         video_filename = get_video_filename(video_title)  # Use your provided function
+        video_path = os.path.join(TEMP_DIRECTORY_PATH, f"{video_filename}.mp4")
 
         # Step 3: Check if the file already exists
         if os.path.exists(video_path):
