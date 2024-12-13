@@ -7,7 +7,6 @@ from typing import Optional, List
 import PIL
 import cv2
 import numpy as np
-#import tensorflow as tf
 from PIL import ImageOps
 from PIL.Image import Image
 
@@ -405,6 +404,7 @@ def forward_head_process(head_session, head_img: np.ndarray) -> np.ndarray:
 
 def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
     # Similar structure to face_swapper: get inference sessions
+    skip_head = state_manager.get_item('style_changer_skip_head')
     head_pool, bg_pool = get_inference_pool()
     sess_head = head_pool.get("model")
     sess_bg = bg_pool.get("model")
@@ -419,36 +419,37 @@ def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
     res = forward_bg_process(sess_bg, img_bgr)
 
     # Faces and heads
-    landmarks_2 = get_many_faces([img])
-    if landmarks_2 is not None and len(landmarks_2) > 0:
-        for landmark in landmarks_2:
-            f5p = landmark.landmark_set.get('5')
-            head_img, trans_inv = warp_and_crop_face(
-                img_resized,
-                f5p,
-                ratio=0.75,
-                reference_pts=REFERENCE_PTS,
-                crop_size=(BOX_WIDTH, BOX_WIDTH),
-                return_trans_inv=True
-            )
-            head_res = forward_head_process(sess_head, head_img)
+    if not skip_head:
+        landmarks_2 = get_many_faces([img])
+        if landmarks_2 is not None and len(landmarks_2) > 0:
+            for landmark in landmarks_2:
+                f5p = landmark.landmark_set.get('5')
+                head_img, trans_inv = warp_and_crop_face(
+                    img_resized,
+                    f5p,
+                    ratio=0.75,
+                    reference_pts=REFERENCE_PTS,
+                    crop_size=(BOX_WIDTH, BOX_WIDTH),
+                    return_trans_inv=True
+                )
+                head_res = forward_head_process(sess_head, head_img)
 
-            head_trans_inv = cv2.warpAffine(
-                head_res,
-                trans_inv, (img_resized.shape[1], img_resized.shape[0]),
-                borderValue=(0, 0, 0)
-            )
-            mask = GLOBAL_MASK
-            mask_trans_inv = cv2.warpAffine(
-                mask,
-                trans_inv, (img_resized.shape[1], img_resized.shape[0]),
-                borderValue=(0, 0, 0)
-            )
-            mask_trans_inv = cv2.resize(mask_trans_inv, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
-            mask_trans_inv = np.expand_dims(mask_trans_inv, 2)
+                head_trans_inv = cv2.warpAffine(
+                    head_res,
+                    trans_inv, (img_resized.shape[1], img_resized.shape[0]),
+                    borderValue=(0, 0, 0)
+                )
+                mask = GLOBAL_MASK
+                mask_trans_inv = cv2.warpAffine(
+                    mask,
+                    trans_inv, (img_resized.shape[1], img_resized.shape[0]),
+                    borderValue=(0, 0, 0)
+                )
+                mask_trans_inv = cv2.resize(mask_trans_inv, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
+                mask_trans_inv = np.expand_dims(mask_trans_inv, 2)
 
-            res = cv2.resize(res, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
-            res = mask_trans_inv * head_trans_inv + (1 - mask_trans_inv) * res
+                res = cv2.resize(res, (head_trans_inv.shape[1], head_trans_inv.shape[0]))
+                res = mask_trans_inv * head_trans_inv + (1 - mask_trans_inv) * res
 
     res = cv2.resize(res, (ori_w, ori_h), interpolation=cv2.INTER_AREA)
     return res

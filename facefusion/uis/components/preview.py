@@ -190,6 +190,7 @@ def listen() -> None:
                 'face_mask_types_checkbox_group',
                 'face_mask_regions_checkbox_group',
                 'style_changer_target_radio',
+                'style_changer_skip_head_checkbox',
             ]):
         ui_component.change(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements,
                             show_progress='hidden')

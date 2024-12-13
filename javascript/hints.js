@@ -12,6 +12,7 @@ const hint_dict = {
     "ff3_frame_enhancer_blend_slider": "Adjust the blending strength for frame enhancements.",
     "ff3_style_change_model_dropdown": "Choose a style change model for the output.",
     "ff3_style_changer_target_radio": "Specify whether to style the source or target media.",
+    "ff3_style_changer_skip_head_checkbox": "Don't apply separate head/face processing for style changes.",
     "ff3_temp_frame_format_dropdown": "Set the format for temporary frames during processing.",
     "ff3_temp_frame_quality_slider": "Adjust the quality of temporary frames.",
     "ff3_output_path_textbox": "Define the output file path or directory (use .mp4 for videos).",

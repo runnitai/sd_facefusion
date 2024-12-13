@@ -304,6 +304,7 @@ WORDING: Dict[str, Any] = \
             'stop_button': 'STOP',
             'style_changer_model_dropdown': 'SELECTED STYLE',
             'style_changer_target_radio': 'STYLE TARGET',
+            'style_changer_skip_head_checkbox': 'SKIP HEAD',
             'system_memory_limit_slider': 'SYSTEM MEMORY LIMIT',
             'target_file': 'TARGET',
             'target_url_textbox': 'TARGET URL',
