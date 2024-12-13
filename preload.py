@@ -1,15 +1,25 @@
 import argparse
 import logging
 import os
+import sys
 
 # Disable httpcore.http11 logging
 logging.getLogger('httpcore').setLevel(logging.WARNING)
+
+base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+ext_dir = os.path.join(base_dir, 'extensions', 'sd_facefusion', 'facefusion')
+
+if ext_dir not in sys.path:
+    sys.path.insert(0, ext_dir)
+else:
+    print(f"Ext dir already in path: {ext_dir}")
 
 
 def preload(parser: argparse.ArgumentParser):
     os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
     # Ensure extension_sd_facefusion.facefusion is added to the PATH as 'facefusion'
-    os.environ['PATH'] = os.pathsep.join([os.environ['PATH'], os.path.abspath(os.path.join(os.path.dirname(__file__), 'facefusion'))])
+    os.environ['PATH'] = os.pathsep.join(
+        [os.environ['PATH'], os.path.abspath(os.path.join(os.path.dirname(__file__), 'facefusion'))])
     print(f"Preloading globals to state_manager...")
     try:
         from facefusion import globals, state_manager, args
@@ -34,5 +44,3 @@ def preload(parser: argparse.ArgumentParser):
                 globals_dict[key] = value
     args.apply_args(globals_dict, False)
     state_manager.init_item("config_path", ff_ini)
-
-
