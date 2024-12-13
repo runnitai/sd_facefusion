@@ -8,7 +8,7 @@ yt-dlp>=2024.11.18
 psutil>=6.1.0
 realesrgan==0.3.0
 tqdm>=4.67.1
-tensorflow>=2.18.0
+#tensorflow>=2.18.0
 huggingface-hub>=0.26.2
 easydict
 tensorrt

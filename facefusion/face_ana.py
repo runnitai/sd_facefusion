@@ -4,13 +4,13 @@ import os
 
 import cv2
 import numpy as np
-import tensorflow as tf
+#import tensorflow as tf
 from easydict import EasyDict as edict
 from numpy.linalg import matrix_rank as rank, lstsq, inv, norm
 
-if tf.__version__ >= '2.0':
-    tf = tf.compat.v1
-    tf.disable_eager_execution()
+# if tf.__version__ >= '2.0':
+#     tf = tf.compat.v1
+#     tf.disable_eager_execution()
 
 
 config = edict()

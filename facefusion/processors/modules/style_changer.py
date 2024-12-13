@@ -1,13 +1,13 @@
 import argparse
 import os
 import threading
-from typing import Any, Dict, Tuple
+from typing import Dict, Tuple
 from typing import Optional, List
 
 import PIL
 import cv2
 import numpy as np
-import tensorflow as tf
+#import tensorflow as tf
 from PIL import ImageOps
 from PIL.Image import Image
 
@@ -242,9 +242,6 @@ MODEL_SET: ModelSet = {
 
 OPTIONS: Optional[OptionsWithModel] = None
 
-if tf.__version__ >= '2.0':
-    tf = tf.compat.v1
-    tf.disable_eager_execution()
 
 # Global initialization similar to face_swapper structure
 REFERENCE_PTS = get_reference_facial_points(default_square=True)
