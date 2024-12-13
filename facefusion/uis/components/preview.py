@@ -59,7 +59,7 @@ def render() -> None:
             'step': 1,
             'minimum': 0,
             'maximum': 100,
-            'visible': False
+            'visible': True
         }
     conditional_append_reference_faces()
 
@@ -87,10 +87,10 @@ def render() -> None:
         preview_frame = process_preview_frame(source_face, source_face_2,
                                               source_audio_frame, source_audio_frame_2, temp_frame, frame_number)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
-        preview_image_args['visible'] = True
+        #preview_image_args['visible'] = True
         preview_frame_slider_args['value'] = 0
         preview_frame_slider_args['maximum'] = count_video_frame_total(target_path)
-        preview_frame_slider_args['visible'] = True
+        #preview_frame_slider_args['visible'] = True
 
     PREVIEW_IMAGE = gradio.Image(**preview_image_args)
     with gradio.Row(visible=is_video(state_manager.get_item('target_path'))) as PREVIEW_FRAME_ROW:
@@ -281,7 +281,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
         sleep(0.5)
 
     # Initialize placeholders
-    preview = gradio.update(value=None, visible=False)
+    preview = gradio.update(value=None)
     enable_button, disable_button = gradio.update(), gradio.update()
 
     try:
