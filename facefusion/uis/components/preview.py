@@ -286,8 +286,6 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
 
     try:
         conditional_append_reference_faces()
-        reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
-            'face_selector_mode') else (None, None)
         source_face, source_face_2 = get_avg_faces()
         source_audio_frame = create_empty_audio_frame()
         source_audio_frame_2 = create_empty_audio_frame()
@@ -377,13 +375,15 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
             key=lambda fp: priority_order.index(fp) if fp in priority_order else len(priority_order)
         )
         source_frame = target_vision_frame.copy()
-        reference_faces, reference_faces_2 = (
-            get_reference_faces(False) if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
 
         for frame_processor in global_processors:
             if frame_processor == 'face_swapper':
                 reference_faces, reference_faces_2 = (
                     get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (
+                    None, None))
+            else:
+                reference_faces, reference_faces_2 = (
+                    get_reference_faces(False) if 'reference' in state_manager.get_item('face_selector_mode') else (
                     None, None))
 
             try:
