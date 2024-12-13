@@ -77,7 +77,7 @@ def get_reference_faces(is_face_swapper: bool = False) -> Tuple[Optional[FaceSet
         for frame_number, faces in reference_face_dict_2.items():
             for face in faces:
                 all_faces_2.append(face)
-        set_out_2['reference_faces'] = all_faces
+        set_out_2['reference_faces'] = all_faces_2
     return set_out, set_out_2
 
 
