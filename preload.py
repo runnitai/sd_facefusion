@@ -7,7 +7,7 @@ import sys
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-ext_dir = os.path.join(base_dir, 'extensions', 'sd_facefusion', 'facefusion')
+ext_dir = os.path.join(base_dir, 'extensions', 'sd_facefusion')
 
 if ext_dir not in sys.path:
     sys.path.insert(0, ext_dir)
