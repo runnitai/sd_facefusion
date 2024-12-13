@@ -150,7 +150,7 @@ def update(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:
         visible=False), gradio.update(visible=False)
 
 
-def update_2(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:
+def update_2(files: List[File]) -> Tuple[gradio.update, gradio.update]:
     file_names = [file.name for file in files] if files else None
     if 'style_changer' in state_manager.get_item('processors'):
         files = check_swap_source_style(files, True)
@@ -160,6 +160,6 @@ def update_2(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:
     if has_source_image:
         source_image_path = get_first(filter_image_paths(file_names))
         state_manager.set_item('source_paths_2', file_names)
-        return gradio.update(value=source_image_path, visible=has_source_image)
+        return gradio.update(value=source_image_path, visible=has_source_image), gradio.update(visible=has_source_image)
     state_manager.clear_item('source_paths_2')
-    return gradio.update(value=None, visible=False)
+    return gradio.update(value=None, visible=False), gradio.update(visible=False)
