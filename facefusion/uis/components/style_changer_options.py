@@ -5,9 +5,7 @@ import gradio
 from facefusion import wording, state_manager
 from facefusion.processors import choices as frame_processors_choices
 from facefusion.processors.modules.style_changer import clear_inference_pool
-from facefusion.uis.components.source import check_swap_source_style
 from facefusion.uis.core import get_ui_component, register_ui_component
-from facefusion.uis.typing import File
 
 STYLE_CHANGER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 STYLE_TARGET_RADIO: Optional[gradio.Radio] = None
@@ -27,7 +25,7 @@ def render() -> None:
     )
     STYLE_TARGET_RADIO = gradio.Radio(
         label=wording.get('uis.style_changer_target_radio'),
-        choices=["source", "target"],
+        choices=["source", "target", "source head/target bg"],
         value=str(state_manager.get_item('style_changer_target')),
         visible='style_changer' in state_manager.get_item('processors'),
         elem_id='style_target_radio'
@@ -46,10 +44,7 @@ def render() -> None:
 
 def listen() -> None:
     STYLE_CHANGER_MODEL_DROPDOWN.change(update_style_changer_model, inputs=STYLE_CHANGER_MODEL_DROPDOWN)
-    source_file = get_ui_component('source_file')
-    source_file_2 = get_ui_component('source_file_2')
-    STYLE_TARGET_RADIO.change(update_style_target, inputs=[STYLE_TARGET_RADIO, source_file, source_file_2],
-                              outputs=[source_file, source_file_2])
+    STYLE_TARGET_RADIO.change(update_style_target, inputs=STYLE_TARGET_RADIO, outputs=[STYLE_CHANGER_SKIP_HEAD_CHECKBOX])
     STYLE_CHANGER_SKIP_HEAD_CHECKBOX.change(update_style_changer_skip_head, inputs=STYLE_CHANGER_SKIP_HEAD_CHECKBOX)
 
     processors_checkbox_group = get_ui_component('processors_checkbox_group')
@@ -73,10 +68,8 @@ def update_style_changer_skip_head(style_changer_skip_head: bool):
 def update_style_changer_model(style_changer_model: str):
     clear_inference_pool()
     state_manager.set_item('style_changer_model', style_changer_model)
-    return
 
 
-def update_style_target(style_target: str, source_file: List[File], source_file_2: List[File]) -> Tuple[
-    gradio.update, gradio.update]:
+def update_style_target(style_target: str) -> gradio.update:
     state_manager.set_item('style_changer_target', style_target)
-    return check_swap_source_style(source_file), check_swap_source_style(source_file_2)
+    return gradio.update(visible=style_target != 'source head/target bg')

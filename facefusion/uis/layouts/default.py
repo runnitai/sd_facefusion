@@ -1,12 +1,15 @@
 import gradio
 
 from facefusion import state_manager
-from facefusion.uis.components import age_modifier_options, common_options, expression_restorer_options, \
-    face_debugger_options, face_detector, face_editor_options, \
-    face_enhancer_options, face_landmarker, face_masker, face_selector, face_swapper_options, frame_colorizer_options, \
-    frame_enhancer_options, instant_runner, job_manager, job_runner, lip_syncer_options, style_changer_options, output, \
-    output_options, \
-    preview, processors, source, target, temp_frame, trim_frame
+from facefusion.uis.components import (age_modifier_options, common_options, expression_restorer_options, \
+                                       face_debugger_options, face_detector, face_editor_options, \
+                                       face_enhancer_options, face_landmarker, face_masker, face_selector,
+                                       face_swapper_options, frame_colorizer_options, \
+                                       frame_enhancer_options, instant_runner, job_manager, job_runner,
+                                       lip_syncer_options, style_changer_options, \
+                                       style_transfer_options, output, \
+                                       output_options, \
+                                       preview, processors, source, target, temp_frame, trim_frame)
 
 
 def pre_check() -> bool:
@@ -54,15 +57,17 @@ def render() -> gradio.Blocks:
                 with gradio.Blocks():
                     output.render()
                 with gradio.Blocks():
-                    #ui_workflow.render()
+                    # ui_workflow.render()
                     instant_runner.render()
                     job_runner.render()
                     job_manager.render()
                 # with gradio.Blocks():
                 #     terminal.render()
             with gradio.Column(scale=4):
-                with gradio.Blocks():
+                with gradio.Blocks() as source_block:
                     source.render()
+                with gradio.Blocks():
+                    style_transfer_options.render()
                 with gradio.Blocks():
                     target.render()
 
@@ -95,6 +100,7 @@ def listen() -> None:
     frame_enhancer_options.listen()
     lip_syncer_options.listen()
     style_changer_options.listen()
+    style_transfer_options.listen()
     # execution.listen()
     # execution_thread_count.listen()
     # execution_queue_count.listen()
@@ -107,7 +113,7 @@ def listen() -> None:
     instant_runner.listen()
     job_runner.listen()
     job_manager.listen()
-    #terminal.listen()
+    # terminal.listen()
     preview.listen()
     trim_frame.listen()
     face_selector.listen()

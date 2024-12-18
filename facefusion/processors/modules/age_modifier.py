@@ -290,7 +290,7 @@ def process_frames(queue_payloads: List[QueuePayload]) -> None:
     return output_frames
 
 
-def process_image(source_path: str, source_path_2: str, target_path: str, output_path: str) -> None:
+def process_image(target_path: str, output_path: str) -> None:
     reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
         'face_selector_mode') else None
     target_vision_frame = read_static_image(target_path)
@@ -303,5 +303,5 @@ def process_image(source_path: str, source_path_2: str, target_path: str, output
     write_image(output_path, output_vision_frame)
 
 
-def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
-    processors.multi_process_frames(None, temp_frame_paths)
+def process_video(temp_frame_paths: List[str]) -> None:
+    processors.multi_process_frames(temp_frame_paths, process_frames)

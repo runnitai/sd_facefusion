@@ -5,9 +5,11 @@ import gradio
 
 from facefusion import wording, state_manager
 from facefusion.common_helper import get_first
-from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths, is_image
+from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths, is_image, \
+    remove_directory, move_file, is_audio
 from facefusion.processors.modules.style_changer import process_src_image
-from facefusion.uis.core import register_ui_component
+from facefusion.temp_helper import get_temp_directory_path, get_base_directory_path
+from facefusion.uis.core import register_ui_component, get_ui_components
 from facefusion.uis.typing import File
 
 SOURCE_FILE: Optional[gradio.File] = None
@@ -59,14 +61,21 @@ def render() -> None:
                          SOURCE_FILE.value] if SOURCE_FILE.value else None
     source_file_names_2 = [source_file_value['name'] for source_file_value in
                            SOURCE_FILE_2.value] if SOURCE_FILE_2.value else None
+
     source_audio_path = get_first(filter_audio_paths(source_file_names))
-    source_image_path = get_first(filter_image_paths(source_file_names))
     source_audio_path_2 = get_first(filter_audio_paths(source_file_names_2))
+
+    source_image_path = get_first(filter_image_paths(source_file_names))
     source_image_path_2 = get_first(filter_image_paths(source_file_names_2))
     with gradio.Row(visible=has_source_audio) as AUDIO_ROW:
         SOURCE_AUDIO = gradio.Audio(
             value=source_audio_path if has_source_audio else None,
             visible=has_source_audio,
+            show_label=False
+        )
+        SOURCE_AUDIO_2 = gradio.Audio(
+            value=source_audio_path_2 if has_source_audio_2 else None,
+            visible=has_source_audio_2,
             show_label=False
         )
     with gradio.Row(visible=has_source_image or has_source_image_2) as IMAGE_ROW:
@@ -87,79 +96,98 @@ def render() -> None:
     register_ui_component('source_file', SOURCE_FILE)
     register_ui_component('source_file_2', SOURCE_FILE_2)
     register_ui_component('source_audio', SOURCE_AUDIO)
+    register_ui_component('source_audio_2', SOURCE_AUDIO_2)
     register_ui_component('source_image', SOURCE_IMAGE)
     register_ui_component('source_image_2', SOURCE_IMAGE_2)
 
 
 def listen() -> None:
-    SOURCE_FILE.change(update, inputs=SOURCE_FILE, outputs=[SOURCE_AUDIO, SOURCE_IMAGE, AUDIO_ROW, IMAGE_ROW])
-    SOURCE_FILE_2.change(update_2, inputs=SOURCE_FILE_2, outputs=[SOURCE_IMAGE_2, IMAGE_ROW])
+    SOURCE_FILE.change(update_1, inputs=SOURCE_FILE, outputs=[SOURCE_AUDIO, SOURCE_IMAGE, AUDIO_ROW, IMAGE_ROW])
+    SOURCE_FILE_2.change(update_2, inputs=SOURCE_FILE_2, outputs=[SOURCE_AUDIO_2, SOURCE_IMAGE_2, AUDIO_ROW, IMAGE_ROW])
+    SOURCE_FILE.clear(clear_1)
+    SOURCE_FILE_2.clear(clear_2)
+
+    for ui_component in get_ui_components(
+            ['processors_checkbox_group', 'style_target_radio', 'style_changer_skip_head_checkbox',
+             'style_changer_model_dropdown']):
+        ui_component.change(remote_update, inputs=[SOURCE_FILE, SOURCE_FILE_2],
+                            outputs=[SOURCE_AUDIO, SOURCE_IMAGE, SOURCE_AUDIO_2, SOURCE_IMAGE_2, AUDIO_ROW, IMAGE_ROW])
 
 
-def check_swap_source_style(files: List[File], return_files: bool = False) -> Union[gradio.update, List[str]]:
+def clear_1() -> None:
+    actual_clear(False)
+
+
+def clear_2() -> None:
+    actual_clear(True)
+
+
+def update_1(files: List[File]) -> Tuple[gradio.Audio, gradio.update, gradio.update, gradio.update]:
+    file_names = [file.name for file in files] if files else []
+    return actual_update(file_names)
+
+
+def update_2(files: List[File]) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
+    file_names = [file.name for file in files] if files else []
+    return actual_update(file_names, True)
+
+
+def actual_clear(is_src_2: bool = False) -> None:
+    state_key = 'source_paths_2' if is_src_2 else 'source_paths'
+    state_manager.clear_item(state_key)
+
+
+def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
+    gradio.update, gradio.update, gradio.update, gradio.update]:
     style_type = state_manager.get_item('style_changer_model')
     target = state_manager.get_item('style_changer_target')
-    if target != 'source':
-        file_names = [file.name for file in files if file] if files else None
-        return gradio.update() if not return_files else file_names
-    swapped_files = []
-    if files:
-        for file in files:
-            if is_image(file.name):
-                # Split the file name and extension, make sure it ends with _style_{style_type}
-                file_name, file_extension = os.path.splitext(file.name)
-                if "_style_" in file_name:
-                    file_parts = file_name.split('_style_')
-                    if len(file_parts) > 1 and file_parts[-1] == style_type:
-                        swapped_files.append(file.name)
-                    else:
-                        # Find the original file
-                        original_file = file_name.split('_style_')[0] + file_extension
-                        if os.path.exists(original_file):
-                            swapped = process_src_image(original_file, style_type)
-                            swapped_files.append(swapped)
-                        else:
-                            print(f"Original file {original_file} not found.")
-                else:
-                    swapped = process_src_image(file.name, style_type)
-                    swapped_files.append(swapped)
-            else:
-                swapped_files.append(file.name)
-        return gradio.update(value=swapped_files) if not return_files else swapped_files
-    return gradio.update() if not return_files else files
+    state_key = 'source_paths_2' if is_src_2 else 'source_paths'
+    
+    if 'source' in target and 'style_changer' in state_manager.get_item('processors'):
+        all_image_files = filter_image_paths(file_names)
+        for base_file in all_image_files:
+            file, ext = os.path.splitext(base_file)
+            styled_file = os.path.join(get_temp_directory_path(base_file), f'ff_styled{ext}')
+            if os.path.exists(styled_file):
+                os.remove(styled_file)
+            styled_file = process_src_image(base_file, styled_file)
+            # Replace the original file name with the styled file name
+            file_names[file_names.index(base_file)] = styled_file
+    
+    # Update state or clear it
+    has_audio_files = has_audio(file_names)
+    has_image_files = has_image(file_names)
+    if file_names:
+        state_manager.set_item(state_key, file_names)
+    else:
+        state_manager.clear_item(state_key)
+
+    # Return UI updates
+    return (
+        gradio.update(value=get_first(filter_audio_paths(file_names)), visible=has_audio_files),
+        gradio.update(value=get_first(filter_image_paths(file_names)), visible=has_image_files),
+        gradio.update(visible=has_audio_files),
+        gradio.update(visible=has_image_files)
+    )
 
 
-def update(files: List[File]) -> Tuple[gradio.Audio, gradio.update]:
-    file_names = [file.name for file in files if file] if files else None
-    if 'style_changer' in state_manager.get_item('processors'):
-        files = check_swap_source_style(files, True)
-        file_names = files
+def remote_update(files1, files2) -> Tuple[
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+    if not files1 and not files2:
+        # If both file inputs are empty, clear UI elements
+        actual_clear(False)
+        actual_clear(True)
+        return (
+            gradio.update(value=None, visible=False),
+            gradio.update(value=None, visible=False),
+            gradio.update(value=None, visible=False),
+            gradio.update(value=None, visible=False),
+            gradio.update(visible=False),
+            gradio.update(visible=False),
+        )
 
-    has_source_audio = has_audio(file_names)
-    has_source_image = has_image(file_names)
-    # If we have a source_image, and style_changer is one of our frame_processors, we need to check the style_changer_target
-    if has_source_audio or has_source_image:
-        source_audio_path = get_first(filter_audio_paths(file_names))
-        source_image_path = get_first(filter_image_paths(file_names))
-        state_manager.set_item('source_paths', file_names)
-        return gradio.update(value=source_audio_path, visible=has_source_audio), gradio.update(value=source_image_path,
-                                                                                               visible=has_source_image), gradio.update(
-            visible=has_source_audio), gradio.update(visible=has_source_image)
-    state_manager.clear_item('source_paths')
-    return gradio.update(value=None, visible=False), gradio.update(value=None, visible=False), gradio.update(
-        visible=False), gradio.update(visible=False)
+    source_audio_1, source_image_1, audio_row_1, image_row_1 = actual_update([f.name for f in files1] if files1 else [])
+    source_audio_2, source_image_2, audio_row_2, image_row_2 = actual_update([f.name for f in files2] if files2 else [],
+                                                                             True)
 
-
-def update_2(files: List[File]) -> Tuple[gradio.update, gradio.update]:
-    file_names = [file.name for file in files] if files else None
-    if 'style_changer' in state_manager.get_item('processors'):
-        files = check_swap_source_style(files, True)
-        file_names = files
-
-    has_source_image = has_image(file_names)
-    if has_source_image:
-        source_image_path = get_first(filter_image_paths(file_names))
-        state_manager.set_item('source_paths_2', file_names)
-        return gradio.update(value=source_image_path, visible=has_source_image), gradio.update(visible=has_source_image)
-    state_manager.clear_item('source_paths_2')
-    return gradio.update(value=None, visible=False), gradio.update(visible=False)
+    return source_audio_1, source_image_1, source_audio_2, source_image_2, audio_row_1, image_row_2

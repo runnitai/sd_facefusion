@@ -77,7 +77,8 @@ QueuePayload = TypedDict('QueuePayload',
                              'source_face': Any,
                              'source_face_2': Any,
                              'reference_faces': Any,
-                             'reference_faces_2': Any
+                             'reference_faces_2': Any,
+                             'is_preview': bool
                          })
 Args = Dict[str, Any]
 UpdateProgress = Callable[[int], None]

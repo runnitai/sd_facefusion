@@ -80,6 +80,8 @@ output_video_fps: Optional[float] = None
 skip_audio: Optional[bool] = False
 style_changer_target: Optional[str] = 'target'
 style_changer_skip_head: Optional[bool] = False
+style_transfer_model: Optional[str] = 'style_transfer'
+style_transfer_source: Optional[str] = None
 # frame processors
 processors: List[str] = ["face_swapper"]
 # uis

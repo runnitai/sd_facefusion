@@ -100,7 +100,10 @@ def apply_args(args: Args, apply_state_item: bool) -> None:
     available_processors = list_directory('facefusion/processors/modules')
     cmd('processors', args.get('processors'))
     for processor_module in get_processors_modules(available_processors):
-        processor_module.apply_args(args, cmd)
+        try:
+            processor_module.apply_args(args, cmd)
+        except Exception as e:
+            print(f"Error while applying args for processor {processor_module}: {e}")
     # uis
     cmd('open_browser', args.get('open_browser'))
     cmd('ui_layouts', args.get('ui_layouts'))

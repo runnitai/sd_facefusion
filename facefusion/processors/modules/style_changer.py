@@ -12,7 +12,7 @@ from PIL.Image import Image
 
 import facefusion.globals
 import facefusion.jobs.job_store
-import facefusion.processors.core as frame_processors
+import facefusion.processors.core as processors
 from facefusion import logger, wording, state_manager, inference_manager
 from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.face_ana import warp_and_crop_face, get_reference_facial_points
@@ -402,9 +402,8 @@ def forward_head_process(head_session, head_img: np.ndarray) -> np.ndarray:
     return result
 
 
-def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
+def change_style(temp_vision_frame: VisionFrame, skip_head: bool = False, skip_bg: bool = False) -> VisionFrame:
     # Similar structure to face_swapper: get inference sessions
-    skip_head = state_manager.get_item('style_changer_skip_head')
     head_pool, bg_pool = get_inference_pool()
     sess_head = head_pool.get("model")
     sess_bg = bg_pool.get("model")
@@ -416,7 +415,7 @@ def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
     img_bgr = img_resized[:, :, ::-1]
 
     # Background inference
-    res = forward_bg_process(sess_bg, img_bgr)
+    res = forward_bg_process(sess_bg, img_bgr) if not skip_bg else img_bgr
 
     # Faces and heads
     if not skip_head:
@@ -456,16 +455,20 @@ def change_style(temp_vision_frame: VisionFrame) -> VisionFrame:
 
 
 def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
-    if state_manager.get_item('style_target') == 'source':
+    style_target = state_manager.get_item('style_target')
+    if 'target' not in style_target:
         return temp_vision_frame
-    return change_style(temp_vision_frame)
+    skip_head = state_manager.get_item('style_changer_skip_head') if style_target == 'target' else True
+    return change_style(temp_vision_frame, skip_head=skip_head)
 
 
-def process_src_image(input_path: str, style: str):
+def process_src_image(input_path: str, output_path: str) -> str:
     input_file, input_extension = os.path.splitext(input_path)
-    output_path = f"{input_file}_style_{style}{input_extension}"
-    result = change_style(input_path)
-    cv2.imwrite(output_path, result[:, :, ::-1])  # Convert back to BGR if needed
+    style_target = state_manager.get_item('style_changer_target')
+    skip_head = state_manager.get_item('style_changer_skip_head') if style_target == 'source' else False
+    skip_bg = "source head" in style_target
+    result = change_style(input_path,skip_head=skip_head,skip_bg=skip_bg)
+    cv2.imwrite(output_path, result)  # Convert back to BGR if needed
     print(f"Image processing complete. Output saved to {output_path}.")
     return output_path
 
@@ -476,13 +479,14 @@ def post_process() -> None:
 
 def process_frame(inputs: StyleChangerInputs) -> VisionFrame:
     target_vision_frame = inputs.get('target_vision_frame')
-    converted = change_style(target_vision_frame)
+    style_target = state_manager.get_item('style_changer_target')
+    skip_head = state_manager.get_item('style_changer_skip_head') if style_target == 'target' else True
+    converted = change_style(target_vision_frame, skip_head=skip_head)
     return converted
 
 
 def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-    if state_manager.get_item('style_changer_target') == 'source':
-        print(f"Skipping processing for source target.")
+    if 'target' not in state_manager.get_item('style_changer_target'):
         return
     output_frames = []
     for queue_payload in queue_payloads:
@@ -495,14 +499,14 @@ def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
     return output_frames
 
 
-def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
-    if state_manager.get_item('style_changer_target') == 'source':
+def process_image(target_path: str, output_path: str) -> None:
+    if 'target' not in state_manager.get_item('style_changer_target'):
         return
     target_vision_frame = read_static_image(target_path)
     output_vision_frame = process_frame({'target_vision_frame': target_vision_frame})
     write_image(output_path, output_vision_frame)
 
 
-def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
+def process_video(temp_frame_paths: List[str]) -> None:
     print("Processing video frames with style changer.")
-    frame_processors.multi_process_frames(temp_frame_paths, process_frames)
+    processors.multi_process_frames(temp_frame_paths, process_frames)

@@ -61,7 +61,7 @@ def render() -> None:
             'maximum': 100,
             'visible': True
         }
-    conditional_append_reference_faces()
+    #conditional_append_reference_faces()
 
     source_face, source_face_2 = get_avg_faces()
     source_audio_path = get_first(filter_audio_paths(state_manager.get_item('source_paths')))
@@ -168,7 +168,8 @@ def listen() -> None:
                 'source_image',
                 'source_image_2',
                 'target_image',
-                'target_video'
+                'target_video',
+                'style_transfer_image',
             ]):
         for method in ['upload', 'change', 'clear']:
             getattr(ui_component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER,
@@ -286,7 +287,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
     enable_button, disable_button = gradio.update(), gradio.update()
 
     try:
-        conditional_append_reference_faces()
+        #conditional_append_reference_faces()
         source_face, source_face_2 = get_avg_faces()
         source_audio_frame = create_empty_audio_frame()
         source_audio_frame_2 = create_empty_audio_frame()
@@ -401,6 +402,7 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
                         'target_vision_frame': target_vision_frame,
                         'target_frame_number': frame_number,
                         'source_frame': source_frame,
+                        'is_preview': True,
                     })
                     print(f"Processed with {frame_processor} in {datetime.now() - start_time}")
             except Exception as e:

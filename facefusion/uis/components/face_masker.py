@@ -37,7 +37,7 @@ def render() -> None:
 
     has_box_mask = 'box' in state_manager.get_item('face_mask_types')
     has_region_mask = 'region' in state_manager.get_item('face_mask_types')
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     show_group = False
     for processor in state_manager.get_item('processors'):
@@ -176,7 +176,7 @@ def listen() -> None:
 
 
 def toggle_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     for processor in processors:
         if processor not in non_face_processors:

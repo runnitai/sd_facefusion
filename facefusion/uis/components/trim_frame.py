@@ -71,9 +71,7 @@ def listen() -> None:
 
 
 def remote_update() -> Tuple[gradio.update, gradio.update, gradio.update]:
-    print('remote_update (trimframe)')
     if is_video(state_manager.get_item('target_path')):
-        print('remote_update (trimframe) - is_video')
         video_frame_total = count_video_frame_total(state_manager.get_item('target_path'))
         state_manager.clear_item('trim_frame_start')
         state_manager.clear_item('trim_frame_end')

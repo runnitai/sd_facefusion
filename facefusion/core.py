@@ -11,7 +11,7 @@ from facefusion.common_helper import get_first
 from facefusion.content_analyser import analyse_image, analyse_video
 from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.exit_helper import conditional_exit, hard_exit
-from facefusion.face_analyser import get_average_face, get_many_faces, get_one_face
+from facefusion.face_analyser import get_average_face, get_many_faces, get_one_face, get_avg_faces
 from facefusion.face_selector import sort_and_filter_faces
 from facefusion.face_store import append_reference_face, clear_reference_faces, get_reference_faces
 from facefusion.ffmpeg import copy_image, extract_frames, finalize_image, merge_video, replace_audio, restore_audio
@@ -165,9 +165,7 @@ def average_reference_faces():
 
 def conditional_append_reference_faces() -> None:
     if 'reference' in state_manager.get_item('face_selector_mode') and not get_reference_faces():
-        source_frames = read_static_images(state_manager.get_item('source_paths'))
-        source_faces = get_many_faces(source_frames)
-        source_face = get_average_face(source_faces)
+        source_face, source_face_2 = get_avg_faces()
         if is_video(state_manager.get_item('target_path')):
             reference_frame = get_video_frame(state_manager.get_item('target_path'),
                                               state_manager.get_item('reference_frame_number'))
@@ -382,7 +380,7 @@ def process_image(start_time: float) -> ErrorCode:
     temp_file_path = get_temp_file_path(state_manager.get_item('target_path'))
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         logger.info(wording.get('processing'), processor_module.__name__)
-        processor_module.process_image(state_manager.get_item('source_paths'), state_manager.get_item('source_paths_2'), temp_file_path, temp_file_path)
+        processor_module.process_image(temp_file_path, temp_file_path)
         processor_module.post_process()
     if is_process_stopping():
         process_manager.end()
@@ -445,7 +443,7 @@ def process_video(start_time: float) -> ErrorCode:
         for processor_module in get_processors_modules(state_manager.get_item('processors')):
             print(f"Processing {processor_module.__name__}")
             logger.info(wording.get('processing'), processor_module.__name__)
-            processor_module.process_video(state_manager.get_item('source_paths'), state_manager.get_item('source_paths_2'), temp_frame_paths)
+            processor_module.process_video(temp_frame_paths)
             print(f"Post processing {processor_module.__name__}")
             processor_module.post_process()
             print(f"Post processing {processor_module.__name__} done in {time() - start_time} seconds")

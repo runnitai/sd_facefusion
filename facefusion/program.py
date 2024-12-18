@@ -211,7 +211,10 @@ def create_processors_program() -> ArgumentParser:
                                   default=config.get_str_list('processors.processors', 'face_swapper'), nargs='+')
     job_store.register_step_keys(['processors'])
     for processor_module in get_processors_modules(available_processors):
-        processor_module.register_args(program)
+        try:
+            processor_module.register_args(program)
+        except Exception as e:
+            print(e)
     return program
 
 

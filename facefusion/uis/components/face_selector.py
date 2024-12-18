@@ -85,7 +85,7 @@ def render() -> None:
         reference_frame = get_video_frame(state_manager.get_item('target_path'),
                                           state_manager.get_item('reference_frame_number'))
         reference_face_gallery_options['value'] = extract_gallery_frames(reference_frame)
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     show_group = False
     for processor in state_manager.get_item('processors'):
@@ -393,7 +393,7 @@ def listen() -> None:
 
 
 def toggle_selector_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     for processor in processors:
         if processor not in non_face_processors:

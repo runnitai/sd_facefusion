@@ -17,7 +17,7 @@ def render() -> None:
     global FACE_LANDMARKER_MODEL_DROPDOWN
     global FACE_LANDMARKER_SCORE_SLIDER
     global FACE_LANDMARKER_GROUP
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     processors = state_manager.get_item('processors')
     show_group = False
     for processor in processors:
@@ -55,7 +55,7 @@ def listen() -> None:
 
 
 def toggle_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     for processor in processors:
         if processor not in non_face_processors:

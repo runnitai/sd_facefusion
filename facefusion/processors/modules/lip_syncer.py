@@ -278,9 +278,11 @@ def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
     return output_frames
 
 
-def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
+def process_image(target_path: str, output_path: str) -> None:
     reference_faces, reference_faces_2 = (
         get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
+    source_paths = state_manager.get_item('source_paths')
+    source_paths_2 = state_manager.get_item('source_paths_2')
     source_audio_path = get_first(filter_audio_paths(source_paths))
     source_audio_frame = get_voice_frame(source_audio_path, 25)
     source_audio_path_2 = get_first(filter_audio_paths(source_paths_2))
@@ -297,5 +299,5 @@ def process_image(source_paths: List[str], source_paths_2: List[str], target_pat
     write_image(output_path, result_frame)
 
 
-def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
+def process_video(temp_frame_paths: List[str]) -> None:
     processors.multi_process_frames(temp_frame_paths, process_frames)

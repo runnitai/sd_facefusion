@@ -285,7 +285,7 @@ def process_frames(source_paths: List[str], queue_payloads: List[QueuePayload],
         update_progress(1)
 
 
-def process_image(source_paths: List[str], target_path: str, output_path: str) -> None:
+def process_image(target_path: str, output_path: str) -> None:
     target_vision_frame = read_static_image(target_path)
     output_vision_frame = process_frame(
         {
@@ -294,5 +294,5 @@ def process_image(source_paths: List[str], target_path: str, output_path: str) -
     write_image(output_path, output_vision_frame)
 
 
-def process_video(source_paths: List[str], temp_frame_paths: List[str]) -> None:
-    processors.multi_process_frames(None, temp_frame_paths, process_frames)
+def process_video(temp_frame_paths: List[str]) -> None:
+    processors.multi_process_frames(temp_frame_paths, process_frames)

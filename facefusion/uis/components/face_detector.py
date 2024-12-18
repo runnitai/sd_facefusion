@@ -32,7 +32,7 @@ def render() -> None:
         state_manager.get_item('face_detector_model')]:
         face_detector_size_dropdown_options['choices'] = facefusion.choices.face_detector_set[
             state_manager.get_item('face_detector_model')]
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     processors = state_manager.get_item('processors')
     show_group = False
@@ -83,7 +83,7 @@ def listen() -> None:
 
 
 def toggle_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer']
+    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     for processor in processors:
         if processor not in non_face_processors:

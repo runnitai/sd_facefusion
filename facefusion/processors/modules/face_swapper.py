@@ -554,15 +554,15 @@ def process_frame(inputs: FaceSwapperInputs) -> VisionFrame:
     target_vision_frame = inputs.get('target_vision_frame')
     many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
     face_selector_mode = state_manager.get_item('face_selector_mode')
-    if state_manager.get_item('face_selector_mode') == 'many':
+    if face_selector_mode == 'many':
         if many_faces:
             for target_face in many_faces:
                 target_vision_frame = swap_face(source_face, target_face, target_vision_frame)
-    if state_manager.get_item('face_selector_mode') == 'one':
+    if face_selector_mode == 'one':
         target_face = get_one_face(many_faces)
         if target_face:
             target_vision_frame = swap_face(source_face, target_face, target_vision_frame)
-    if state_manager.get_item('face_selector_mode') == 'reference':
+    if face_selector_mode == 'reference':
         for ref_faces, src_face in [(reference_faces, source_face), (reference_faces_2, source_face_2)]:
             if not ref_faces or not src_face:
                 continue
@@ -598,7 +598,7 @@ def process_frames(queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
     return output_frames
 
 
-def process_image(source_paths: List[str], source_paths_2: List[str], target_path: str, output_path: str) -> None:
+def process_image(target_path: str, output_path: str) -> None:
     reference_faces, reference_faces_2 = (
         get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
     source_face, source_face_2 = get_avg_faces()
@@ -615,6 +615,6 @@ def process_image(source_paths: List[str], source_paths_2: List[str], target_pat
     write_image(output_path, result_frame)
 
 
-def process_video(source_paths: List[str], source_paths_2: List[str], temp_frame_paths: List[str]) -> None:
+def process_video(temp_frame_paths: List[str]) -> None:
     processors.multi_process_frames(temp_frame_paths, process_frames)
 

@@ -113,8 +113,8 @@ def update_from_path(path: str) -> Tuple[gradio.update, gradio.update]:
             out_file = gradio.update(value=path, visible=True)
 
         elif is_video(path):
-            if get_file_size(path) > FILE_SIZE_LIMIT:
-                raise ValueError("File size exceeds the limit.")
+            # if get_file_size(path) > FILE_SIZE_LIMIT:
+            #     raise ValueError("File size exceeds the limit.")
             state_manager.set_item('target_path', path)
             out_path = gradio.update(visible=False)
             out_file = gradio.update(value=path, visible=True)
@@ -135,11 +135,8 @@ def update_from_path(path: str) -> Tuple[gradio.update, gradio.update]:
 
 def update(file: File) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     # Returns: TARGET_IMAGE, TARGET_VIDEO, TARGET_PATH, SYNC_VIDEO_LIP
-    print("crf")
     clear_reference_faces()
-    print("csf")
     clear_static_faces()
-    print("cssf")
     clear_selected_faces()
     file_path = file.name if file else None
 

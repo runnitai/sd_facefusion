@@ -38,9 +38,14 @@ def sort_and_filter_faces(faces: List[Face]) -> List[Face]:
             faces = filter_by_gender(faces, state_manager.get_item('face_selector_gender'))
         if state_manager.get_item('face_selector_race'):
             faces = filter_by_race(faces, state_manager.get_item('face_selector_race'))
-        if state_manager.get_item('face_selector_age_start') or state_manager.get_item('face_selector_age_end'):
-            faces = filter_by_age(faces, state_manager.get_item('face_selector_age_start'),
-                                  state_manager.get_item('face_selector_age_end'))
+        age_start = state_manager.get_item('face_selector_age_start')
+        age_end = state_manager.get_item('face_selector_age_end')
+        if age_start == 0:
+            age_start = None
+        if age_end == 100:
+            age_end = None
+        if age_start or age_end:
+            faces = filter_by_age(faces, age_start, age_end)
     return faces
 
 
@@ -67,8 +72,9 @@ def sort_by_order(faces: List[Face], order: FaceSelectorOrder) -> List[Face]:
 
 
 def filter_by_gender(faces: List[Face], gender: Gender) -> List[Face]:
+    if gender == 'none' or not gender:
+        return faces
     filter_faces = []
-
     for face in faces:
         if face.gender == gender:
             filter_faces.append(face)
@@ -77,6 +83,10 @@ def filter_by_gender(faces: List[Face], gender: Gender) -> List[Face]:
 
 def filter_by_age(faces: List[Face], face_selector_age_start: int, face_selector_age_end: int) -> List[Face]:
     filter_faces = []
+    if not face_selector_age_start:
+        face_selector_age_start = 0
+    if not face_selector_age_end:
+        face_selector_age_end = 100
     age = range(face_selector_age_start, face_selector_age_end)
 
     for face in faces:
@@ -86,8 +96,9 @@ def filter_by_age(faces: List[Face], face_selector_age_start: int, face_selector
 
 
 def filter_by_race(faces: List[Face], race: Race) -> List[Face]:
+    if race == 'none' or not race:
+        return faces
     filter_faces = []
-
     for face in faces:
         if face.race == race:
             filter_faces.append(face)
