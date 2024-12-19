@@ -26,9 +26,6 @@ class BaseProcessor(ABC):
         if self.MODEL_SET is None or self.model_key is None:
             raise ValueError("MODEL_SET and model_key must be defined in the child class.")
         self.inference_pool = None
-
-        # Convert class name to Title Case for display
-
         self.model_path = "../.assets/models"
 
     def __new__(cls, *args, **kwargs):
@@ -40,6 +37,7 @@ class BaseProcessor(ABC):
             cls.__instances[cls].display_name = ' '.join(
                 word.capitalize() for word in re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).split('_')
             )
+            cls.__instances[cls].model_key = cls.__instances[cls].model_key or f"{class_name}_model"
         return cls.__instances[cls]
 
     @abstractmethod
