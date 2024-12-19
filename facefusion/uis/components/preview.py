@@ -15,7 +15,7 @@ from facefusion.core import conditional_append_reference_faces
 from facefusion.face_analyser import get_avg_faces
 from facefusion.face_store import clear_static_faces, get_reference_faces, clear_reference_faces
 from facefusion.filesystem import is_video, is_image, filter_audio_paths
-from facefusion.processors.core import load_processor_module
+from facefusion.processors.core import load_processor_module, get_processors_modules
 from facefusion.typing import Face, AudioFrame, VisionFrame
 from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component, get_ui_components
@@ -368,18 +368,11 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
         if analyse_frame(target_vision_frame):
             return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
         global_processors = state_manager.get_item('processors')
-        priority_order = ['face_swapper', 'style_changer', 'lip_syncer', 'face_enhancer', 'frame_enhancer',
-                          'face_debugger']
-
-        # Sort global_processors based on the priority_order
-        global_processors = sorted(
-            global_processors,
-            key=lambda fp: priority_order.index(fp) if fp in priority_order else len(priority_order)
-        )
+        processors = get_processors_modules(global_processors)
         source_frame = target_vision_frame.copy()
 
-        for frame_processor in global_processors:
-            if frame_processor == 'face_swapper':
+        for frame_processor_module in processors:
+            if frame_processor_module.display_name == 'Face Swapper':
                 reference_faces, reference_faces_2 = (
                     get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (
                     None, None))
@@ -390,7 +383,7 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
 
             try:
                 start_time = datetime.now()
-                frame_processor_module = load_processor_module(frame_processor)
+                #frame_processor_module = load_processor_module(frame_processor)
                 if frame_processor_module.pre_process('preview'):
                     target_vision_frame = frame_processor_module.process_frame({
                         'reference_faces': reference_faces,
@@ -404,8 +397,8 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
                         'source_frame': source_frame,
                         'is_preview': True,
                     })
-                    print(f"Processed with {frame_processor} in {datetime.now() - start_time}")
+                    print(f"Processed with {frame_processor_module.display_name} in {datetime.now() - start_time}")
             except Exception as e:
-                print(f"Error processing with frame processor {frame_processor}: {e}")
+                print(f"Error processing with frame processor {frame_processor_module.display_name}: {e}")
                 traceback.print_exc()
         return target_vision_frame

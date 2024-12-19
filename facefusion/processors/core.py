@@ -1,16 +1,18 @@
 import importlib
+import inspect
 import os
+import pkgutil
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
-from types import ModuleType
-from typing import Any, List
+from typing import Any, List, Dict
 
 import facefusion.globals
 from facefusion import logger, wording, state_manager
 from facefusion.face_analyser import get_avg_faces
 from facefusion.ff_status import FFStatus
 from facefusion.mytqdm import mytqdm as tqdm
+from facefusion.processors.classes.base_processor import BaseProcessor
 from facefusion.typing import ProcessFrames, QueuePayload
 
 PROCESSORS_METHODS = \
@@ -28,47 +30,73 @@ PROCESSORS_METHODS = \
         'process_video'
     ]
 
+PROCESSOR_INSTANCES: Dict[str, BaseProcessor] = {}
+
 
 def load_processor_module(processor: str) -> Any:
+    processors = [processor]
     processor_module = None
-    last_method_name = None
     try:
-        processor_module = importlib.import_module('facefusion.processors.modules.' + processor)
-        for method_name in PROCESSORS_METHODS:
-            if not hasattr(processor_module, method_name):
-                last_method_name = method_name
-                raise NotImplementedError
-    except ModuleNotFoundError as exception:
-        logger.error(wording.get('processor_not_loaded').format(processor=processor), __name__)
-        logger.debug(exception.msg, __name__)
-        # hard_exit(1)
-    except NotImplementedError:
-        logger.error(wording.get('processor_not_implemented').format(processor=processor), __name__)
-        print("Error: ", last_method_name)
-        # hard_exit(1)
+        processor_modules = get_processors_modules(processors)
+        processor_module = processor_modules[0]
+    except Exception as e:
+        logger.error(f"Failed to load processor module {processor}: {e}", __name__)
     return processor_module
 
 
-def get_processors_modules(frame_processors: List[str]) -> List[ModuleType]:
-    processor_modules = []
+def get_processors_modules(frame_processors: List[str] = None) -> List[BaseProcessor]:
+    """
+    Discover all subclasses of BaseProcessor across the facefusion.processors package
+    and instantiate them as singletons.
+    """
+    global PROCESSOR_INSTANCES
+    from facefusion.processors.classes.base_processor import BaseProcessor
+    if frame_processors is None:
+        frame_processors = []
+    # Iterate through all submodules in the facefusion.processors package
+    for loader, module_name, is_pkg in pkgutil.walk_packages(path=facefusion.processors.classes.__path__,
+                                                             prefix="facefusion.processors.classes."):
+        try:
+            # Dynamically import the module
+            module = importlib.import_module(module_name)
+        except Exception as e:
+            print(f"Failed to import {module_name}: {e}")
+            continue  # Skip modules that can't be imported
 
-    # Priority list defining the order
-    priority_order = ['face_swapper', 'age_modifier', 'lip_syncer', 'face_editor', 'expression_restorer', 'style_changer', 'face_enhancer', 'frame_enhancer', 'frame_colorizer', 'face_debugger']
+        # Find all subclasses of BaseProcessor in the module
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            try:
+                if issubclass(obj, BaseProcessor) and obj is not BaseProcessor:
+                    # Avoid duplicate instantiation and check if already loaded
+                    if name not in PROCESSOR_INSTANCES:
+                        instance = obj()
+                        PROCESSOR_INSTANCES[name] = instance
+                        print(f"Loaded processor: {name}")
+            except Exception as e:
+                pass
+    sorted_processors = []
+    # Sort the processors based on their priority attribute
+    title_processors = []
+    for processor_string in frame_processors:
+        if "_" in processor_string:
+            processor_string = processor_string.replace("_", " ").title()
+        title_processors.append(processor_string)
+    frame_processors = title_processors
+    for processor in PROCESSOR_INSTANCES.values():
+        if len(frame_processors) == 0 or (processor.display_name in frame_processors):
+            sorted_processors.append(processor)
+    sorted_processors.sort(key=lambda x: x.priority)
+    return sorted_processors
 
-    # Sort the frame_processors list based on the priority_order
-    ordered_processors = sorted(frame_processors,
-                                key=lambda x: priority_order.index(x) if x in priority_order else len(priority_order))
 
-    for processor in ordered_processors:
-        processor_module = load_processor_module(processor)
-        processor_modules.append(processor_module)
-    return processor_modules
+def list_processors(frame_processors: List[str] = None) -> List[str]:
+    all_processors = get_processors_modules(frame_processors)
+    return [processor.display_name for processor in all_processors]
 
 
 def clear_processors_modules(processors: List[str]) -> None:
-    for processor in processors:
-        processor_module = load_processor_module(processor)
-        processor_module.clear_inference_pool()
+    for processor in get_processors_modules(processors):
+        processor.clear_inference_pool()
 
 
 def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFrames) -> None:

@@ -1,0 +1,167 @@
+from argparse import ArgumentParser
+from typing import List, Tuple
+import cv2
+import numpy
+
+from facefusion import config, content_analyser, face_classifier, face_detector, face_landmarker, face_masker, \
+    face_recognizer, logger, state_manager, wording
+from facefusion.face_analyser import get_many_faces, get_one_face
+from facefusion.face_helper import warp_face_by_face_landmark_5
+from facefusion.face_masker import create_occlusion_mask, create_region_mask, create_static_box_mask
+from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
+from facefusion.face_store import get_reference_faces
+from facefusion.filesystem import in_directory, same_file_extension
+from facefusion.processors.typing import FaceDebuggerInputs
+from facefusion.program_helper import find_argument_group
+from facefusion.typing import ApplyStateItem, Args, Face, ProcessMode, QueuePayload, VisionFrame
+from facefusion.vision import read_image, read_static_image, write_image
+from facefusion.processors.classes.base_processor import BaseProcessor
+
+
+class FaceDebuggerProcessor(BaseProcessor):
+    """
+    Processor for debugging face-related attributes in images and videos.
+    """
+    MODEL_SET = {}
+    model_key = None
+    priority = 1000
+
+    def register_args(self, program: ArgumentParser) -> None:
+        group_processors = find_argument_group(program, "processors")
+        if group_processors:
+            group_processors.add_argument(
+                "--face-debugger-items",
+                help=wording.get("help.face_debugger_items").format(
+                    choices=", ".join(["bounding-box", "face-landmark-5", "face-landmark-68", "face-mask"])
+                ),
+                default=config.get_str_list("processors.face_debugger_items", "face-landmark-5 face-mask"),
+                choices=["bounding-box", "face-landmark-5", "face-landmark-68", "face-mask"],
+                nargs="+",
+                metavar="FACE_DEBUGGER_ITEMS",
+            )
+
+    def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
+        apply_state_item("face_debugger_items", args.get("face_debugger_items"))
+
+    def pre_check(self) -> bool:
+        return True
+
+    def pre_process(self, mode: ProcessMode) -> bool:
+        if mode == "output" and not in_directory(state_manager.get_item("output_path")):
+            logger.error(wording.get("specify_image_or_video_output"), __name__)
+            return False
+        if mode == "output" and not same_file_extension(
+            [state_manager.get_item("target_path"), state_manager.get_item("output_path")]
+        ):
+            logger.error(wording.get("match_target_and_output_extension"), __name__)
+            return False
+        return True
+
+    def post_process(self) -> None:
+        read_static_image.cache_clear()
+        if state_manager.get_item("video_memory_strategy") == "strict":
+            content_analyser.clear_inference_pool()
+            face_classifier.clear_inference_pool()
+            face_detector.clear_inference_pool()
+            face_landmarker.clear_inference_pool()
+            face_masker.clear_inference_pool()
+            face_recognizer.clear_inference_pool()
+
+    @staticmethod
+    def debug_face(target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
+        primary_color = (0, 0, 255)
+        primary_light_color = (100, 100, 255)
+        secondary_color = (0, 255, 0)
+        tertiary_color = (255, 255, 0)
+        bounding_box = target_face.bounding_box.astype(numpy.int32)
+        temp_vision_frame = temp_vision_frame.copy()
+        face_debugger_items = state_manager.get_item("face_debugger_items")
+
+        if "bounding-box" in face_debugger_items:
+            x1, y1, x2, y2 = bounding_box
+            cv2.rectangle(temp_vision_frame, (x1, y1), (x2, y2), primary_color, 2)
+
+        if "face-mask" in face_debugger_items:
+            crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
+                temp_vision_frame, target_face.landmark_set.get("5/68"), "arcface_128_v2", (512, 512)
+            )
+            inverse_matrix = cv2.invertAffineTransform(affine_matrix)
+            temp_size = temp_vision_frame.shape[:2][::-1]
+            crop_masks = []
+
+            if "box" in state_manager.get_item("face_mask_types"):
+                box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], 0,
+                                                  state_manager.get_item("face_mask_padding"))
+                crop_masks.append(box_mask)
+
+            if "occlusion" in state_manager.get_item("face_mask_types"):
+                occlusion_mask = create_occlusion_mask(crop_vision_frame)
+                crop_masks.append(occlusion_mask)
+
+            if "region" in state_manager.get_item("face_mask_types"):
+                region_mask = create_region_mask(crop_vision_frame, state_manager.get_item("face_mask_regions"))
+                crop_masks.append(region_mask)
+
+            crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
+            crop_mask = (crop_mask * 255).astype(numpy.uint8)
+            inverse_vision_frame = cv2.warpAffine(crop_mask, inverse_matrix, temp_size)
+            inverse_vision_frame = cv2.threshold(inverse_vision_frame, 100, 255, cv2.THRESH_BINARY)[1]
+            inverse_contours = cv2.findContours(inverse_vision_frame, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)[0]
+            cv2.drawContours(temp_vision_frame, inverse_contours, -1, secondary_color, 2)
+
+        return temp_vision_frame
+
+    def process_frame(self, inputs: FaceDebuggerInputs) -> VisionFrame:
+        reference_faces = inputs.get("reference_faces")
+        reference_faces_2 = inputs.get("reference_faces_2", None)
+        target_vision_frame = inputs.get("target_vision_frame")
+        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
+
+        if state_manager.get_item("face_selector_mode") == "many":
+            if many_faces:
+                for target_face in many_faces:
+                    target_vision_frame = self.debug_face(target_face, target_vision_frame)
+        elif state_manager.get_item("face_selector_mode") == "one":
+            target_face = get_one_face(many_faces)
+            if target_face:
+                target_vision_frame = self.debug_face(target_face, target_vision_frame)
+        elif state_manager.get_item("face_selector_mode") == "reference":
+            for ref_faces in [reference_faces, reference_faces_2]:
+                similar_faces = find_similar_faces(
+                    many_faces, ref_faces, state_manager.get_item("reference_face_distance")
+                )
+                if similar_faces:
+                    for similar_face in similar_faces:
+                        target_vision_frame = self.debug_face(similar_face, target_vision_frame)
+        return target_vision_frame
+
+    def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
+        reference_faces, reference_faces_2 = get_reference_faces() if "reference" in state_manager.get_item(
+            "face_selector_mode") else (None, None)
+        output_frames = []
+        for queue_payload in queue_payloads:
+            target_vision_path = queue_payload["frame_path"]
+            target_vision_frame = read_image(target_vision_path)
+            result_frame = self.process_frame(
+                {
+                    "reference_faces": reference_faces,
+                    "reference_faces_2": reference_faces_2,
+                    "target_vision_frame": target_vision_frame,
+                }
+            )
+            write_image(target_vision_path, result_frame)
+            output_frames.append((queue_payload["frame_number"], target_vision_path))
+        return output_frames
+
+    def process_image(self, target_path: str, output_path: str) -> None:
+        reference_faces, reference_faces_2 = get_reference_faces() if "reference" in state_manager.get_item(
+            "face_selector_mode") else (None, None)
+        target_vision_frame = read_static_image(target_path)
+        result_frame = self.process_frame(
+            {
+                "reference_faces": reference_faces,
+                "reference_faces_2": reference_faces_2,
+                "target_vision_frame": target_vision_frame,
+            }
+        )
+        write_image(output_path, result_frame)

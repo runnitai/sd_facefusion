@@ -379,7 +379,7 @@ def process_image(start_time: float) -> ErrorCode:
     # process image
     temp_file_path = get_temp_file_path(state_manager.get_item('target_path'))
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
-        logger.info(wording.get('processing'), processor_module.__name__)
+        logger.info(wording.get('processing'), processor_module.display_name)
         processor_module.process_image(temp_file_path, temp_file_path)
         processor_module.post_process()
     if is_process_stopping():
@@ -441,12 +441,12 @@ def process_video(start_time: float) -> ErrorCode:
     temp_frame_paths = get_temp_frame_paths(state_manager.get_item('target_path'))
     if temp_frame_paths:
         for processor_module in get_processors_modules(state_manager.get_item('processors')):
-            print(f"Processing {processor_module.__name__}")
-            logger.info(wording.get('processing'), processor_module.__name__)
+            print(f"Processing {processor_module.display_name}")
+            logger.info(wording.get('processing'), processor_module.display_name)
             processor_module.process_video(temp_frame_paths)
-            print(f"Post processing {processor_module.__name__}")
+            print(f"Post processing {processor_module.display_name}")
             processor_module.post_process()
-            print(f"Post processing {processor_module.__name__} done in {time() - start_time} seconds")
+            print(f"Post processing {processor_module.display_name} done in {time() - start_time} seconds")
         if is_process_stopping():
             return 4
     else:

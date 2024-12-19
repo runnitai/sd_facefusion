@@ -83,7 +83,7 @@ style_changer_skip_head: Optional[bool] = False
 style_transfer_model: Optional[str] = 'style_transfer'
 style_transfer_source: Optional[str] = None
 # frame processors
-processors: List[str] = ["face_swapper"]
+processors: List[str] = ["Face Swapper"]
 # uis
 ui_layouts: List[str] = ["default"]
 
