@@ -3,13 +3,11 @@ from typing import List, Tuple
 
 import numpy
 
-from facefusion import config, content_analyser, face_classifier, face_detector, face_landmarker, face_masker, \
-    face_recognizer, inference_manager, logger, process_manager, state_manager, wording
+from facefusion import config, inference_manager, logger, process_manager, state_manager, wording
 from facefusion.common_helper import get_first
 from facefusion.execution import has_execution_provider
 from facefusion.face_analyser import get_many_faces, get_one_face, get_avg_faces
 from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
-from facefusion.face_masker import create_occlusion_mask, create_region_mask, create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import has_image, in_directory, is_image, is_video, \
@@ -17,14 +15,17 @@ from facefusion.filesystem import has_image, in_directory, is_image, is_video, \
 from facefusion.inference_manager import get_static_model_initializer
 from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.pixel_boost import explode_pixel_boost, implode_pixel_boost
 from facefusion.processors.typing import FaceSwapperInputs
 from facefusion.program_helper import find_argument_group, suggest_face_swapper_pixel_boost_choices
+from facefusion.stopwatch import StopWatch
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Embedding, Face, InferencePool, ModelOptions, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame, Padding
 from facefusion.vision import read_image, read_static_image, unpack_resolution, write_image
+from facefusion.workers.classes.face_masker import FaceMasker
+from facefusion.workers.core import clear_worker_modules
 
 
 def update_padding(padding: Padding, frame_number: int) -> Padding:
@@ -317,15 +318,19 @@ class FaceSwapper(BaseProcessor):
 
     model_key: str = 'face_swapper_model'
     priority: int = 0
+    preload: bool = True
+    preferred_provider = 'tensorrt'
 
     def register_args(self, program: ArgumentParser) -> None:
         group_processors = find_argument_group(program, 'processors')
         if group_processors:
             group_processors.add_argument('--face-swapper-model', help=wording.get('help.face_swapper_model'),
-                                          default=config.get_str_value('processors.face_swapper_model', 'inswapper_128_fp16'),
-                                          choices=processors_choices.face_swapper_set.keys())
+                                          default=config.get_str_value('processors.face_swapper_model',
+                                                                       'inswapper_128_fp16'),
+                                          choices=self.list_models())
             face_swapper_pixel_boost_choices = suggest_face_swapper_pixel_boost_choices(program)
-            group_processors.add_argument('--face-swapper-pixel-boost', help=wording.get('help.face_swapper_pixel_boost'),
+            group_processors.add_argument('--face-swapper-pixel-boost',
+                                          help=wording.get('help.face_swapper_pixel_boost'),
                                           default=config.get_str_value('processors.face_swapper_pixel_boost',
                                                                        get_first(face_swapper_pixel_boost_choices)),
                                           choices=face_swapper_pixel_boost_choices)
@@ -358,101 +363,48 @@ class FaceSwapper(BaseProcessor):
             return False
         return True
 
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        if state_manager.get_item('video_memory_strategy') in ['strict', 'moderate']:
-            self.clear_inference_pool()
-            get_static_model_initializer.cache_clear()
-        if state_manager.get_item('video_memory_strategy') == 'strict':
-            content_analyser.clear_inference_pool()
-            face_classifier.clear_inference_pool()
-            face_detector.clear_inference_pool()
-            face_landmarker.clear_inference_pool()
-            face_masker.clear_inference_pool()
-            face_recognizer.clear_inference_pool()
-
-    def swap_face(self, source_face: Face, target_face: Face, temp_vision_frame: VisionFrame, frame_number=-1) -> VisionFrame:
-        model_template = self.get_model_options().get('template')
-        model_size = self.get_model_options().get('size')
-        pixel_boost_size = unpack_resolution(state_manager.get_item('face_swapper_pixel_boost'))
-        pixel_boost_total = pixel_boost_size[0] // model_size[0]
-        crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
-                                                                        target_face.landmark_set.get('5/68'),
-                                                                        model_template, pixel_boost_size)
-        temp_vision_frames = []
-        crop_masks = []
-        padding = state_manager.get_item('face_mask_padding')
-        fps = state_manager.get_item('output_video_fps')
-        padding = update_padding(padding, frame_number)
-
-        if 'box' in state_manager.get_item('face_mask_types'):
-            box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
-                                              padding)
-            crop_masks.append(box_mask)
-
-        if 'occlusion' in state_manager.get_item('face_mask_types'):
-            occlusion_mask = create_occlusion_mask(crop_vision_frame)
-            crop_masks.append(occlusion_mask)
-
-        pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
-        for pixel_boost_vision_frame in pixel_boost_vision_frames:
-            pixel_boost_vision_frame = self.prepare_crop_frame(pixel_boost_vision_frame)
-            pixel_boost_vision_frame = self.forward_swap_face(source_face, pixel_boost_vision_frame)
-            pixel_boost_vision_frame = self.normalize_crop_frame(pixel_boost_vision_frame)
-            temp_vision_frames.append(pixel_boost_vision_frame)
-        crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
-
-        if 'region' in state_manager.get_item('face_mask_types'):
-            region_mask = create_region_mask(crop_vision_frame, state_manager.get_item('face_mask_regions'))
-            crop_masks.append(region_mask)
-
-        crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
-        temp_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
-        return temp_vision_frame
-
-    def forward_swap_face(self, source_face: Face, crop_vision_frame: VisionFrame) -> VisionFrame:
-        face_swapper = self.get_inference_pool().get('face_swapper')
-        model_type = self.get_model_options().get('type')
-        face_swapper_inputs = {}
-
-        for face_swapper_input in face_swapper.get_inputs():
-            if face_swapper_input.name == 'source':
-                if model_type == 'blendswap' or model_type == 'uniface':
-                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_frame(source_face)
-                else:
-                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_embedding(source_face)
-            if face_swapper_input.name == 'target':
-                face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
-
-        with conditional_thread_semaphore():
-            crop_vision_frame = face_swapper.run(None, face_swapper_inputs)[0][0]
-        return crop_vision_frame
-
     def process_frame(self, inputs: FaceSwapperInputs) -> VisionFrame:
+        watch = StopWatch()
+        watch.start("face_swapper")
         reference_faces = inputs.get('reference_faces')
         reference_faces_2 = inputs.get('reference_faces_2')
         source_face = inputs.get('source_face')
         source_face_2 = inputs.get('source_face_2')
         target_vision_frame = inputs.get('target_vision_frame')
+        watch.next("get_faces")
         many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
         face_selector_mode = state_manager.get_item('face_selector_mode')
         if face_selector_mode == 'many':
+            watch.next("many_faces")
             if many_faces:
+                face_idx = 0
                 for target_face in many_faces:
+                    watch.next(f"swap_face_{face_idx}")
                     target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame)
+                    face_idx += 1
         if face_selector_mode == 'one':
+            watch.next("one_face")
             target_face = get_one_face(many_faces)
             if target_face:
                 target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame)
         if face_selector_mode == 'reference':
+            watch.next("reference_faces")
+            ref_idx = 0
             for ref_faces, src_face in [(reference_faces, source_face), (reference_faces_2, source_face_2)]:
                 if not ref_faces or not src_face:
                     continue
+                watch.next(f"reference_face_find_{ref_idx}")
                 similar_faces = find_similar_faces(many_faces, ref_faces,
                                                    state_manager.get_item('reference_face_distance'))
                 if similar_faces:
+                    similar_idx = 0
                     for similar_face in similar_faces:
+                        watch.next(f"swap_face_{ref_idx}_{similar_idx}")
                         target_vision_frame = self.swap_face(src_face, similar_face, target_vision_frame)
+                        similar_idx += 1
+                ref_idx += 1
+        watch.stop()
+        watch.report()
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -509,15 +461,77 @@ class FaceSwapper(BaseProcessor):
         model_context = __name__ + '.' + state_manager.get_item(self.model_key)
         inference_manager.clear_inference_pool(model_context)
 
+    def swap_face(self, source_face: Face, target_face: Face, temp_vision_frame: VisionFrame,
+                  frame_number=-1) -> VisionFrame:
+        masker = FaceMasker()
+        model_template = self.get_model_options().get('template')
+        model_size = self.get_model_options().get('size')
+        pixel_boost_size = unpack_resolution(state_manager.get_item('face_swapper_pixel_boost'))
+        pixel_boost_total = pixel_boost_size[0] // model_size[0]
+        crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
+                                                                        target_face.landmark_set.get('5/68'),
+                                                                        model_template, pixel_boost_size)
+        temp_vision_frames = []
+        crop_masks = []
+        padding = state_manager.get_item('face_mask_padding')
+        fps = state_manager.get_item('output_video_fps')
+        padding = update_padding(padding, frame_number)
+
+        if 'box' in state_manager.get_item('face_mask_types'):
+            box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1],
+                                                     state_manager.get_item('face_mask_blur'),
+                                                     padding)
+            crop_masks.append(box_mask)
+
+        if 'occlusion' in state_manager.get_item('face_mask_types'):
+            occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
+            crop_masks.append(occlusion_mask)
+
+        pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
+        for pixel_boost_vision_frame in pixel_boost_vision_frames:
+            pixel_boost_vision_frame = self.prepare_crop_frame(pixel_boost_vision_frame)
+            pixel_boost_vision_frame = self.forward_swap_face(source_face, pixel_boost_vision_frame)
+            pixel_boost_vision_frame = self.normalize_crop_frame(pixel_boost_vision_frame)
+            temp_vision_frames.append(pixel_boost_vision_frame)
+        crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
+
+        if 'region' in state_manager.get_item('face_mask_types'):
+            region_mask = masker.create_region_mask(crop_vision_frame, state_manager.get_item('face_mask_regions'))
+            crop_masks.append(region_mask)
+
+        crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
+        temp_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
+        return temp_vision_frame
+
+    def forward_swap_face(self, source_face: Face, crop_vision_frame: VisionFrame) -> VisionFrame:
+        face_swapper = self.get_inference_pool().get('face_swapper')
+        model_type = self.get_model_options().get('type')
+        face_swapper_inputs = {}
+
+        for face_swapper_input in face_swapper.get_inputs():
+            if face_swapper_input.name == 'source':
+                if model_type == 'blendswap' or model_type == 'uniface':
+                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_frame(source_face)
+                else:
+                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_embedding(source_face)
+            if face_swapper_input.name == 'target':
+                face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
+
+        with conditional_thread_semaphore():
+            crop_vision_frame = face_swapper.run(None, face_swapper_inputs)[0][0]
+        return crop_vision_frame
+
     def prepare_source_frame(self, source_face: Face) -> VisionFrame:
         model_type = self.get_model_options().get('type')
         source_vision_frame = read_static_image(get_first(state_manager.get_item('source_paths')))
 
         if model_type == 'blendswap':
-            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark_set.get('5/68'),
+            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame,
+                                                                  source_face.landmark_set.get('5/68'),
                                                                   'arcface_112_v2', (112, 112))
         if model_type == 'uniface':
-            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame, source_face.landmark_set.get('5/68'),
+            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame,
+                                                                  source_face.landmark_set.get('5/68'),
                                                                   'ffhq_512', (256, 256))
         source_vision_frame = source_vision_frame[:, :, ::-1] / 255.0
         source_vision_frame = source_vision_frame.transpose(2, 0, 1)
