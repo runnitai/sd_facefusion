@@ -1,24 +1,24 @@
 from argparse import ArgumentParser
 from typing import List, Tuple
+
 import cv2
 import numpy
 
-from facefusion import config, content_analyser, face_classifier, face_detector, face_landmarker, face_masker, \
-    face_recognizer, logger, state_manager, wording
+from facefusion import config, logger, state_manager, wording
 from facefusion.face_analyser import get_many_faces, get_one_face
 from facefusion.face_helper import warp_face_by_face_landmark_5
-from facefusion.face_masker import create_occlusion_mask, create_region_mask, create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import in_directory, same_file_extension
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import FaceDebuggerInputs
 from facefusion.program_helper import find_argument_group
 from facefusion.typing import ApplyStateItem, Args, Face, ProcessMode, QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, write_image
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.workers.classes.face_masker import FaceMasker
 
 
-class FaceDebuggerProcessor(BaseProcessor):
+class FaceDebugger(BaseProcessor):
     """
     Processor for debugging face-related attributes in images and videos.
     """
@@ -51,7 +51,7 @@ class FaceDebuggerProcessor(BaseProcessor):
             logger.error(wording.get("specify_image_or_video_output"), __name__)
             return False
         if mode == "output" and not same_file_extension(
-            [state_manager.get_item("target_path"), state_manager.get_item("output_path")]
+                [state_manager.get_item("target_path"), state_manager.get_item("output_path")]
         ):
             logger.error(wording.get("match_target_and_output_extension"), __name__)
             return False
@@ -59,16 +59,11 @@ class FaceDebuggerProcessor(BaseProcessor):
 
     def post_process(self) -> None:
         read_static_image.cache_clear()
-        if state_manager.get_item("video_memory_strategy") == "strict":
-            content_analyser.clear_inference_pool()
-            face_classifier.clear_inference_pool()
-            face_detector.clear_inference_pool()
-            face_landmarker.clear_inference_pool()
-            face_masker.clear_inference_pool()
-            face_recognizer.clear_inference_pool()
+        super().post_process()
 
     @staticmethod
     def debug_face(target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
+        masker = FaceMasker()
         primary_color = (0, 0, 255)
         primary_light_color = (100, 100, 255)
         secondary_color = (0, 255, 0)
@@ -90,16 +85,16 @@ class FaceDebuggerProcessor(BaseProcessor):
             crop_masks = []
 
             if "box" in state_manager.get_item("face_mask_types"):
-                box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], 0,
-                                                  state_manager.get_item("face_mask_padding"))
+                box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1], 0,
+                                                         state_manager.get_item("face_mask_padding"))
                 crop_masks.append(box_mask)
 
             if "occlusion" in state_manager.get_item("face_mask_types"):
-                occlusion_mask = create_occlusion_mask(crop_vision_frame)
+                occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
                 crop_masks.append(occlusion_mask)
 
             if "region" in state_manager.get_item("face_mask_types"):
-                region_mask = create_region_mask(crop_vision_frame, state_manager.get_item("face_mask_regions"))
+                region_mask = masker.create_region_mask(crop_vision_frame, state_manager.get_item("face_mask_regions"))
                 crop_masks.append(region_mask)
 
             crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)

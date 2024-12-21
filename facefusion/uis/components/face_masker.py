@@ -5,6 +5,7 @@ import gradio
 import facefusion.choices
 from facefusion import wording, state_manager
 from facefusion.common_helper import calc_int_step, calc_float_step
+from facefusion.processors.core import get_processors_modules
 from facefusion.typing import FaceMaskType, FaceMaskRegion
 from facefusion.uis.core import register_ui_component, get_ui_component, get_ui_components
 
@@ -20,6 +21,7 @@ MASK_ENABLE_BUTTON: Optional[gradio.Button] = None
 MASK_CLEAR_BUTTON: Optional[gradio.Button] = None
 BOTTOM_MASK_POSITIONS: Optional[gradio.HTML] = None
 FACE_MASK_PADDING_GROUP: Optional[gradio.Group] = None
+
 
 def render() -> None:
     global FACE_MASK_TYPES_CHECKBOX_GROUP
@@ -176,10 +178,11 @@ def listen() -> None:
 
 
 def toggle_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
+    all_processors = get_processors_modules()
+    all_face_processor_names = [processor.display_name for processor in all_processors if processor.is_face_processor]
     # Make the group visible if any face processor is selected
     for processor in processors:
-        if processor not in non_face_processors:
+        if processor in all_face_processor_names:
             return gradio.update(visible=True)
     return gradio.update(visible=False)
 

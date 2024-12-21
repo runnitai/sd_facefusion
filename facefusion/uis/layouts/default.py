@@ -9,7 +9,8 @@ from facefusion.uis.components import (age_modifier_options, common_options, exp
                                        lip_syncer_options, style_changer_options, \
                                        style_transfer_options, output, \
                                        output_options, \
-                                       preview, processors, source, target, temp_frame, trim_frame)
+                                       preview, processors, source, target, temp_frame, trim_frame, execution,
+                                       execution_thread_count, execution_queue_count)
 
 
 def pre_check() -> bool:
@@ -42,10 +43,10 @@ def render() -> gradio.Blocks:
                     lip_syncer_options.render()
                 with gradio.Blocks():
                     style_changer_options.render()
-                # with gradio.Blocks():
-                #     execution.render()
-                #     execution_thread_count.render()
-                #     execution_queue_count.render()
+                with gradio.Blocks():
+                    execution.render()
+                    execution_thread_count.render()
+                    execution_queue_count.render()
                 # with gradio.Blocks():
                 #     memory.render()
                 with gradio.Blocks():
@@ -101,9 +102,9 @@ def listen() -> None:
     lip_syncer_options.listen()
     style_changer_options.listen()
     style_transfer_options.listen()
-    # execution.listen()
-    # execution_thread_count.listen()
-    # execution_queue_count.listen()
+    execution.listen()
+    execution_thread_count.listen()
+    execution_queue_count.listen()
     # memory.listen()
     temp_frame.listen()
     output_options.listen()

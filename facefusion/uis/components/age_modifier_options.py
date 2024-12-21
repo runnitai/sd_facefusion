@@ -5,13 +5,14 @@ import gradio
 from facefusion import state_manager, wording
 from facefusion.common_helper import calc_float_step
 from facefusion.processors import choices as processors_choices
+from facefusion.processors.classes.age_modifier import AgeModifier
 from facefusion.processors.core import load_processor_module
 from facefusion.processors.typing import AgeModifierModel
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 AGE_MODIFIER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 AGE_MODIFIER_DIRECTION_SLIDER: Optional[gradio.Slider] = None
-
+PROCESSOR_KEY = 'Age Modifier'
 
 def render() -> None:
     global AGE_MODIFIER_MODEL_DROPDOWN
@@ -19,9 +20,9 @@ def render() -> None:
 
     AGE_MODIFIER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.age_modifier_model_dropdown'),
-        choices=processors_choices.age_modifier_models,
+        choices=AgeModifier().list_models(),
         value=state_manager.get_item('age_modifier_model'),
-        visible='age_modifier' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     AGE_MODIFIER_DIRECTION_SLIDER = gradio.Slider(
         label=wording.get('uis.age_modifier_direction_slider'),
@@ -29,7 +30,7 @@ def render() -> None:
         step=calc_float_step(processors_choices.age_modifier_direction_range),
         minimum=processors_choices.age_modifier_direction_range[0],
         maximum=processors_choices.age_modifier_direction_range[-1],
-        visible='age_modifier' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     register_ui_component('age_modifier_model_dropdown', AGE_MODIFIER_MODEL_DROPDOWN)
     register_ui_component('age_modifier_direction_slider', AGE_MODIFIER_DIRECTION_SLIDER)
@@ -47,12 +48,12 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
-    has_age_modifier = 'age_modifier' in processors
+    has_age_modifier = 'Age Modifier' in processors
     return gradio.update(visible=has_age_modifier), gradio.update(visible=has_age_modifier)
 
 
 def update_age_modifier_model(age_modifier_model: AgeModifierModel) -> gradio.update:
-    age_modifier_module = load_processor_module('age_modifier')
+    age_modifier_module = load_processor_module(PROCESSOR_KEY)
     age_modifier_module.clear_inference_pool()
     state_manager.set_item('age_modifier_model', age_modifier_model)
 

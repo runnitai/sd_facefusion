@@ -9,9 +9,11 @@ from facefusion.args import apply_args
 from facefusion.core import route
 from facefusion.download import conditional_download
 from facefusion.memory import tune_performance
+from facefusion.processors.core import get_processors_modules
 from facefusion.program import create_program
 from facefusion.program_helper import validate_args
 from facefusion.uis.core import load_ui_layout_module
+from facefusion.workers.core import list_workers
 from modules import script_callbacks
 from modules.paths_internal import script_path
 
@@ -55,21 +57,28 @@ def load_facefusion():
     out_dir = os.path.join(script_path, default_output_dir, 'facefusion')
     globals.output_path = out_dir
     state_manager.init_item('output_path', out_dir)
-    #signal.signal(signal.SIGINT, lambda signal_number, frame: graceful_exit(0))
     program = create_program()
+    og_args = vars(program.parse_args())
+    program.add_argument_group('processors')
+    all_processors = get_processors_modules()
+    for processor in all_processors:
+        processor.register_args(program)
+    list_workers()
+
+    globals_dict = {}
 
     if validate_args(program):
         args = vars(program.parse_args())
-        #apply_args(args, False)
-
+        ff_args = {key: args[key] for key in args if key not in og_args}
+        globals_dict.update(ff_args)
         if state_manager.get_item('command'):
             logger.init(state_manager.get_item('log_level'))
             route(args)
 
-    globals_dict = {}
     for key in globals.__dict__:
-        if not key.startswith('__'):
+        if not key.startswith('__') and key not in globals_dict:
             globals_dict[key] = globals.__dict__[key]
+            #logger.warn(f"Global variable {key} is not set.", __name__)
 
     ff_ini = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'facefusion.ini'))
     globals_dict['config_path'] = ff_ini

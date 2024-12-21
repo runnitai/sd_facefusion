@@ -4,15 +4,13 @@ from typing import List, Tuple
 import cv2
 import numpy
 
-from facefusion import config, content_analyser, face_classifier, face_detector, face_landmarker, face_masker, \
-    face_recognizer, logger, process_manager, state_manager, wording
+from facefusion import config, logger, process_manager, state_manager, wording
 from facefusion.face_analyser import get_many_faces, get_one_face
 from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
-from facefusion.face_masker import create_occlusion_mask, create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import in_directory, is_image, is_video, resolve_relative_path, same_file_extension
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.live_portrait import create_rotation, limit_expression
 from facefusion.processors.typing import ExpressionRestorerInputs
 from facefusion.processors.typing import LivePortraitExpression, LivePortraitFeatureVolume, LivePortraitMotionPoints, \
@@ -21,6 +19,7 @@ from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import conditional_thread_semaphore, thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Face, QueuePayload, VisionFrame
 from facefusion.vision import get_video_frame, read_image, read_static_image, write_image
+from facefusion.workers.classes.face_masker import FaceMasker
 
 
 def normalize_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
@@ -110,18 +109,6 @@ class ExpressionRestorer(BaseProcessor):
                 return False
         return True
 
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        if state_manager.get_item("video_memory_strategy") in ["strict", "moderate"]:
-            self.clear_inference_pool()
-        if state_manager.get_item("video_memory_strategy") == "strict":
-            content_analyser.clear_inference_pool()
-            face_classifier.clear_inference_pool()
-            face_detector.clear_inference_pool()
-            face_landmarker.clear_inference_pool()
-            face_masker.clear_inference_pool()
-            face_recognizer.clear_inference_pool()
-
     def process_frame(self, inputs: ExpressionRestorerInputs) -> VisionFrame:
         reference_faces = inputs.get("reference_faces")
         reference_faces_2 = inputs.get("reference_faces_2")
@@ -144,7 +131,8 @@ class ExpressionRestorer(BaseProcessor):
                     similar_faces = find_similar_faces(many_faces, ref_faces,
                                                        state_manager.get_item("reference_face_distance"))
                     for similar_face in similar_faces:
-                        target_vision_frame = self.restore_expression(source_vision_frame, similar_face, target_vision_frame)
+                        target_vision_frame = self.restore_expression(source_vision_frame, similar_face,
+                                                                      target_vision_frame)
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -185,7 +173,9 @@ class ExpressionRestorer(BaseProcessor):
         )
         write_image(output_path, output_vision_frame)
 
-    def restore_expression(self, source_vision_frame: VisionFrame, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
+    def restore_expression(self, source_vision_frame: VisionFrame, target_face: Face,
+                           temp_vision_frame: VisionFrame) -> VisionFrame:
+        masker = FaceMasker()
         model_template = self.get_model_options().get("template")
         model_size = self.get_model_options().get("size")
         expression_restorer_factor = float(
@@ -200,13 +190,13 @@ class ExpressionRestorer(BaseProcessor):
         target_crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
             temp_vision_frame, target_face.landmark_set.get("5/68"), model_template, model_size
         )
-        box_mask = create_static_box_mask(
+        box_mask = masker.create_static_box_mask(
             target_crop_vision_frame.shape[:2][::-1], state_manager.get_item("face_mask_blur"), (0, 0, 0, 0)
         )
         crop_masks = [box_mask]
 
         if "occlusion" in state_manager.get_item("face_mask_types"):
-            occlusion_mask = create_occlusion_mask(target_crop_vision_frame)
+            occlusion_mask = masker.create_occlusion_mask(target_crop_vision_frame)
             crop_masks.append(occlusion_mask)
 
         source_crop_vision_frame = self.prepare_crop_frame(source_crop_vision_frame)
@@ -229,7 +219,7 @@ class ExpressionRestorer(BaseProcessor):
         rotation = create_rotation(pitch, yaw, roll)
         source_expression[:, [0, 4, 5, 8, 9]] = target_expression[:, [0, 4, 5, 8, 9]]
         source_expression = source_expression * expression_restorer_factor + target_expression * (
-            1 - expression_restorer_factor
+                1 - expression_restorer_factor
         )
         source_expression = limit_expression(source_expression)
         source_motion_points = scale * (motion_points @ rotation.T + source_expression) + translation
@@ -264,8 +254,8 @@ class ExpressionRestorer(BaseProcessor):
         return pitch, yaw, roll, scale, translation, expression, motion_points
 
     def forward_generate_frame(
-        self, feature_volume: LivePortraitFeatureVolume, source_motion_points: LivePortraitMotionPoints,
-        target_motion_points: LivePortraitMotionPoints
+            self, feature_volume: LivePortraitFeatureVolume, source_motion_points: LivePortraitMotionPoints,
+            target_motion_points: LivePortraitMotionPoints
     ) -> VisionFrame:
         generator = self.get_inference_pool().get("generator")
 

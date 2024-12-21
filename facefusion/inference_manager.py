@@ -18,21 +18,22 @@ INFERENCE_POOLS: InferencePoolSet = \
     }
 
 
-def get_inference_pool(model_context: str, model_sources: DownloadSet) -> InferencePool:
+def get_inference_pool(model_context: str, model_sources: DownloadSet, preferred_provider: str = "default") -> InferencePool:
     global INFERENCE_POOLS
 
     with thread_lock():
         while process_manager.is_checking():
             sleep(0.5)
         app_context = detect_app_context()
-        inference_context = get_inference_context(model_context)
-
-        if app_context == 'cli' and INFERENCE_POOLS.get('ui').get(inference_context):
+        inference_context = get_inference_context(model_context, preferred_provider)
+        requested_context = INFERENCE_POOLS.get(app_context).get(inference_context)
+        if app_context == 'cli' and INFERENCE_POOLS.get('ui').get(inference_context) and not requested_context:
             INFERENCE_POOLS['cli'][inference_context] = INFERENCE_POOLS.get('ui').get(inference_context)
-        if app_context == 'ui' and INFERENCE_POOLS.get('cli').get(inference_context):
+        if app_context == 'ui' and INFERENCE_POOLS.get('cli').get(inference_context) and not requested_context:
             INFERENCE_POOLS['ui'][inference_context] = INFERENCE_POOLS.get('cli').get(inference_context)
-        if not INFERENCE_POOLS.get(app_context).get(inference_context):
-            execution_provider_keys = resolve_execution_provider_keys(model_context)
+        if not requested_context:
+            execution_provider_keys = resolve_execution_provider_keys(model_context, preferred_provider)
+            print(f"Creating inference pool for {model_context} with {execution_provider_keys}.")
             INFERENCE_POOLS[app_context][inference_context] = create_inference_pool(model_sources,
                                                                                     state_manager.get_item(
                                                                                         'execution_device_id'),
@@ -51,11 +52,11 @@ def create_inference_pool(model_sources: DownloadSet, execution_device_id: str,
     return inference_pool
 
 
-def clear_inference_pool(model_context: str) -> None:
+def clear_inference_pool(model_context: str, preferred_provider: str = "default") -> None:
     global INFERENCE_POOLS
 
     app_context = detect_app_context()
-    inference_context = get_inference_context(model_context)
+    inference_context = get_inference_context(model_context, preferred_provider)
 
     if INFERENCE_POOLS.get(app_context).get(inference_context):
         del INFERENCE_POOLS[app_context][inference_context]
@@ -73,21 +74,17 @@ def get_static_model_initializer(model_path: str) -> ModelInitializer:
     return onnx.numpy_helper.to_array(model.graph.initializer[-1])
 
 
-def resolve_execution_provider_keys(model_context: str) -> List[ExecutionProviderKey]:
-    if has_execution_provider('coreml') and (
-            model_context.startswith('facefusion.processors.modules.age_modifier') or model_context.startswith(
-            'facefusion.processors.modules.frame_colorizer')):
+def resolve_execution_provider_keys(model_context: str, preferred_provider: str = "default") -> List[ExecutionProviderKey]:
+    if has_execution_provider('coreml') and ('age_modifier' in model_context or 'frame_colorizer' in model_context):
         return ['cpu']
-    if has_execution_provider('tensorrt') and has_execution_provider('cuda'):
-        cuda_keys = ["age_modifier", "frame_colorizer", "face_detector_model", "face_landmarker_model", "_head"]
-        # cuda_keys = ["age_modifier", "frame_colorizer", "face_swapper"]
-        if any(key in model_context for key in cuda_keys):
-            #print(f"model_context: {model_context}, returning ['cuda']")
-            return ['cuda']
+    if preferred_provider != "default" and has_execution_provider(preferred_provider):
+        print(f"Using preferred provider {preferred_provider} for {model_context}.")
+        return [preferred_provider]
+
     return state_manager.get_item('execution_providers')
 
 
-def get_inference_context(model_context: str) -> str:
-    execution_provider_keys = resolve_execution_provider_keys(model_context)
+def get_inference_context(model_context: str, preferred_provider: str = "default") -> str:
+    execution_provider_keys = resolve_execution_provider_keys(model_context, preferred_provider)
     inference_context = model_context + '.' + '_'.join(execution_provider_keys)
     return inference_context

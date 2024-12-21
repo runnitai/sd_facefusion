@@ -4,9 +4,9 @@ import gradio
 
 from facefusion import wording, state_manager
 from facefusion.uis.core import get_ui_component, register_ui_component
-from facefusion.uis.typing import File
 
 STYLE_TARGET_IMAGE: Optional[gradio.Image] = None
+PROCESSOR_KEY = 'Style Transfer'
 
 
 def render() -> None:
@@ -14,7 +14,7 @@ def render() -> None:
     STYLE_TARGET_IMAGE = gradio.Image(
         label=wording.get('uis.style_target_image'),
         value=state_manager.get_item('style_transfer_image'),
-        visible='style_transfer' in state_manager.get_item('processors'),
+        visible=PROCESSOR_KEY in state_manager.get_item('processors'),
         type='filepath',
     )
 
@@ -31,7 +31,7 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> gradio.update:
-    has_style_transfer = 'style_transfer' in processors
+    has_style_transfer = 'Style Transfer' in processors
     return gradio.update(visible=has_style_transfer)
 
 

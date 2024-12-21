@@ -8,7 +8,7 @@ from numpy._typing import NDArray
 from facefusion.ffmpeg import read_audio_buffer
 from facefusion.filesystem import is_audio
 from facefusion.typing import Audio, AudioFrame, Fps, Mel, MelFilterBank, Spectrogram
-from facefusion.voice_extractor import batch_extract_voice
+from facefusion.workers.classes.voice_extractor import VoiceExtractor
 
 
 @lru_cache(maxsize=128)
@@ -36,6 +36,7 @@ def read_static_voice(audio_path: str, fps: Fps) -> Optional[List[AudioFrame]]:
 
 
 def read_voice(audio_path: str, fps: Fps) -> Optional[List[AudioFrame]]:
+    extractor = VoiceExtractor()
     sample_rate = 48000
     channel_total = 2
     chunk_size = 240 * 1024
@@ -44,7 +45,7 @@ def read_voice(audio_path: str, fps: Fps) -> Optional[List[AudioFrame]]:
     if is_audio(audio_path):
         audio_buffer = read_audio_buffer(audio_path, sample_rate, channel_total)
         audio = numpy.frombuffer(audio_buffer, dtype=numpy.int16).reshape(-1, 2)
-        audio = batch_extract_voice(audio, chunk_size, step_size)
+        audio = extractor.batch_extract_voice(audio, chunk_size, step_size)
         audio = prepare_voice(audio)
         spectrogram = create_spectrogram(audio)
         audio_frames = extract_audio_frames(spectrogram, fps)

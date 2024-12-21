@@ -3,13 +3,13 @@ from typing import List, Optional, Tuple
 import gradio
 
 from facefusion import wording, state_manager
-from facefusion.processors import choices as frame_processors_choices
-from facefusion.processors.modules.style_changer import clear_inference_pool
+from facefusion.processors.classes.style_changer import StyleChanger
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 STYLE_CHANGER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 STYLE_TARGET_RADIO: Optional[gradio.Radio] = None
 STYLE_CHANGER_SKIP_HEAD_CHECKBOX: Optional[gradio.Checkbox] = None
+PROCESSOR_KEY = 'Style Changer'
 
 
 def render() -> None:
@@ -18,22 +18,22 @@ def render() -> None:
     global STYLE_CHANGER_SKIP_HEAD_CHECKBOX
     STYLE_CHANGER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.style_changer_model_dropdown'),
-        choices=frame_processors_choices.style_changer_models,
+        choices=StyleChanger().list_models(),
         value=state_manager.get_item('style_changer_model'),
-        visible='style_changer' in state_manager.get_item('processors'),
+        visible=PROCESSOR_KEY in state_manager.get_item('processors'),
         elem_id='style_changer_model_dropdown'
     )
     STYLE_TARGET_RADIO = gradio.Radio(
         label=wording.get('uis.style_changer_target_radio'),
         choices=["source", "target", "source head/target bg"],
         value=str(state_manager.get_item('style_changer_target')),
-        visible='style_changer' in state_manager.get_item('processors'),
+        visible=PROCESSOR_KEY in state_manager.get_item('processors'),
         elem_id='style_target_radio'
     )
     STYLE_CHANGER_SKIP_HEAD_CHECKBOX = gradio.Checkbox(
         label=wording.get('uis.style_changer_skip_head_checkbox'),
         value=state_manager.get_item('style_changer_skip_head'),
-        visible='style_changer' in state_manager.get_item('processors'),
+        visible=PROCESSOR_KEY in state_manager.get_item('processors'),
         elem_id='style_changer_skip_head_checkbox'
     )
 
@@ -55,7 +55,7 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update, gradio.update]:
-    has_style_changer = 'style_changer' in processors
+    has_style_changer = 'Style Changer' in processors
     return gradio.update(visible=has_style_changer), gradio.update(visible=has_style_changer), gradio.update(
         visible=has_style_changer)
 
@@ -66,7 +66,7 @@ def update_style_changer_skip_head(style_changer_skip_head: bool):
 
 
 def update_style_changer_model(style_changer_model: str):
-    clear_inference_pool()
+    StyleChanger().clear_inference_pool()
     state_manager.set_item('style_changer_model', style_changer_model)
 
 

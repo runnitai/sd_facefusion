@@ -14,18 +14,15 @@ from facefusion.filesystem import has_image, in_directory, is_image, is_video, \
     resolve_relative_path, same_file_extension
 from facefusion.inference_manager import get_static_model_initializer
 from facefusion.jobs import job_store
-from facefusion.processors import choices as processors_choices
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.pixel_boost import explode_pixel_boost, implode_pixel_boost
 from facefusion.processors.typing import FaceSwapperInputs
 from facefusion.program_helper import find_argument_group, suggest_face_swapper_pixel_boost_choices
-from facefusion.stopwatch import StopWatch
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Embedding, Face, InferencePool, ModelOptions, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame, Padding
 from facefusion.vision import read_image, read_static_image, unpack_resolution, write_image
 from facefusion.workers.classes.face_masker import FaceMasker
-from facefusion.workers.core import clear_worker_modules
 
 
 def update_padding(padding: Padding, frame_number: int) -> Padding:
@@ -361,50 +358,111 @@ class FaceSwapper(BaseProcessor):
                 [state_manager.get_item('target_path'), state_manager.get_item('output_path')]):
             logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
             return False
+
+        # Cache model options and inference pool
+        self.model_options = self.get_model_options()
+        self.model_type = self.model_options.get('type')
+        self.model_template = self.model_options.get('template')
+        self.model_size = self.model_options.get('size')
+        self.model_mean = self.model_options.get('mean')
+        self.model_std = self.model_options.get('standard_deviation')
+
+        self.inference_pool = self.get_inference_pool()
+        self.face_swapper = self.inference_pool.get('face_swapper')
+        self.embedding_converter = self.inference_pool.get('embedding_converter') if 'embedding_converter' in self.model_options.get('sources', {}) else None
+
+        self.face_selector_mode = state_manager.get_item('face_selector_mode')
+        self.reference_face_distance = state_manager.get_item('reference_face_distance')
+        self.face_mask_types = state_manager.get_item('face_mask_types')
+        self.face_mask_blur = state_manager.get_item('face_mask_blur')
+        self.face_mask_regions = state_manager.get_item('face_mask_regions')
+        self.face_mask_padding = state_manager.get_item('face_mask_padding')
+        self.pixel_boost_value = state_manager.get_item('face_swapper_pixel_boost')
+
+        # Store source faces
+        self.source_face = get_one_face([source_faces])
+        self.source_face_2 = get_one_face([source_faces_2])
+
+        # Precompute source inputs to avoid repetitive disk reads
+        self.prepared_source_input = None
+        self.prepared_source_input_2 = None
+
+        def prepare_source_input(source_face, source_paths):
+            if source_face is None or not has_image(source_paths):
+                return None
+            # Read the source image once
+            source_vision_frame = read_static_image(get_first(source_paths))
+
+            # Prepare input depending on model_type
+            if self.model_type in ['blendswap', 'uniface']:
+                # frame-based preparation
+                return self._prepare_source_frame_once(source_face, source_vision_frame)
+            else:
+                # embedding-based preparation
+                return self._prepare_source_embedding_once(source_face)
+
+        self.prepared_source_input = prepare_source_input(self.source_face, source_paths)
+        self.prepared_source_input_2 = prepare_source_input(self.source_face_2, source_paths_2)
+
         return True
 
+    def _prepare_source_frame_once(self, source_face: Face, source_vision_frame: VisionFrame) -> VisionFrame:
+        # This mirrors logic from prepare_source_frame but without reading from disk again
+        if self.model_type == 'blendswap':
+            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame,
+                                                                  source_face.landmark_set.get('5/68'),
+                                                                  'arcface_112_v2', (112, 112))
+        if self.model_type == 'uniface':
+            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame,
+                                                                  source_face.landmark_set.get('5/68'),
+                                                                  'ffhq_512', (256, 256))
+        source_vision_frame = source_vision_frame[:, :, ::-1] / 255.0
+        source_vision_frame = source_vision_frame.transpose(2, 0, 1)
+        source_vision_frame = numpy.expand_dims(source_vision_frame, axis=0).astype(numpy.float32)
+        return source_vision_frame
+
+    def _prepare_source_embedding_once(self, source_face: Face) -> Embedding:
+        # Same logic from prepare_source_embedding
+        if self.model_type == 'ghost':
+            source_embedding, _ = self.convert_embedding(source_face)
+            source_embedding = source_embedding.reshape(1, -1)
+        elif self.model_type == 'inswapper':
+            model_path = self.model_options.get('sources').get('face_swapper').get('path')
+            model_initializer = get_static_model_initializer(model_path)
+            source_embedding = source_face.embedding.reshape((1, -1))
+            source_embedding = numpy.dot(source_embedding, model_initializer) / numpy.linalg.norm(source_embedding)
+        else:
+            _, source_normed_embedding = self.convert_embedding(source_face)
+            source_embedding = source_normed_embedding.reshape(1, -1)
+        return source_embedding
+
     def process_frame(self, inputs: FaceSwapperInputs) -> VisionFrame:
-        watch = StopWatch()
-        watch.start("face_swapper")
         reference_faces = inputs.get('reference_faces')
         reference_faces_2 = inputs.get('reference_faces_2')
         source_face = inputs.get('source_face')
         source_face_2 = inputs.get('source_face_2')
         target_vision_frame = inputs.get('target_vision_frame')
-        watch.next("get_faces")
         many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
-        face_selector_mode = state_manager.get_item('face_selector_mode')
-        if face_selector_mode == 'many':
-            watch.next("many_faces")
+
+        if self.face_selector_mode == 'many':
             if many_faces:
-                face_idx = 0
                 for target_face in many_faces:
-                    watch.next(f"swap_face_{face_idx}")
                     target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame)
-                    face_idx += 1
-        if face_selector_mode == 'one':
-            watch.next("one_face")
+
+        if self.face_selector_mode == 'one':
             target_face = get_one_face(many_faces)
             if target_face:
                 target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame)
-        if face_selector_mode == 'reference':
-            watch.next("reference_faces")
-            ref_idx = 0
+
+        if self.face_selector_mode == 'reference':
             for ref_faces, src_face in [(reference_faces, source_face), (reference_faces_2, source_face_2)]:
                 if not ref_faces or not src_face:
                     continue
-                watch.next(f"reference_face_find_{ref_idx}")
-                similar_faces = find_similar_faces(many_faces, ref_faces,
-                                                   state_manager.get_item('reference_face_distance'))
+                similar_faces = find_similar_faces(many_faces, ref_faces, self.reference_face_distance)
                 if similar_faces:
-                    similar_idx = 0
                     for similar_face in similar_faces:
-                        watch.next(f"swap_face_{ref_idx}_{similar_idx}")
                         target_vision_frame = self.swap_face(src_face, similar_face, target_vision_frame)
-                        similar_idx += 1
-                ref_idx += 1
-        watch.stop()
-        watch.report()
+
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -432,7 +490,7 @@ class FaceSwapper(BaseProcessor):
 
     def process_image(self, target_path: str, output_path: str) -> None:
         reference_faces, reference_faces_2 = (
-            get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
+            get_reference_faces(True) if 'reference' in self.face_selector_mode else (None, None))
         source_face, source_face_2 = get_avg_faces()
         target_vision_frame = read_static_image(target_path)
         result_frame = self.process_frame(
@@ -453,7 +511,7 @@ class FaceSwapper(BaseProcessor):
         return self.MODEL_SET.get(face_swapper_model)
 
     def get_inference_pool(self) -> InferencePool:
-        model_sources = self.get_model_options().get('sources')
+        model_sources = self.model_options.get('sources')
         model_context = __name__ + '.' + state_manager.get_item(self.model_key)
         return inference_manager.get_inference_pool(model_context, model_sources)
 
@@ -463,96 +521,94 @@ class FaceSwapper(BaseProcessor):
 
     def swap_face(self, source_face: Face, target_face: Face, temp_vision_frame: VisionFrame,
                   frame_number=-1) -> VisionFrame:
+
         masker = FaceMasker()
-        model_template = self.get_model_options().get('template')
-        model_size = self.get_model_options().get('size')
-        pixel_boost_size = unpack_resolution(state_manager.get_item('face_swapper_pixel_boost'))
+        model_template = self.model_template
+        model_size = self.model_size
+        pixel_boost_size = unpack_resolution(self.pixel_boost_value)
         pixel_boost_total = pixel_boost_size[0] // model_size[0]
-        crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
-                                                                        target_face.landmark_set.get('5/68'),
-                                                                        model_template, pixel_boost_size)
+
+        crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
+            temp_vision_frame,
+            target_face.landmark_set.get('5/68'),
+            model_template, pixel_boost_size
+        )
+
         temp_vision_frames = []
         crop_masks = []
-        padding = state_manager.get_item('face_mask_padding')
-        fps = state_manager.get_item('output_video_fps')
-        padding = update_padding(padding, frame_number)
+        padding = update_padding(self.face_mask_padding, frame_number)
 
-        if 'box' in state_manager.get_item('face_mask_types'):
-            box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1],
-                                                     state_manager.get_item('face_mask_blur'),
-                                                     padding)
+        if 'box' in self.face_mask_types:
+            box_mask = masker.create_static_box_mask(
+                crop_vision_frame.shape[:2][::-1],
+                self.face_mask_blur,
+                padding
+            )
             crop_masks.append(box_mask)
 
-        if 'occlusion' in state_manager.get_item('face_mask_types'):
+        if 'occlusion' in self.face_mask_types:
             occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
             crop_masks.append(occlusion_mask)
 
-        pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
-        for pixel_boost_vision_frame in pixel_boost_vision_frames:
-            pixel_boost_vision_frame = self.prepare_crop_frame(pixel_boost_vision_frame)
-            pixel_boost_vision_frame = self.forward_swap_face(source_face, pixel_boost_vision_frame)
-            pixel_boost_vision_frame = self.normalize_crop_frame(pixel_boost_vision_frame)
-            temp_vision_frames.append(pixel_boost_vision_frame)
-        crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
+        pixel_boost_vision_frames = implode_pixel_boost(
+            crop_vision_frame, pixel_boost_total, model_size
+        )
+        if len(pixel_boost_vision_frames) > 1:
+            for pixel_boost_vision_frame in pixel_boost_vision_frames:
+                pixel_boost_vision_frame = self.prepare_crop_frame(pixel_boost_vision_frame)
+                pixel_boost_vision_frame = self.forward_swap_face(source_face, pixel_boost_vision_frame)
+                pixel_boost_vision_frame = self.normalize_crop_frame(pixel_boost_vision_frame)
+                temp_vision_frames.append(pixel_boost_vision_frame)
 
-        if 'region' in state_manager.get_item('face_mask_types'):
-            region_mask = masker.create_region_mask(crop_vision_frame, state_manager.get_item('face_mask_regions'))
+            crop_vision_frame = explode_pixel_boost(
+                temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size
+            )
+        else:
+            crop_vision_frame = self.prepare_crop_frame(crop_vision_frame)
+            crop_vision_frame = self.forward_swap_face(source_face, crop_vision_frame)
+            crop_vision_frame = self.normalize_crop_frame(crop_vision_frame)
+
+        if 'region' in self.face_mask_types:
+            region_mask = masker.create_region_mask(
+                crop_vision_frame, self.face_mask_regions
+            )
             crop_masks.append(region_mask)
 
         crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
         temp_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
+
         return temp_vision_frame
 
     def forward_swap_face(self, source_face: Face, crop_vision_frame: VisionFrame) -> VisionFrame:
-        face_swapper = self.get_inference_pool().get('face_swapper')
-        model_type = self.get_model_options().get('type')
+        # Instead of preparing each time, we use precomputed inputs
+        if source_face is self.source_face:
+            source_input = self.prepared_source_input
+        elif source_face is self.source_face_2:
+            source_input = self.prepared_source_input_2
+        else:
+            # fallback (should not happen if code is correct)
+            source_input = None
+
         face_swapper_inputs = {}
 
-        for face_swapper_input in face_swapper.get_inputs():
+        for face_swapper_input in self.face_swapper.get_inputs():
             if face_swapper_input.name == 'source':
-                if model_type == 'blendswap' or model_type == 'uniface':
-                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_frame(source_face)
-                else:
-                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_embedding(source_face)
+                face_swapper_inputs[face_swapper_input.name] = source_input
             if face_swapper_input.name == 'target':
                 face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
 
         with conditional_thread_semaphore():
-            crop_vision_frame = face_swapper.run(None, face_swapper_inputs)[0][0]
+            crop_vision_frame = self.face_swapper.run(None, face_swapper_inputs)[0][0]
         return crop_vision_frame
 
-    def prepare_source_frame(self, source_face: Face) -> VisionFrame:
-        model_type = self.get_model_options().get('type')
-        source_vision_frame = read_static_image(get_first(state_manager.get_item('source_paths')))
-
-        if model_type == 'blendswap':
-            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame,
-                                                                  source_face.landmark_set.get('5/68'),
-                                                                  'arcface_112_v2', (112, 112))
-        if model_type == 'uniface':
-            source_vision_frame, _ = warp_face_by_face_landmark_5(source_vision_frame,
-                                                                  source_face.landmark_set.get('5/68'),
-                                                                  'ffhq_512', (256, 256))
-        source_vision_frame = source_vision_frame[:, :, ::-1] / 255.0
-        source_vision_frame = source_vision_frame.transpose(2, 0, 1)
-        source_vision_frame = numpy.expand_dims(source_vision_frame, axis=0).astype(numpy.float32)
-        return source_vision_frame
+    def prepare_source_frame(self, source_face: Face, source_vision_frame: VisionFrame) -> VisionFrame:
+        # Not used directly anymore, but kept for reference
+        # Moved logic to _prepare_source_frame_once
+        pass
 
     def prepare_source_embedding(self, source_face: Face) -> Embedding:
-        model_type = self.get_model_options().get('type')
-
-        if model_type == 'ghost':
-            source_embedding, _ = self.convert_embedding(source_face)
-            source_embedding = source_embedding.reshape(1, -1)
-        elif model_type == 'inswapper':
-            model_path = self.get_model_options().get('sources').get('face_swapper').get('path')
-            model_initializer = get_static_model_initializer(model_path)
-            source_embedding = source_face.embedding.reshape((1, -1))
-            source_embedding = numpy.dot(source_embedding, model_initializer) / numpy.linalg.norm(source_embedding)
-        else:
-            _, source_normed_embedding = self.convert_embedding(source_face)
-            source_embedding = source_normed_embedding.reshape(1, -1)
-        return source_embedding
+        # Not used directly anymore, logic moved to _prepare_source_embedding_once
+        pass
 
     def convert_embedding(self, source_face: Face) -> Tuple[Embedding, Embedding]:
         embedding = source_face.embedding.reshape(-1, 512)
@@ -562,34 +618,27 @@ class FaceSwapper(BaseProcessor):
         return embedding, normed_embedding
 
     def forward_convert_embedding(self, embedding: Embedding) -> Embedding:
-        embedding_converter = self.get_inference_pool().get('embedding_converter')
-
+        if not self.embedding_converter:
+            return embedding
         with conditional_thread_semaphore():
-            embedding = embedding_converter.run(None,
-                                                {
-                                                    'input': embedding
-                                                })[0]
+            embedding = self.embedding_converter.run(None,
+                                                     {
+                                                         'input': embedding
+                                                     })[0]
 
         return embedding
 
     def prepare_crop_frame(self, crop_vision_frame: VisionFrame) -> VisionFrame:
-        model_mean = self.get_model_options().get('mean')
-        model_standard_deviation = self.get_model_options().get('standard_deviation')
-
         crop_vision_frame = crop_vision_frame[:, :, ::-1] / 255.0
-        crop_vision_frame = (crop_vision_frame - model_mean) / model_standard_deviation
+        crop_vision_frame = (crop_vision_frame - self.model_mean) / self.model_std
         crop_vision_frame = crop_vision_frame.transpose(2, 0, 1)
         crop_vision_frame = numpy.expand_dims(crop_vision_frame, axis=0).astype(numpy.float32)
         return crop_vision_frame
 
     def normalize_crop_frame(self, crop_vision_frame: VisionFrame) -> VisionFrame:
-        model_type = self.get_model_options().get('type')
-        model_mean = self.get_model_options().get('mean')
-        model_standard_deviation = self.get_model_options().get('standard_deviation')
-
         crop_vision_frame = crop_vision_frame.transpose(1, 2, 0)
-        if model_type == 'ghost' or model_type == 'uniface':
-            crop_vision_frame = crop_vision_frame * model_standard_deviation + model_mean
+        if self.model_type == 'ghost' or self.model_type == 'uniface':
+            crop_vision_frame = crop_vision_frame * self.model_std + self.model_mean
         crop_vision_frame = crop_vision_frame.clip(0, 1)
         crop_vision_frame = crop_vision_frame[:, :, ::-1] * 255
         return crop_vision_frame

@@ -6,7 +6,7 @@ from facefusion.common_helper import create_float_metavar, create_int_metavar
 from facefusion.execution import get_execution_provider_choices
 from facefusion.filesystem import list_directory
 from facefusion.jobs import job_store
-from facefusion.processors.core import get_processors_modules
+from facefusion.processors.core import get_processors_modules, list_processors
 from facefusion.program_helper import remove_args, suggest_face_detector_choices
 
 
@@ -204,15 +204,17 @@ def create_output_creation_program() -> ArgumentParser:
 def create_processors_program() -> ArgumentParser:
     program = ArgumentParser(add_help=False)
     # from modules.cmd_args import parser as program
-    available_processors = list_directory('facefusion/processors/modules')
+    available_processors = list_processors()
     group_processors = program.add_argument_group('processors')
     group_processors.add_argument('--processors',
                                   help=wording.get('help.processors').format(choices=', '.join(available_processors)),
-                                  default=config.get_str_list('processors.processors', 'face_swapper'), nargs='+')
+                                  default=config.get_str_list('processors.processors', 'Face Swapper'), nargs='+')
     job_store.register_step_keys(['processors'])
     for processor_module in get_processors_modules(available_processors):
         try:
             processor_module.register_args(program)
+            if processor_module.preload:
+                processor_module.pre_check()
         except Exception as e:
             print(e)
     return program

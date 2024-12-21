@@ -97,9 +97,9 @@ def apply_args(args: Args, apply_state_item: bool) -> None:
         cmd('output_video_fps', output_video_fps)
     cmd('skip_audio', args.get('skip_audio'))
     # processors
-    available_processors = list_directory('facefusion/processors/modules')
+    #available_processors = list_directory('facefusion/processors/modules')
     cmd('processors', args.get('processors'))
-    for processor_module in get_processors_modules(available_processors):
+    for processor_module in get_processors_modules():
         try:
             processor_module.apply_args(args, cmd)
         except Exception as e:

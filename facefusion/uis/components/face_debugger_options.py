@@ -8,7 +8,7 @@ from facefusion.processors.typing import FaceDebuggerItem
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
-
+PROCESSOR_KEY = 'Face Debugger'
 
 def render() -> None:
     global FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP
@@ -17,7 +17,7 @@ def render() -> None:
         label=wording.get('uis.face_debugger_items_checkbox_group'),
         choices=processors_choices.face_debugger_items,
         value=state_manager.get_item('face_debugger_items'),
-        visible='face_debugger' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     register_ui_component('face_debugger_items_checkbox_group', FACE_DEBUGGER_ITEMS_CHECKBOX_GROUP)
 
@@ -32,7 +32,7 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> gradio.update:
-    has_face_debugger = 'face_debugger' in processors
+    has_face_debugger = 'Face Debugger' in processors
     return gradio.update(visible=has_face_debugger)
 
 

@@ -5,13 +5,14 @@ import gradio
 from facefusion import state_manager, wording
 from facefusion.common_helper import calc_float_step
 from facefusion.processors import choices as processors_choices
+from facefusion.processors.classes.expression_restorer import ExpressionRestorer
 from facefusion.processors.core import load_processor_module
 from facefusion.processors.typing import ExpressionRestorerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 EXPRESSION_RESTORER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 EXPRESSION_RESTORER_FACTOR_SLIDER: Optional[gradio.Slider] = None
-
+PROCESSOR_KEY = 'Expression Restorer'
 
 def render() -> None:
     global EXPRESSION_RESTORER_MODEL_DROPDOWN
@@ -19,9 +20,9 @@ def render() -> None:
 
     EXPRESSION_RESTORER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.expression_restorer_model_dropdown'),
-        choices=processors_choices.expression_restorer_models,
+        choices=ExpressionRestorer().list_models(),
         value=state_manager.get_item('expression_restorer_model'),
-        visible='expression_restorer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     EXPRESSION_RESTORER_FACTOR_SLIDER = gradio.Slider(
         label=wording.get('uis.expression_restorer_factor_slider'),
@@ -29,7 +30,7 @@ def render() -> None:
         step=calc_float_step(processors_choices.expression_restorer_factor_range),
         minimum=processors_choices.expression_restorer_factor_range[0],
         maximum=processors_choices.expression_restorer_factor_range[-1],
-        visible='expression_restorer' in state_manager.get_item('processors'),
+        visible=PROCESSOR_KEY in state_manager.get_item('processors'),
     )
     register_ui_component('expression_restorer_model_dropdown', EXPRESSION_RESTORER_MODEL_DROPDOWN)
     register_ui_component('expression_restorer_factor_slider', EXPRESSION_RESTORER_FACTOR_SLIDER)
@@ -50,12 +51,12 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
-    has_expression_restorer = 'expression_restorer' in processors
+    has_expression_restorer = 'Expression Restorer' in processors
     return gradio.update(visible=has_expression_restorer), gradio.update(visible=has_expression_restorer)
 
 
 def update_expression_restorer_model(expression_restorer_model: ExpressionRestorerModel) -> gradio.update:
-    expression_restorer_module = load_processor_module('expression_restorer')
+    expression_restorer_module = load_processor_module(PROCESSOR_KEY)
     expression_restorer_module.clear_inference_pool()
     state_manager.set_item('expression_restorer_model', expression_restorer_model)
 

@@ -5,13 +5,14 @@ import gradio
 from facefusion import state_manager, wording
 from facefusion.common_helper import calc_int_step
 from facefusion.processors import choices as processors_choices
+from facefusion.processors.classes.frame_enhancer import FrameEnhancer
 from facefusion.processors.core import load_processor_module
 from facefusion.processors.typing import FrameEnhancerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 FRAME_ENHANCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FRAME_ENHANCER_BLEND_SLIDER: Optional[gradio.Slider] = None
-
+PROCESSOR_KEY = 'Frame Enhancer'
 
 def render() -> None:
     global FRAME_ENHANCER_MODEL_DROPDOWN
@@ -19,9 +20,9 @@ def render() -> None:
 
     FRAME_ENHANCER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.frame_enhancer_model_dropdown'),
-        choices=processors_choices.frame_enhancer_models,
+        choices=FrameEnhancer().list_models(),
         value=state_manager.get_item('frame_enhancer_model'),
-        visible='frame_enhancer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     FRAME_ENHANCER_BLEND_SLIDER = gradio.Slider(
         label=wording.get('uis.frame_enhancer_blend_slider'),
@@ -29,7 +30,7 @@ def render() -> None:
         step=calc_int_step(processors_choices.frame_enhancer_blend_range),
         minimum=processors_choices.frame_enhancer_blend_range[0],
         maximum=processors_choices.frame_enhancer_blend_range[-1],
-        visible='frame_enhancer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     register_ui_component('frame_enhancer_model_dropdown', FRAME_ENHANCER_MODEL_DROPDOWN)
     register_ui_component('frame_enhancer_blend_slider', FRAME_ENHANCER_BLEND_SLIDER)
@@ -47,12 +48,12 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
-    has_frame_enhancer = 'frame_enhancer' in processors
+    has_frame_enhancer = 'Frame Enhancer' in processors
     return gradio.update(visible=has_frame_enhancer), gradio.update(visible=has_frame_enhancer)
 
 
 def update_frame_enhancer_model(frame_enhancer_model: FrameEnhancerModel) -> gradio.update:
-    frame_enhancer_module = load_processor_module('frame_enhancer')
+    frame_enhancer_module = load_processor_module(PROCESSOR_KEY)
     frame_enhancer_module.clear_inference_pool()
     state_manager.set_item('frame_enhancer_model', frame_enhancer_model)
 

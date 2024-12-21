@@ -11,7 +11,6 @@ from tqdm import tqdm
 from facefusion import logger, state_manager, wording
 from facefusion.audio import create_empty_audio_frame
 from facefusion.common_helper import is_windows
-from facefusion.content_analyser import analyse_stream
 from facefusion.face_analyser import get_average_face, get_many_faces
 from facefusion.ffmpeg import open_ffmpeg
 from facefusion.filesystem import filter_image_paths
@@ -20,6 +19,7 @@ from facefusion.typing import Face, Fps, VisionFrame
 from facefusion.uis.core import get_ui_component
 from facefusion.uis.typing import StreamMode, WebcamMode
 from facefusion.vision import normalize_frame_color, read_static_images, unpack_resolution
+from facefusion.workers.classes.content_analyser import ContentAnalyser
 
 WEBCAM_CAPTURE: Optional[cv2.VideoCapture] = None
 WEBCAM_IMAGE: Optional[gradio.Image] = None
@@ -109,6 +109,7 @@ def start(webcam_mode: WebcamMode, webcam_resolution: str, webcam_fps: Fps) -> G
 def multi_process_capture(source_face: Face, webcam_capture: cv2.VideoCapture, webcam_fps: Fps) -> Generator[
     VisionFrame, None, None]:
     deque_capture_frames: Deque[VisionFrame] = deque()
+    content_analyser = ContentAnalyser()
     with tqdm(desc=wording.get('processing'), unit='frame', ascii=' =',
               disable=state_manager.get_item('log_level') in ['warn', 'error']) as progress:
         progress.set_postfix(
@@ -121,7 +122,7 @@ def multi_process_capture(source_face: Face, webcam_capture: cv2.VideoCapture, w
 
             while webcam_capture and webcam_capture.isOpened():
                 _, capture_frame = webcam_capture.read()
-                if analyse_stream(capture_frame, webcam_fps):
+                if content_analyser.analyse_stream(capture_frame, webcam_fps):
                     return
                 future = executor.submit(process_stream_frame, source_face, capture_frame)
                 futures.append(future)

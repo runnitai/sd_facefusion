@@ -39,7 +39,7 @@ def create_execution_providers(execution_device_id: str, execution_provider_keys
             execution_providers.append((execution_provider_set.get(execution_provider_key),
                                         {
                                             'device_id': execution_device_id,
-                                            'cudnn_conv_algo_search': 'EXHAUSTIVE' if use_exhaustive() else 'DEFAULT'
+                                            #'cudnn_conv_algo_search': 'EXHAUSTIVE' if use_exhaustive() else 'DEFAULT'
                                         }))
         if execution_provider_key == 'tensorrt':
             execution_providers.append((execution_provider_set.get(execution_provider_key),

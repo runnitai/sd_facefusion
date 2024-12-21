@@ -4,28 +4,25 @@ from typing import List, Tuple
 import cv2
 import numpy
 
-from facefusion import config, content_analyser, face_classifier, face_detector, face_landmarker, face_masker, \
-    face_recognizer, logger, process_manager, state_manager, voice_extractor, wording
-from facefusion.audio import create_empty_audio_frame, read_static_voice, get_voice_frame
+from facefusion import config, logger, process_manager, state_manager, wording
+from facefusion.audio import create_empty_audio_frame, get_voice_frame
 from facefusion.common_helper import get_first
-from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.face_analyser import get_many_faces, get_one_face
 from facefusion.face_helper import create_bounding_box, paste_back, warp_face_by_bounding_box, \
     warp_face_by_face_landmark_5
-from facefusion.face_masker import create_mouth_mask, create_occlusion_mask, create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import filter_audio_paths, has_audio, in_directory, is_image, is_video, \
     resolve_relative_path, same_file_extension
 from facefusion.jobs import job_store
-from facefusion.processors import choices as processors_choices
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import LipSyncerInputs
 from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, AudioFrame, Face, ModelSet, \
     ProcessMode, QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, restrict_video_fps, write_image
+from facefusion.workers.classes.face_masker import FaceMasker
 
 
 def prepare_audio_frame(temp_audio_frame: AudioFrame) -> AudioFrame:
@@ -83,7 +80,7 @@ class LipSyncer(BaseProcessor):
         }
     }
 
-    model_key: str = 'lip_syncer'
+    model_key: str = 'lip_syncer_model'
     priority = 5
 
     def register_args(self, program: ArgumentParser) -> None:
@@ -91,7 +88,7 @@ class LipSyncer(BaseProcessor):
         if group_processors:
             group_processors.add_argument('--lip-syncer-model', help=wording.get('help.lip_syncer_model'),
                                           default=config.get_str_value('processors.lip_syncer_model', 'wav2lip_gan_96'),
-                                          choices=processors_choices.lip_syncer_models)
+                                          choices=self.list_models())
             job_store.register_step_keys(['lip_syncer_model'])
 
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
@@ -114,21 +111,8 @@ class LipSyncer(BaseProcessor):
             return False
         return True
 
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        read_static_voice.cache_clear()
-        if state_manager.get_item('video_memory_strategy') in ['strict', 'moderate']:
-            self.clear_inference_pool()
-        if state_manager.get_item('video_memory_strategy') == 'strict':
-            content_analyser.clear_inference_pool()
-            face_classifier.clear_inference_pool()
-            face_detector.clear_inference_pool()
-            face_landmarker.clear_inference_pool()
-            face_masker.clear_inference_pool()
-            face_recognizer.clear_inference_pool()
-            voice_extractor.clear_inference_pool()
-
     def sync_lip(self, target_face: Face, temp_audio_frame: AudioFrame, temp_vision_frame: VisionFrame) -> VisionFrame:
+        masker = FaceMasker()
         model_size = self.get_model_options().get('size')
         temp_audio_frame = prepare_audio_frame(temp_audio_frame)
         crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
@@ -137,14 +121,14 @@ class LipSyncer(BaseProcessor):
             -1, 2)
         bounding_box = create_bounding_box(face_landmark_68)
         bounding_box[1] -= numpy.abs(bounding_box[3] - bounding_box[1]) * 0.125
-        mouth_mask = create_mouth_mask(face_landmark_68)
-        box_mask = create_static_box_mask(
+        mouth_mask = masker.create_mouth_mask(face_landmark_68)
+        box_mask = masker.create_static_box_mask(
             crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
             state_manager.get_item('face_mask_padding'))
         crop_masks = [mouth_mask, box_mask]
 
         if 'occlusion' in state_manager.get_item('face_mask_types'):
-            occlusion_mask = create_occlusion_mask(crop_vision_frame)
+            occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
             crop_masks.append(occlusion_mask)
 
         close_vision_frame, close_matrix = warp_face_by_bounding_box(crop_vision_frame, bounding_box, model_size)

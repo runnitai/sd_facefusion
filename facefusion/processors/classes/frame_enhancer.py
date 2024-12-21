@@ -4,20 +4,19 @@ from typing import List, Tuple
 import cv2
 import numpy
 
-from facefusion import config, content_analyser, logger, process_manager, state_manager, wording
+from facefusion import config, logger, process_manager, state_manager, wording
 from facefusion.common_helper import create_int_metavar
-from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.filesystem import in_directory, is_image, is_video, resolve_relative_path, same_file_extension
 from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
-from facefusion.processors.classes.base_processor import BaseProcessor
-from facefusion.processors.core import multi_process_frames
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import FrameEnhancerInputs
 from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame
 from facefusion.vision import create_tile_frames, merge_tile_frames, read_image, read_static_image, write_image
+from facefusion.workers.core import clear_worker_modules
 
 
 def prepare_tile_frame(vision_tile_frame: VisionFrame) -> VisionFrame:
@@ -298,7 +297,7 @@ class FrameEnhancer(BaseProcessor):
                 }
         }
 
-    model_key: str = 'frame_enhancer'
+    model_key: str = 'frame_enhancer_model'
     is_face_processor: bool = False
 
     def register_args(self, program: ArgumentParser) -> None:
@@ -307,7 +306,7 @@ class FrameEnhancer(BaseProcessor):
             group_processors.add_argument('--frame-enhancer-model', help=wording.get('help.frame_enhancer_model'),
                                           default=config.get_str_value('processors.frame_enhancer_model',
                                                                        'span_kendata_x4'),
-                                          choices=processors_choices.frame_enhancer_models)
+                                          choices=self.list_models())
             group_processors.add_argument('--frame-enhancer-blend', help=wording.get('help.frame_enhancer_blend'),
                                           type=int,
                                           default=config.get_int_value('processors.frame_enhancer_blend', '80'),
@@ -333,13 +332,6 @@ class FrameEnhancer(BaseProcessor):
             return False
         return True
 
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        if state_manager.get_item('video_memory_strategy') in ['strict', 'moderate']:
-            self.clear_inference_pool()
-        if state_manager.get_item('video_memory_strategy') == 'strict':
-            content_analyser.clear_inference_pool()
-
     def enhance_frame(self, temp_vision_frame: VisionFrame) -> VisionFrame:
         model_size = self.get_model_options().get('size')
         model_scale = self.get_model_options().get('scale')
@@ -360,7 +352,7 @@ class FrameEnhancer(BaseProcessor):
         return temp_vision_frame
 
     def forward(self, tile_vision_frame: VisionFrame) -> VisionFrame:
-        frame_enhancer = self.get_inference_pool().get(self.model_key)
+        frame_enhancer = self.get_inference_pool().get('frame_enhancer')
 
         with conditional_thread_semaphore():
             tile_vision_frame = frame_enhancer.run(None, {'input': tile_vision_frame})[0]

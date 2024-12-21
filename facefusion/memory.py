@@ -2,7 +2,7 @@ import platform
 
 import torch
 
-from facefusion import globals
+from facefusion import globals, state_manager, logger
 
 if platform.system().lower() == 'windows':
     import ctypes
@@ -36,7 +36,7 @@ def get_total_vram():
 
 def tune_performance():
     queue_size = 1
-    execution_thread_count = 1
+    execution_thread_count = 4
     memory_strategy = "strict"
     vram = get_total_vram()
     if vram <= 8192:
@@ -45,7 +45,7 @@ def tune_performance():
         execution_thread_count = 10
         memory_strategy = "tolerant"
     elif vram <= 24576:
-        execution_thread_count = 16
+        execution_thread_count = 22
         queue_size = 2
         memory_strategy = "tolerant"
     elif vram <= 32768:
@@ -55,5 +55,9 @@ def tune_performance():
     globals.execution_thread_count = execution_thread_count
     globals.execution_queue_count = queue_size
     globals.memory_strategy = memory_strategy
+    logger.info(f"Execution thread count: {execution_thread_count}, Queue size: {queue_size}, Memory strategy: {memory_strategy}", "tune_performance")
+    state_manager.set_item('execution_thread_count', execution_thread_count)
+    state_manager.set_item('execution_queue_count', queue_size)
+    state_manager.set_item('video_memory_strategy', memory_strategy)
     return execution_thread_count, queue_size, memory_strategy
 

@@ -21,11 +21,12 @@ headless: Optional[bool] = False
 log_level: Optional[LogLevel] = ['info']
 # execution
 execution_providers: List[str] = ['tensorrt', 'cuda']
-execution_thread_count: Optional[int] = 4
-execution_queue_count: Optional[int] = 1
+execution_thread_count: Optional[int] = 22
+execution_queue_count: Optional[int] = 2
 expression_restorer_model: Optional[str] = 'live_portrait'
 face_editor_model: Optional[str] = 'live_portrait'
 face_enhancer_model: Optional[str] = 'gfpgan_1.4'
+frame_enhancer_blend: Optional[float] = 1.0
 face_landmarker_model: Optional[str] = 'many'
 face_swapper_model: Optional[str] = 'inswapper_128_fp16'
 frame_colorizer_model: Optional[str] = 'ddcolor'
@@ -48,7 +49,7 @@ face_detector_model: Optional[FaceDetectorModel] = 'many'
 face_detector_size: Optional[str] = "640x640"
 face_detector_score: Optional[float] = 0.35
 face_landmarker_score: Optional[float] = 0.35
-face_detector_angles: Optional[List[int]] = [0, 90, 180, 270]
+face_detector_angles: Optional[List[int]] = [0]
 face_recognizer_model: Optional[FaceRecognizerModel] = 'arcface_inswapper'
 # face selector
 

@@ -3,10 +3,12 @@ from typing import Optional, List
 import gradio
 
 import facefusion.choices
-from facefusion import face_landmarker, state_manager, wording
+from facefusion import state_manager, wording
 from facefusion.common_helper import calc_float_step
+from facefusion.processors.core import get_processors_modules
 from facefusion.typing import FaceLandmarkerModel, Score
 from facefusion.uis.core import register_ui_component, get_ui_component
+from facefusion.workers.classes.face_landmarker import FaceLandmarker
 
 FACE_LANDMARKER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FACE_LANDMARKER_SCORE_SLIDER: Optional[gradio.Slider] = None
@@ -55,15 +57,17 @@ def listen() -> None:
 
 
 def toggle_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
+    all_processors = get_processors_modules()
+    all_face_processor_names = [processor.display_name for processor in all_processors if processor.is_face_processor]
     # Make the group visible if any face processor is selected
     for processor in processors:
-        if processor not in non_face_processors:
+        if processor in all_face_processor_names:
             return gradio.update(visible=True)
     return gradio.update(visible=False)
 
 
 def update_face_landmarker_model(face_landmarker_model: FaceLandmarkerModel) -> gradio.update:
+    face_landmarker = FaceLandmarker()
     face_landmarker.clear_inference_pool()
     state_manager.set_item('face_landmarker_model', face_landmarker_model)
 

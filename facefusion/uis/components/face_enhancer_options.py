@@ -5,12 +5,14 @@ import gradio
 from facefusion import state_manager, wording
 from facefusion.common_helper import calc_int_step
 from facefusion.processors import choices as processors_choices
+from facefusion.processors.classes.face_enhancer import FaceEnhancer
 from facefusion.processors.core import load_processor_module
 from facefusion.processors.typing import FaceEnhancerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 FACE_ENHANCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FACE_ENHANCER_BLEND_SLIDER: Optional[gradio.Slider] = None
+PROCESSOR_KEY = 'Face Enhancer'
 
 
 def render() -> None:
@@ -19,9 +21,9 @@ def render() -> None:
 
     FACE_ENHANCER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.face_enhancer_model_dropdown'),
-        choices=processors_choices.face_enhancer_models,
+        choices=FaceEnhancer().list_models(),
         value=state_manager.get_item('face_enhancer_model'),
-        visible='face_enhancer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     FACE_ENHANCER_BLEND_SLIDER = gradio.Slider(
         label=wording.get('uis.face_enhancer_blend_slider'),
@@ -29,7 +31,7 @@ def render() -> None:
         step=calc_int_step(processors_choices.face_enhancer_blend_range),
         minimum=processors_choices.face_enhancer_blend_range[0],
         maximum=processors_choices.face_enhancer_blend_range[-1],
-        visible='face_enhancer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     register_ui_component('face_enhancer_model_dropdown', FACE_ENHANCER_MODEL_DROPDOWN)
     register_ui_component('face_enhancer_blend_slider', FACE_ENHANCER_BLEND_SLIDER)
@@ -47,12 +49,12 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
-    has_face_enhancer = 'face_enhancer' in processors
+    has_face_enhancer = 'Face Enhancer' in processors
     return gradio.update(visible=has_face_enhancer), gradio.update(visible=has_face_enhancer)
 
 
 def update_face_enhancer_model(face_enhancer_model: FaceEnhancerModel) -> gradio.update:
-    face_enhancer_module = load_processor_module('face_enhancer')
+    face_enhancer_module = load_processor_module(PROCESSOR_KEY)
     face_enhancer_module.clear_inference_pool()
     state_manager.set_item('face_enhancer_model', face_enhancer_model)
 

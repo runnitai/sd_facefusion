@@ -4,17 +4,15 @@ from typing import List, Tuple, Any
 import cv2
 import numpy
 
-from facefusion import logger, state_manager, face_detector, face_landmarker, face_recognizer, \
-    face_classifier, face_masker, content_analyser, wording, config
+from facefusion import logger, state_manager, wording, config
 from facefusion.common_helper import create_float_metavar
 from facefusion.face_analyser import get_many_faces, get_one_face
 from facefusion.face_helper import paste_back, scale_face_landmark_5, warp_face_by_face_landmark_5
-from facefusion.face_masker import create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import resolve_relative_path, is_image, is_video, in_directory, same_file_extension
 from facefusion.processors import choices as processors_choices
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.live_portrait import create_rotation, limit_euler_angles, limit_expression
 from facefusion.processors.typing import (
     FaceEditorInputs, LivePortraitExpression, LivePortraitFeatureVolume,
@@ -25,6 +23,7 @@ from facefusion.processors.typing import (
 from facefusion.thread_helper import conditional_thread_semaphore, thread_semaphore
 from facefusion.typing import ModelSet, Face, FaceLandmark68, VisionFrame, ProcessMode, QueuePayload
 from facefusion.vision import read_image, read_static_image, write_image
+from facefusion.workers.classes.face_masker import FaceMasker
 
 
 def normalize_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
@@ -254,7 +253,7 @@ class FaceEditor(BaseProcessor):
         group_processors.add_argument('--face-editor-model',
                                       help=wording.get('help.face_editor_model'),
                                       default=config.get_str_value('processors.face_editor_model', 'live_portrait'),
-                                      choices=processors_choices.face_editor_models)
+                                      choices=self.list_models())
         group_processors.add_argument('--face-editor-eyebrow-direction',
                                       help=wording.get('help.face_editor_eyebrow_direction'),
                                       type=float,
@@ -378,18 +377,6 @@ class FaceEditor(BaseProcessor):
             return False
         return True
 
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        if state_manager.get_item('video_memory_strategy') in ['strict', 'moderate']:
-            self.clear_inference_pool()
-        if state_manager.get_item('video_memory_strategy') == 'strict':
-            content_analyser.clear_inference_pool()
-            face_classifier.clear_inference_pool()
-            face_detector.clear_inference_pool()
-            face_landmarker.clear_inference_pool()
-            face_masker.clear_inference_pool()
-            face_recognizer.clear_inference_pool()
-
     def process_frame(self, inputs: FaceEditorInputs) -> VisionFrame:
         reference_faces = inputs.get('reference_faces')
         target_vision_frame = inputs.get('target_vision_frame')
@@ -437,13 +424,14 @@ class FaceEditor(BaseProcessor):
         write_image(output_path, output_vision_frame)
 
     def edit_face(self, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
+        masker = FaceMasker()
         model_template = self.get_model_options().get('template')
         model_size = self.get_model_options().get('size')
         face_landmark_5 = scale_face_landmark_5(target_face.landmark_set.get('5/68'), 1.5)
         crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, face_landmark_5,
                                                                         model_template,
                                                                         model_size)
-        box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
+        box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
                                           (0, 0, 0, 0))
         crop_vision_frame = self.prepare_crop_frame(crop_vision_frame)
         crop_vision_frame = self.apply_edit(crop_vision_frame, target_face.landmark_set.get('68'))

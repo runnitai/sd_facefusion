@@ -4,25 +4,24 @@ from typing import List, Tuple
 import cv2
 import numpy
 
-from facefusion import config, content_analyser, face_classifier, face_detector, face_landmarker, face_masker, \
-    face_recognizer, logger, state_manager, wording, process_manager
+from facefusion import config, logger, state_manager, wording, process_manager
 from facefusion.common_helper import create_int_metavar
 from facefusion.face_analyser import get_many_faces, get_one_face
 from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
-from facefusion.face_masker import create_occlusion_mask, create_static_box_mask
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import in_directory, is_image, is_video, resolve_relative_path, same_file_extension
 from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
-from facefusion.processors.classes.base_processor import BaseProcessor
-from facefusion.processors.core import multi_process_frames
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import FaceEnhancerInputs
 from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Face, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, write_image
+from facefusion.workers.classes.face_masker import FaceMasker
+from facefusion.workers.core import clear_worker_modules
 
 
 def prepare_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
@@ -250,7 +249,7 @@ class FaceEnhancer(BaseProcessor):
         if group_processors:
             group_processors.add_argument("--face-enhancer-model", help=wording.get("help.face_enhancer_model"),
                                           default=config.get_str_value("processors.face_enhancer_model", "gfpgan_1.4"),
-                                          choices=processors_choices.face_enhancer_models)
+                                          choices=self.list_models())
             group_processors.add_argument("--face-enhancer-blend", help=wording.get("help.face_enhancer_blend"),
                                           type=int,
                                           default=config.get_int_value("processors.face_enhancer_blend", "80"),
@@ -275,18 +274,6 @@ class FaceEnhancer(BaseProcessor):
             logger.error(wording.get("match_target_and_output_extension"), __name__)
             return False
         return True
-
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        if state_manager.get_item("video_memory_strategy") in ["strict", "moderate"]:
-            self.clear_inference_pool()
-        if state_manager.get_item("video_memory_strategy") == "strict":
-            content_analyser.clear_inference_pool()
-            face_classifier.clear_inference_pool()
-            face_detector.clear_inference_pool()
-            face_landmarker.clear_inference_pool()
-            face_masker.clear_inference_pool()
-            face_recognizer.clear_inference_pool()
 
     def process_frame(self, inputs: FaceEnhancerInputs) -> VisionFrame:
         reference_faces = inputs.get("reference_faces")
@@ -336,17 +323,18 @@ class FaceEnhancer(BaseProcessor):
         write_image(output_path, output_vision_frame)
 
     def enhance_face(self, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
+        masker = FaceMasker()
         model_template = self.get_model_options().get('template')
         model_size = self.get_model_options().get('size')
         crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
                                                                         target_face.landmark_set.get('5/68'),
                                                                         model_template, model_size)
-        box_mask = create_static_box_mask(crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
+        box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
                                           (0, 0, 0, 0))
         crop_masks = [box_mask]
 
         if 'occlusion' in state_manager.get_item('face_mask_types'):
-            occlusion_mask = create_occlusion_mask(crop_vision_frame)
+            occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
             crop_masks.append(occlusion_mask)
 
         crop_vision_frame = prepare_crop_frame(crop_vision_frame)

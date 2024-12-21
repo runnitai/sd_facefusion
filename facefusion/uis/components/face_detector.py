@@ -3,11 +3,13 @@ from typing import Optional, Sequence, Tuple, List
 import gradio
 
 import facefusion.choices
-from facefusion import choices, face_detector, state_manager, wording
+from facefusion import choices, state_manager, wording
 from facefusion.common_helper import calc_float_step, get_last
+from facefusion.processors.core import get_processors_modules
 from facefusion.typing import Angle, FaceDetectorModel, Score
 from facefusion.uis.core import register_ui_component, get_ui_component
 from facefusion.uis.typing import ComponentOptions
+from facefusion.workers.classes.face_detector import FaceDetector
 
 FACE_DETECTOR_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FACE_DETECTOR_SIZE_DROPDOWN: Optional[gradio.Dropdown] = None
@@ -83,15 +85,18 @@ def listen() -> None:
 
 
 def toggle_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
+    all_processors = get_processors_modules()
+    all_face_processor_names = [processor.display_name for processor in all_processors if processor.is_face_processor]
     # Make the group visible if any face processor is selected
     for processor in processors:
-        if processor not in non_face_processors:
+        if processor in all_face_processor_names:
             return gradio.update(visible=True)
     return gradio.update(visible=False)
 
 
+
 def update_face_detector_model(face_detector_model: FaceDetectorModel) -> Tuple[gradio.update, gradio.update]:
+    face_detector = FaceDetector()
     face_detector.clear_inference_pool()
     state_manager.set_item('face_detector_model', face_detector_model)
 

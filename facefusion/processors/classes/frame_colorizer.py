@@ -4,12 +4,12 @@ from typing import List, Tuple
 import cv2
 import numpy
 
-from facefusion import config, content_analyser, logger, process_manager, state_manager, wording
+from facefusion import config, logger, process_manager, state_manager, wording
 from facefusion.common_helper import create_int_metavar
 from facefusion.filesystem import in_directory, is_image, is_video, resolve_relative_path, same_file_extension
 from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import FrameColorizerInputs
 from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import thread_semaphore
@@ -112,7 +112,7 @@ class FrameColorizer(BaseProcessor):
         if group_processors:
             group_processors.add_argument('--frame-colorizer-model', help=wording.get('help.frame_colorizer_model'),
                                           default=config.get_str_value('processors.frame_colorizer_model', 'ddcolor'),
-                                          choices=processors_choices.frame_colorizer_models)
+                                          choices=self.list_models())
             group_processors.add_argument('--frame-colorizer-size', help=wording.get('help.frame_colorizer_size'),
                                           type=str,
                                           default=config.get_str_value('processors.frame_colorizer_size', '256x256'),
@@ -143,13 +143,6 @@ class FrameColorizer(BaseProcessor):
             logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
             return False
         return True
-
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        if state_manager.get_item('video_memory_strategy') in ['strict', 'moderate']:
-            self.clear_inference_pool()
-        if state_manager.get_item('video_memory_strategy') == 'strict':
-            content_analyser.clear_inference_pool()
 
     def colorize_frame(self, temp_vision_frame: VisionFrame) -> VisionFrame:
         color_vision_frame = self.prepare_temp_frame(temp_vision_frame)

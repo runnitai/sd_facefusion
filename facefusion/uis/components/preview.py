@@ -10,17 +10,16 @@ import gradio
 from facefusion import wording, process_manager, state_manager
 from facefusion.audio import get_audio_frame, create_empty_audio_frame
 from facefusion.common_helper import get_first
-from facefusion.content_analyser import analyse_frame
-from facefusion.core import conditional_append_reference_faces
 from facefusion.face_analyser import get_avg_faces
 from facefusion.face_store import clear_static_faces, get_reference_faces, clear_reference_faces
 from facefusion.filesystem import is_video, is_image, filter_audio_paths
-from facefusion.processors.core import load_processor_module, get_processors_modules
+from facefusion.processors.core import get_processors_modules
 from facefusion.typing import Face, AudioFrame, VisionFrame
 from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component, get_ui_components
 from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, \
     read_static_image, detect_video_fps, resize_frame_resolution
+from facefusion.workers.classes.content_analyser import ContentAnalyser
 
 PREVIEW_IMAGE: Optional[gradio.Image] = None
 PREVIEW_FRAME_SLIDER: Optional[gradio.Slider] = None
@@ -365,7 +364,8 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
                           frame_number=-1) -> VisionFrame:
     with frame_processing_lock:
         target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
-        if analyse_frame(target_vision_frame):
+        analyser = ContentAnalyser()
+        if analyser.analyse_frame(target_vision_frame):
             return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
         global_processors = state_manager.get_item('processors')
         processors = get_processors_modules(global_processors)

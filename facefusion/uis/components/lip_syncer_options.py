@@ -4,11 +4,13 @@ import gradio
 
 from facefusion import state_manager, wording
 from facefusion.processors import choices as processors_choices
+from facefusion.processors.classes.lip_syncer import LipSyncer
 from facefusion.processors.core import load_processor_module
 from facefusion.processors.typing import LipSyncerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 LIP_SYNCER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
+PROCESSOR_KEY = 'Lip Syncer'
 
 
 def render() -> None:
@@ -16,9 +18,9 @@ def render() -> None:
 
     LIP_SYNCER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.lip_syncer_model_dropdown'),
-        choices=processors_choices.lip_syncer_models,
+        choices=LipSyncer().list_models(),
         value=state_manager.get_item('lip_syncer_model'),
-        visible='lip_syncer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     register_ui_component('lip_syncer_model_dropdown', LIP_SYNCER_MODEL_DROPDOWN)
 
@@ -34,12 +36,12 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> gradio.update:
-    has_lip_syncer = 'lip_syncer' in processors
+    has_lip_syncer = 'Lip Syncer' in processors
     return gradio.update(visible=has_lip_syncer)
 
 
 def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.update:
-    lip_syncer_module = load_processor_module('lip_syncer')
+    lip_syncer_module = load_processor_module(PROCESSOR_KEY)
     lip_syncer_module.clear_inference_pool()
     state_manager.set_item('lip_syncer_model', lip_syncer_model)
 

@@ -5,6 +5,7 @@ import gradio
 from facefusion import state_manager, wording
 from facefusion.common_helper import calc_int_step
 from facefusion.processors import choices as processors_choices
+from facefusion.processors.classes.frame_colorizer import FrameColorizer
 from facefusion.processors.core import load_processor_module
 from facefusion.processors.typing import FrameColorizerModel
 from facefusion.uis.core import get_ui_component, register_ui_component
@@ -12,6 +13,7 @@ from facefusion.uis.core import get_ui_component, register_ui_component
 FRAME_COLORIZER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FRAME_COLORIZER_SIZE_DROPDOWN: Optional[gradio.Dropdown] = None
 FRAME_COLORIZER_BLEND_SLIDER: Optional[gradio.Slider] = None
+PROCESSOR_KEY = 'Frame Colorizer'
 
 
 def render() -> None:
@@ -21,15 +23,15 @@ def render() -> None:
 
     FRAME_COLORIZER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.frame_colorizer_model_dropdown'),
-        choices=processors_choices.frame_colorizer_models,
+        choices=FrameColorizer().list_models(),
         value=state_manager.get_item('frame_colorizer_model'),
-        visible='frame_colorizer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     FRAME_COLORIZER_SIZE_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.frame_colorizer_size_dropdown'),
         choices=processors_choices.frame_colorizer_sizes,
         value=state_manager.get_item('frame_colorizer_size'),
-        visible='frame_colorizer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     FRAME_COLORIZER_BLEND_SLIDER = gradio.Slider(
         label=wording.get('uis.frame_colorizer_blend_slider'),
@@ -37,7 +39,7 @@ def render() -> None:
         step=calc_int_step(processors_choices.frame_colorizer_blend_range),
         minimum=processors_choices.frame_colorizer_blend_range[0],
         maximum=processors_choices.frame_colorizer_blend_range[-1],
-        visible='frame_colorizer' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     register_ui_component('frame_colorizer_model_dropdown', FRAME_COLORIZER_MODEL_DROPDOWN)
     register_ui_component('frame_colorizer_size_dropdown', FRAME_COLORIZER_SIZE_DROPDOWN)
@@ -58,13 +60,13 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update, gradio.update]:
-    has_frame_colorizer = 'frame_colorizer' in processors
+    has_frame_colorizer = 'Frame Colorizer' in processors
     return gradio.update(visible=has_frame_colorizer), gradio.update(visible=has_frame_colorizer), gradio.update(
         visible=has_frame_colorizer)
 
 
 def update_frame_colorizer_model(frame_colorizer_model: FrameColorizerModel) -> gradio.update:
-    frame_colorizer_module = load_processor_module('frame_colorizer')
+    frame_colorizer_module = load_processor_module(PROCESSOR_KEY)
     frame_colorizer_module.clear_inference_pool()
     state_manager.set_item('frame_colorizer_model', frame_colorizer_model)
 

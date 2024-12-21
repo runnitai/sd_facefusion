@@ -11,6 +11,7 @@ from facefusion.face_analyser import get_many_faces
 from facefusion.face_selector import sort_and_filter_faces
 from facefusion.face_store import clear_reference_faces, clear_static_faces
 from facefusion.filesystem import is_image, is_video
+from facefusion.processors.core import list_processors, get_processors_modules
 from facefusion.typing import FaceSelectorMode, VisionFrame, Race, Gender, FaceSelectorOrder
 from facefusion.uis.components.face_masker import clear_mask_times
 from facefusion.uis.core import get_ui_component, register_ui_component, get_ui_components
@@ -386,17 +387,18 @@ def listen() -> None:
     processors_checkbox_group = get_ui_component('processors_checkbox_group')
     if processors_checkbox_group:
         processors_checkbox_group.change(
-            toggle_selector_group,
+            toggle_group,
             inputs=processors_checkbox_group,
             outputs=[FACE_SELECTOR_GROUP]
         )
 
 
-def toggle_selector_group(processors: List[str]) -> gradio.update:
-    non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
+def toggle_group(processors: List[str]) -> gradio.update:
+    all_processors = get_processors_modules()
+    all_face_processor_names = [processor.display_name for processor in all_processors if processor.is_face_processor]
     # Make the group visible if any face processor is selected
     for processor in processors:
-        if processor not in non_face_processors:
+        if processor in all_face_processor_names:
             return gradio.update(visible=True)
     return gradio.update(visible=False)
 

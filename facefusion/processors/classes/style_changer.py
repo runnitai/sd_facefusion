@@ -14,7 +14,7 @@ from facefusion.face_ana import warp_and_crop_face, get_reference_facial_points
 from facefusion.face_analyser import get_many_faces
 from facefusion.filesystem import is_image, is_video, resolve_relative_path
 from facefusion.jobs.job_store import register_step_keys
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import StyleChangerInputs
 from facefusion.typing import (
     ProcessMode, VisionFrame, QueuePayload, ModelSet,
@@ -84,9 +84,6 @@ def clear_inference_pool() -> None:
 
 class StyleChanger(BaseProcessor):
     def process_image(self, target_path: str, output_path: str) -> None:
-        pass
-
-    def post_process(self) -> None:
         pass
 
     MODEL_SET: ModelSet = {
@@ -290,7 +287,7 @@ class StyleChanger(BaseProcessor):
             '--style-changer-model',
             help=wording.get('help.style_changer_model'),
             default='3d',
-            choices=self.model_names()
+            choices=self.list_models()
         )
         program.add_argument(
             '--style-changer-target',
@@ -303,13 +300,6 @@ class StyleChanger(BaseProcessor):
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
         apply_state_item('style_changer_model', args.get('style_changer_model'))
         apply_state_item('style_changer_target', args.get('style_changer_target'))
-
-    def model_names(self) -> List[str]:
-        names = []
-        for model_name in self.MODEL_SET.keys():
-            if model_name not in names and model_name != 'alpha':
-                names.append(model_name)
-        return names
 
     def pre_process(self, mode: ProcessMode) -> bool:
         target_path = state_manager.get_item('target_path')
@@ -324,8 +314,8 @@ class StyleChanger(BaseProcessor):
 
     def get_inference_pool(self) -> InferencePool:
         model_opts = self.get_model_options().get("sources")
-        head_sources = model_opts.get("head")
-        bg_sources = model_opts.get("background")
+        head_sources = {"head":model_opts.get("head")}
+        bg_sources = {"bg": model_opts.get("background")}
         head_context = f"{NAME}.head"
         bg_context = f"{NAME}.bg"
         head_pool = inference_manager.get_inference_pool(head_context, head_sources)
@@ -345,6 +335,16 @@ class StyleChanger(BaseProcessor):
             output_frames.append((frame_number, frame_path))
         return output_frames
 
+    def process_src_image(self, input_path: str, output_path: str) -> str:
+        #input_file, input_extension = os.path.splitext(input_path)
+        style_target = state_manager.get_item('style_changer_target')
+        skip_head = state_manager.get_item('style_changer_skip_head') if style_target == 'source' else False
+        skip_bg = "source head" in style_target
+        result = self.change_style(input_path, skip_head=skip_head, skip_bg=skip_bg)
+        cv2.imwrite(output_path, result)  # Convert back to BGR if needed
+        print(f"Image processing complete. Output saved to {output_path}.")
+        return output_path
+
     def process_frame(self, inputs: StyleChangerInputs) -> VisionFrame:
         vision_frame = inputs['target_vision_frame']
         style_target = state_manager.get_item('style_changer_target')
@@ -355,8 +355,8 @@ class StyleChanger(BaseProcessor):
                      skip_bg: bool = False) -> VisionFrame:
         # Similar structure to face_swapper: get inference sessions
         head_pool, bg_pool = self.get_inference_pool()
-        sess_head = head_pool.get("model")
-        sess_bg = bg_pool.get("model")
+        sess_head = head_pool.get("head")
+        sess_bg = bg_pool.get("bg")
 
         img = convert_to_ndarray(temp_vision_frame)
         ori_h, ori_w, _ = img.shape

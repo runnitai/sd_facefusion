@@ -4,19 +4,23 @@ import numpy
 
 from facefusion import state_manager
 from facefusion.common_helper import get_first
-from facefusion.face_classifier import classify_face
-from facefusion.face_detector import detect_faces, detect_rotated_faces
 from facefusion.face_helper import apply_nms, convert_to_face_landmark_5, estimate_face_angle, get_nms_threshold
-from facefusion.face_landmarker import detect_face_landmarks, estimate_face_landmark_68_5
-from facefusion.face_recognizer import calc_embedding
 from facefusion.face_store import get_static_faces, set_static_faces
 from facefusion.typing import BoundingBox, Face, FaceLandmark5, FaceLandmarkSet, FaceScoreSet, Score, VisionFrame
 from facefusion.vision import read_static_images
+from facefusion.workers.classes.face_classifier import FaceClassifier
+from facefusion.workers.classes.face_detector import FaceDetector
+from facefusion.workers.classes.face_landmarker import FaceLandmarker
+from facefusion.workers.classes.face_recognizer import FaceRecognizer
 
 AVG_FACE_1: Optional[Face] = None
 AVG_FACE_2: Optional[Face] = None
 SOURCE_FRAMES_1: Optional[List[str]] = None
 SOURCE_FRAMES_2: Optional[List[str]] = None
+landmarker = FaceLandmarker()
+detector = FaceDetector()
+recognizer = FaceRecognizer()
+classifier = FaceClassifier()
 
 
 def create_faces(vision_frame: VisionFrame, bounding_boxes: List[BoundingBox], face_scores: List[Score],
@@ -31,13 +35,14 @@ def create_faces(vision_frame: VisionFrame, bounding_boxes: List[BoundingBox], f
         face_score = face_scores[index]
         face_landmark_5 = face_landmarks_5[index]
         face_landmark_5_68 = face_landmark_5
-        face_landmark_68_5 = estimate_face_landmark_68_5(face_landmark_5_68)
+        face_landmark_68_5 = landmarker.estimate_face_landmark_68_5(face_landmark_5_68)
         face_landmark_68 = face_landmark_68_5
         face_landmark_score_68 = 0.0
         face_angle = estimate_face_angle(face_landmark_68_5)
 
         if state_manager.get_item('face_landmarker_score') > 0:
-            face_landmark_68, face_landmark_score_68 = detect_face_landmarks(vision_frame, bounding_box, face_angle)
+            face_landmark_68, face_landmark_score_68 = landmarker.detect_face_landmarks(vision_frame, bounding_box,
+                                                                                        face_angle)
         if face_landmark_score_68 > state_manager.get_item('face_landmarker_score'):
             face_landmark_5_68 = convert_to_face_landmark_5(face_landmark_68)
 
@@ -53,8 +58,8 @@ def create_faces(vision_frame: VisionFrame, bounding_boxes: List[BoundingBox], f
                 'detector': face_score,
                 'landmarker': face_landmark_score_68
             }
-        embedding, normed_embedding = calc_embedding(vision_frame, face_landmark_set.get('5/68'))
-        gender, age, race = classify_face(vision_frame, face_landmark_set.get('5/68'))
+        embedding, normed_embedding = recognizer.calc_embedding(vision_frame, face_landmark_set.get('5/68'))
+        gender, age, race = classifier.classify_face(vision_frame, face_landmark_set.get('5/68'))
         faces.append(Face(
             bounding_box=bounding_box,
             score_set=face_score_set,
@@ -101,14 +106,35 @@ def get_average_face(faces: List[Face]) -> Optional[Face]:
     return None
 
 
+# Define a global cache dictionary
+vision_frame_cache = {}
+
+
+def get_frame_hash(vision_frame: VisionFrame) -> int:
+    """
+    Compute a unique hash for the VisionFrame using its contents.
+    """
+    # Use hash of the flattened array's bytes for performance
+    return hash(vision_frame.tobytes())
+
+
 def get_many_faces(vision_frames: List[VisionFrame]) -> List[Face]:
     many_faces: List[Face] = []
 
     for vision_frame in vision_frames:
-        if numpy.any(vision_frame):
+        if numpy.any(vision_frame):  # Ensure the frame is not empty
+            # Compute hash for the current vision frame
+            frame_hash = get_frame_hash(vision_frame)
+            # Check if faces for this frame are already cached
+            if frame_hash in vision_frame_cache:
+                many_faces.extend(vision_frame_cache[frame_hash])
+                continue
+
+            # Process the frame to detect faces
             static_faces = get_static_faces(vision_frame)
             if static_faces:
                 many_faces.extend(static_faces)
+                vision_frame_cache[frame_hash] = static_faces  # Cache the result
             else:
                 all_bounding_boxes = []
                 all_face_scores = []
@@ -116,10 +142,10 @@ def get_many_faces(vision_frames: List[VisionFrame]) -> List[Face]:
 
                 for face_detector_angle in state_manager.get_item('face_detector_angles'):
                     if face_detector_angle == 0:
-                        bounding_boxes, face_scores, face_landmarks_5 = detect_faces(vision_frame)
+                        bounding_boxes, face_scores, face_landmarks_5 = detector.detect_faces(vision_frame)
                     else:
-                        bounding_boxes, face_scores, face_landmarks_5 = detect_rotated_faces(vision_frame,
-                                                                                             face_detector_angle)
+                        bounding_boxes, face_scores, face_landmarks_5 = detector.detect_rotated_faces(vision_frame,
+                                                                                                      face_detector_angle)
                     all_bounding_boxes.extend(bounding_boxes)
                     all_face_scores.extend(face_scores)
                     all_face_landmarks_5.extend(face_landmarks_5)
@@ -127,10 +153,11 @@ def get_many_faces(vision_frames: List[VisionFrame]) -> List[Face]:
                 if all_bounding_boxes and all_face_scores and all_face_landmarks_5 and state_manager.get_item(
                         'face_detector_score') > 0:
                     faces = create_faces(vision_frame, all_bounding_boxes, all_face_scores, all_face_landmarks_5)
-
                     if faces:
                         many_faces.extend(faces)
                         set_static_faces(vision_frame, faces)
+                        vision_frame_cache[frame_hash] = faces  # Cache the result
+
     return many_faces
 
 

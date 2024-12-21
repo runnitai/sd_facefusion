@@ -4,47 +4,25 @@ from time import time
 
 import numpy
 
-from facefusion import content_analyser, face_classifier, face_detector, face_landmarker, face_masker, face_recognizer, \
-    logger, process_manager, state_manager, voice_extractor, wording
+from facefusion import logger, process_manager, state_manager, wording
 from facefusion.args import apply_args, collect_job_args, reduce_step_args
 from facefusion.common_helper import get_first
-from facefusion.content_analyser import analyse_image, analyse_video
-from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.exit_helper import conditional_exit, hard_exit
-from facefusion.face_analyser import get_average_face, get_many_faces, get_one_face, get_avg_faces
-from facefusion.face_selector import sort_and_filter_faces
-from facefusion.face_store import append_reference_face, clear_reference_faces, get_reference_faces
+from facefusion.face_store import clear_reference_faces
 from facefusion.ffmpeg import copy_image, extract_frames, finalize_image, merge_video, replace_audio, restore_audio
-from facefusion.filesystem import filter_audio_paths, is_image, is_video, list_directory, resolve_relative_path
+from facefusion.filesystem import filter_audio_paths, is_image, is_video
 from facefusion.jobs import job_helper, job_manager, job_runner
 from facefusion.jobs.job_list import compose_job_list
 from facefusion.memory import limit_system_memory
 from facefusion.processors.core import get_processors_modules
-from facefusion.processors.modules import style_changer
 from facefusion.statistics import conditional_log_statistics
 from facefusion.temp_helper import clear_temp_directory, create_temp_directory, get_temp_file_path, \
     get_temp_frame_paths, move_temp_file
 from facefusion.typing import Args, ErrorCode, Face
-from facefusion.vision import get_video_frame, pack_resolution, read_image, read_static_images, \
-    restrict_image_resolution, restrict_video_fps, restrict_video_resolution, unpack_resolution
-
-
-# from facefusion.program import create_program
-
-
-# def cli() -> None:
-#     signal.signal(signal.SIGINT, lambda signal_number, frame: graceful_exit(0))
-#     program = create_program()
-#
-#     if validate_args(program):
-#         args = vars(program.parse_args())
-#         apply_args(args, state_manager.init_item)
-#
-#         if state_manager.get_item('command'):
-#             logger.init(state_manager.get_item('log_level'))
-#             route(args)
-#         else:
-#             program.print_help()
+from facefusion.vision import pack_resolution, restrict_image_resolution, \
+    restrict_video_fps, restrict_video_resolution, unpack_resolution
+from facefusion.workers.classes.content_analyser import ContentAnalyser
+from facefusion.workers.core import get_worker_modules
 
 
 def route(args: Args) -> None:
@@ -98,18 +76,7 @@ def pre_check() -> bool:
 
 
 def common_pre_check() -> bool:
-    modules = \
-        [
-            content_analyser,
-            face_classifier,
-            face_detector,
-            face_landmarker,
-            face_masker,
-            face_recognizer,
-            style_changer,
-            voice_extractor
-        ]
-
+    modules = get_worker_modules()
     return all(module.pre_check() for module in modules)
 
 
@@ -163,57 +130,12 @@ def average_reference_faces():
             state_manager.set_item(face_dict_key, {first_key: [average_face]})
 
 
-def conditional_append_reference_faces() -> None:
-    if 'reference' in state_manager.get_item('face_selector_mode') and not get_reference_faces():
-        source_face, source_face_2 = get_avg_faces()
-        if is_video(state_manager.get_item('target_path')):
-            reference_frame = get_video_frame(state_manager.get_item('target_path'),
-                                              state_manager.get_item('reference_frame_number'))
-        else:
-            reference_frame = read_image(state_manager.get_item('target_path'))
-        reference_faces = sort_and_filter_faces(get_many_faces([reference_frame]))
-        reference_face = get_one_face(reference_faces, state_manager.get_item('reference_face_position'))
-        append_reference_face('origin', reference_face)
-
-        if source_face and reference_face:
-            for processor_module in get_processors_modules(state_manager.get_item('processors')):
-                abstract_reference_frame = processor_module.get_reference_frame(source_face, reference_face,
-                                                                                reference_frame)
-                if numpy.any(abstract_reference_frame):
-                    abstract_reference_faces = sort_and_filter_faces(get_many_faces([abstract_reference_frame]))
-                    abstract_reference_face = get_one_face(abstract_reference_faces,
-                                                           state_manager.get_item('reference_face_position'))
-                    append_reference_face(processor_module.__name__, abstract_reference_face)
-
-
 def force_download() -> ErrorCode:
-    download_directory_path = resolve_relative_path('../.assets/models')
-    available_processors = list_directory('facefusion/processors/modules')
-    common_modules = \
-        [
-            content_analyser,
-            face_classifier,
-            face_detector,
-            face_landmarker,
-            face_recognizer,
-            face_masker,
-            style_changer,
-            voice_extractor
-        ]
-    processor_modules = get_processors_modules(available_processors)
-
-    for module in common_modules + processor_modules:
-        if hasattr(module, 'MODEL_SET'):
-            for model in module.MODEL_SET.values():
-                model_hashes = model.get('hashes')
-                model_sources = model.get('sources')
-
-                if model_hashes and model_sources:
-                    if not conditional_download_hashes(download_directory_path,
-                                                       model_hashes) or not conditional_download_sources(
-                        download_directory_path, model_sources):
-                        return 1
-
+    all_workers = get_worker_modules()
+    all_processors = get_processors_modules()
+    for module in all_workers + all_processors:
+        if not module.download_all_models():
+            return 2
     return 0
 
 
@@ -356,7 +278,8 @@ def process_headless(args: Args) -> ErrorCode:
 
 
 def process_image(start_time: float) -> ErrorCode:
-    if analyse_image(state_manager.get_item('target_path')):
+    analyser = ContentAnalyser()
+    if analyser.analyse_image(state_manager.get_item('target_path')):
         return 3
     # clear temp
     logger.debug(wording.get('clearing_temp'), __name__)
@@ -410,7 +333,8 @@ def process_image(start_time: float) -> ErrorCode:
 
 
 def process_video(start_time: float) -> ErrorCode:
-    if analyse_video(state_manager.get_item('target_path'), state_manager.get_item('trim_frame_start'),
+    analyser = ContentAnalyser()
+    if analyser.analyse_video(state_manager.get_item('target_path'), state_manager.get_item('trim_frame_start'),
                      state_manager.get_item('trim_frame_end')):
         return 3
     # clear temp

@@ -5,12 +5,14 @@ import gradio
 from facefusion import state_manager, wording
 from facefusion.common_helper import get_first
 from facefusion.processors import choices as processors_choices
+from facefusion.processors.classes.face_swapper import FaceSwapper
 from facefusion.processors.core import load_processor_module
 from facefusion.processors.typing import FaceSwapperModel
 from facefusion.uis.core import get_ui_component, register_ui_component
 
 FACE_SWAPPER_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
 FACE_SWAPPER_PIXEL_BOOST_DROPDOWN: Optional[gradio.Dropdown] = None
+PROCESSOR_KEY = 'Face Swapper'
 
 
 def render() -> None:
@@ -19,15 +21,15 @@ def render() -> None:
 
     FACE_SWAPPER_MODEL_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.face_swapper_model_dropdown'),
-        choices=processors_choices.face_swapper_set.keys(),
+        choices=FaceSwapper().list_models(),
         value=state_manager.get_item('face_swapper_model'),
-        visible='face_swapper' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     FACE_SWAPPER_PIXEL_BOOST_DROPDOWN = gradio.Dropdown(
         label=wording.get('uis.face_swapper_pixel_boost_dropdown'),
         choices=processors_choices.face_swapper_set.get(state_manager.get_item('face_swapper_model')),
         value=state_manager.get_item('face_swapper_pixel_boost'),
-        visible='face_swapper' in state_manager.get_item('processors')
+        visible=PROCESSOR_KEY in state_manager.get_item('processors')
     )
     register_ui_component('face_swapper_model_dropdown', FACE_SWAPPER_MODEL_DROPDOWN)
     register_ui_component('face_swapper_pixel_boost_dropdown', FACE_SWAPPER_PIXEL_BOOST_DROPDOWN)
@@ -45,12 +47,12 @@ def listen() -> None:
 
 
 def remote_update(processors: List[str]) -> Tuple[gradio.update, gradio.update]:
-    has_face_swapper = 'face_swapper' in processors
+    has_face_swapper = 'Face Swapper' in processors
     return gradio.update(visible=has_face_swapper), gradio.update(visible=has_face_swapper)
 
 
 def update_face_swapper_model(face_swapper_model: FaceSwapperModel) -> Tuple[gradio.update, gradio.update]:
-    face_swapper_module = load_processor_module('face_swapper')
+    face_swapper_module = load_processor_module(PROCESSOR_KEY)
     face_swapper_module.clear_inference_pool()
     state_manager.set_item('face_swapper_model', face_swapper_model)
 

@@ -1,14 +1,13 @@
 import os
-from typing import Optional, List, Tuple, Union
+from typing import Optional, List, Tuple
 
 import gradio
 
 from facefusion import wording, state_manager
 from facefusion.common_helper import get_first
-from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths, is_image, \
-    remove_directory, move_file, is_audio
-from facefusion.processors.modules.style_changer import process_src_image
-from facefusion.temp_helper import get_temp_directory_path, get_base_directory_path
+from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths
+from facefusion.processors.classes.style_changer import StyleChanger
+from facefusion.temp_helper import get_temp_directory_path
 from facefusion.uis.core import register_ui_component, get_ui_components
 from facefusion.uis.typing import File
 
@@ -139,7 +138,7 @@ def actual_clear(is_src_2: bool = False) -> None:
 
 def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
     gradio.update, gradio.update, gradio.update, gradio.update]:
-    style_type = state_manager.get_item('style_changer_model')
+    style_changer = StyleChanger()
     target = state_manager.get_item('style_changer_target')
     state_key = 'source_paths_2' if is_src_2 else 'source_paths'
     
@@ -150,7 +149,7 @@ def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
             styled_file = os.path.join(get_temp_directory_path(base_file), f'ff_styled{ext}')
             if os.path.exists(styled_file):
                 os.remove(styled_file)
-            styled_file = process_src_image(base_file, styled_file)
+            styled_file = style_changer.process_src_image(base_file, styled_file)
             # Replace the original file name with the styled file name
             file_names[file_names.index(base_file)] = styled_file
     

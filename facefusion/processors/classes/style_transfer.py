@@ -6,11 +6,12 @@ import torch
 
 from facefusion import logger, wording, state_manager, process_manager
 from facefusion.filesystem import resolve_relative_path, in_directory, is_image, is_video, same_file_extension
-from facefusion.processors.classes.base_processor import BaseProcessor
+from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import VisionFrame
 from facefusion.style_transfer_src import Stylization, ReshapeTool, TransformerNet
 from facefusion.typing import QueuePayload, ApplyStateItem, Args, ProcessMode
 from facefusion.vision import read_image, read_static_image, write_image
+from facefusion.workers.core import clear_worker_modules
 
 
 class StyleTransfer(BaseProcessor):
@@ -73,13 +74,6 @@ class StyleTransfer(BaseProcessor):
 
         self.get_frame_processor()
         return True
-
-    def post_process(self) -> None:
-        read_static_image.cache_clear()
-        if state_manager.get_item('video_memory_strategy') in ['strict', 'moderate']:
-            self.clear_inference_pool()
-        if state_manager.get_item('video_memory_strategy') == 'strict':
-            pass  # Clearing other pools can be added here
 
     def process_frame(self, inputs: dict) -> VisionFrame:
         target_vision_frame = inputs.get('target_vision_frame')

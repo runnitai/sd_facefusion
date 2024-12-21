@@ -41,7 +41,9 @@ def create_message(message: str, module_name: str) -> str:
     last_scope = get_last(scopes)
 
     if first_scope and last_scope:
-        return '[' + first_scope.upper() + '.' + last_scope.upper() + '] ' + message
+        if first_scope != last_scope:
+            return f'[{first_scope}.{last_scope}] {message}'
+        return f'[facefusion.{first_scope}] {message}'
     return message
 
 
