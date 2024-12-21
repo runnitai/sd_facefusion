@@ -9,7 +9,7 @@ from facefusion.core import process_step
 from facefusion.jobs import job_manager, job_runner, job_store
 from facefusion.typing import UiWorkflow
 from facefusion.uis import choices as uis_choices
-from facefusion.uis.core import get_ui_component
+from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.typing import JobRunnerAction
 from facefusion.uis.ui_helper import convert_str_none
 
@@ -55,11 +55,15 @@ def render() -> None:
                     visible=False
                 )
 
+            register_ui_component('job_runner_job_action_dropdown', JOB_RUNNER_JOB_ACTION_DROPDOWN)
+            register_ui_component('job_runner_job_id_dropdown', JOB_RUNNER_JOB_ID_DROPDOWN)
+            register_ui_component('job_runner_start_button', JOB_RUNNER_START_BUTTON)
+
 
 def listen() -> None:
     JOB_RUNNER_JOB_ACTION_DROPDOWN.change(update_job_action, inputs=JOB_RUNNER_JOB_ACTION_DROPDOWN,
                                           outputs=JOB_RUNNER_JOB_ID_DROPDOWN)
-    JOB_RUNNER_START_BUTTON.click(start, outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON])
+    JOB_RUNNER_START_BUTTON.click(start, _js='start_status', outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON])
     JOB_RUNNER_START_BUTTON.click(run, inputs=[JOB_RUNNER_JOB_ACTION_DROPDOWN, JOB_RUNNER_JOB_ID_DROPDOWN],
                                   outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON, JOB_RUNNER_JOB_ID_DROPDOWN])
     JOB_RUNNER_STOP_BUTTON.click(stop, outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON])

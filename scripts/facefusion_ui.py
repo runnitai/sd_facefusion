@@ -8,10 +8,12 @@ import gradio as gr
 from facefusion.args import apply_args
 from facefusion.core import route
 from facefusion.download import conditional_download
+from facefusion.jobs import job_manager
 from facefusion.memory import tune_performance
 from facefusion.processors.core import get_processors_modules
 from facefusion.program import create_program
 from facefusion.program_helper import validate_args
+from facefusion.typing import JobStatus
 from facefusion.uis.core import load_ui_layout_module
 from facefusion.workers.core import list_workers
 from modules import script_callbacks

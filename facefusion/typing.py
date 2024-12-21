@@ -203,6 +203,7 @@ StateKey = Literal[
     'config_path',
     'jobs_path',
     'source_paths',
+    'source_paths_2',
     'target_path',
     'output_path',
     'face_detector_model',

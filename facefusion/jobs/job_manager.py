@@ -87,6 +87,10 @@ def find_jobs(job_status: JobStatus) -> JobSet:
 
 
 def find_job_ids(job_status: JobStatus) -> List[str]:
+    global JOBS_PATH
+    if not JOBS_PATH:
+        from facefusion import state_manager
+        JOBS_PATH = state_manager.get_item('jobs_path')
     job_pattern = os.path.join(JOBS_PATH, job_status, '*.json')
     job_files = glob.glob(job_pattern)
     job_files.sort(key=os.path.getmtime)
