@@ -10,7 +10,7 @@ from facefusion.uis.components import (age_modifier_options, common_options, exp
                                        style_transfer_options, output, \
                                        output_options, \
                                        preview, processors, source, target, temp_frame, trim_frame, execution,
-                                       execution_thread_count, execution_queue_count)
+                                       execution_thread_count, execution_queue_count, ui_workflow)
 
 
 def pre_check() -> bool:
@@ -58,7 +58,7 @@ def render() -> gradio.Blocks:
                 with gradio.Blocks():
                     output.render()
                 with gradio.Blocks():
-                    # ui_workflow.render()
+                    ui_workflow.render()
                     instant_runner.render()
                     job_runner.render()
                     job_manager.render()
@@ -111,6 +111,7 @@ def listen() -> None:
     source.listen()
     target.listen()
     output.listen()
+    #ui_workflow.listen()
     instant_runner.listen()
     job_runner.listen()
     job_manager.listen()

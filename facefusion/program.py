@@ -45,7 +45,7 @@ def create_paths_program() -> ArgumentParser:
                              default=config.get_str_value('paths.target_path'))
     group_paths.add_argument('-o', '--output-path', help=wording.get('help.output_path'),
                              default=config.get_str_value('paths.output_path'))
-    job_store.register_step_keys(['source_paths', 'target_path', 'output_path'])
+    job_store.register_step_keys(['source_paths', 'target_path', 'output_path', 'reference_face_dict', 'reference_face_dict_2'])
     return program
 
 

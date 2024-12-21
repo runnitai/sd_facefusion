@@ -85,8 +85,7 @@ LipSyncerInputs = TypedDict('LipSyncerInputs',
                                 'source_audio_frame_2': AudioFrame,
                                 'target_vision_frame': VisionFrame
                             })
-ProcessorStateKey = Literal \
-    [
+ProcessorStateKey = Literal[
     'age_modifier_model',
     'age_modifier_direction',
     'expression_restorer_model',
@@ -116,7 +115,11 @@ ProcessorStateKey = Literal \
     'frame_colorizer_blend',
     'frame_enhancer_model',
     'frame_enhancer_blend',
-    'lip_syncer_model'
+    'lip_syncer_model',
+    'style_changer_model',
+    'style_changer_target',
+    'style_changer_skip_head',
+    'style_transfer_image'
 ]
 
 ProcessorState = TypedDict('ProcessorState',

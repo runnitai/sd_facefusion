@@ -198,8 +198,7 @@ Job = TypedDict('Job',
                 })
 JobSet = Dict[str, Job]
 ApplyStateItem = Callable[[Any, Any], None]
-StateKey = Literal \
-    [
+StateKey = Literal[
     'command',
     'config_path',
     'jobs_path',
@@ -221,6 +220,8 @@ StateKey = Literal \
     'reference_face_position',
     'reference_face_distance',
     'reference_frame_number',
+    'reference_face_dict',
+    'reference_face_dict_2',
     'face_mask_types',
     'face_mask_blur',
     'face_mask_padding',
@@ -277,6 +278,8 @@ State = TypedDict('State',
                       'reference_face_position': int,
                       'reference_face_distance': float,
                       'reference_frame_number': int,
+                      'reference_face_dict': FaceSet,
+                      'reference_face_dict_2': FaceSet,
                       'face_mask_types': List[FaceMaskType],
                       'face_mask_blur': float,
                       'face_mask_padding': Padding,
