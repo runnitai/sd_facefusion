@@ -242,7 +242,7 @@ class FaceEditor(BaseProcessor):
         }
 
     model_key = 'face_editor_model'
-    priority = 4
+    priority = 9
 
     def __init__(self):
         super().__init__()
