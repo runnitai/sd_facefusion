@@ -317,6 +317,26 @@ class FaceSwapper(BaseProcessor):
     priority: int = 0
     preload: bool = True
     preferred_provider = 'tensorrt'
+    model_options: ModelOptions = {}
+    model_type: str = ''
+    model_template: str = ''
+    model_size: Tuple[int, int] = (0, 0)
+    model_mean: List[float] = []
+    model_std: List[float] = []
+    face_swapper: InferencePool = {}
+    embedding_converter: InferencePool = {}
+    inference_pool: InferencePool = {}
+    face_selector_mode: str = ''
+    reference_face_distance: float = 0.0
+    face_mask_types: List[str] = []
+    face_mask_blur: float = 0.0
+    face_mask_regions: List[str] = []
+    face_mask_padding: Padding = (0, 0, 0, 0)
+    pixel_boost_value: str = ''
+    source_face: Face = None
+    source_face_2: Face = None
+    prepared_source_input: VisionFrame = None
+    prepared_source_input_2: VisionFrame = None
 
     def register_args(self, program: ArgumentParser) -> None:
         group_processors = find_argument_group(program, 'processors')
@@ -369,7 +389,8 @@ class FaceSwapper(BaseProcessor):
 
         self.inference_pool = self.get_inference_pool()
         self.face_swapper = self.inference_pool.get('face_swapper')
-        self.embedding_converter = self.inference_pool.get('embedding_converter') if 'embedding_converter' in self.model_options.get('sources', {}) else None
+        self.embedding_converter = self.inference_pool.get(
+            'embedding_converter') if 'embedding_converter' in self.model_options.get('sources', {}) else None
 
         self.face_selector_mode = state_manager.get_item('face_selector_mode')
         self.reference_face_distance = state_manager.get_item('reference_face_distance')
