@@ -390,11 +390,12 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
                         'reference_faces_2': reference_faces_2,
                         'source_face': source_face,
                         'source_face_2': source_face_2,
+                        'source_visual_frame': source_frame,
                         'source_audio_frame': source_audio_frame,
                         'source_audio_frame_2': source_audio_frame_2,
                         'target_vision_frame': target_vision_frame,
                         'target_frame_number': frame_number,
-                        'source_frame': source_frame,
+                        'source_vision_frame': source_frame,
                         'is_preview': True,
                     })
                     print(f"Processed with {frame_processor_module.display_name} in {datetime.now() - start_time}")
