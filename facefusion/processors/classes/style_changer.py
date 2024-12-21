@@ -257,7 +257,7 @@ class StyleChanger(BaseProcessor):
             }
         }
     }
-
+    priority = 1
     is_face_processor: bool = True
     model_key: str = 'style_changer_model'
     REFERENCE_PTS = get_reference_facial_points(default_square=True)
