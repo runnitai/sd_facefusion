@@ -70,7 +70,7 @@ class ExpressionRestorer(BaseProcessor):
     }
 
     model_key = "expression_restorer_model"
-    priority = 3
+    priority = 8
 
     def register_args(self, program: ArgumentParser) -> None:
         group_processors = find_argument_group(program, "processors")
