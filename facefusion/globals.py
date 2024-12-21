@@ -24,6 +24,7 @@ execution_providers: List[str] = ['tensorrt', 'cuda']
 execution_thread_count: Optional[int] = 22
 execution_queue_count: Optional[int] = 2
 expression_restorer_model: Optional[str] = 'live_portrait'
+expression_restorer_factor: Optional[float] = 0.8
 face_editor_model: Optional[str] = 'live_portrait'
 face_enhancer_model: Optional[str] = 'gfpgan_1.4'
 frame_enhancer_blend: Optional[float] = 1.0
@@ -60,7 +61,7 @@ reference_face_position: Optional[int] = 0
 reference_face_distance: Optional[float] = 0.75
 reference_frame_number: Optional[int] = 0
 # face mask
-face_mask_types: Optional[List[FaceMaskType]] = ['box', 'region', 'occlusion']
+face_mask_types: Optional[List[FaceMaskType]] = ['region', 'occlusion']
 face_mask_blur: Optional[float] = 0.3
 face_mask_padding: Optional[Padding] = (0, 0, 0, 0)
 face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
