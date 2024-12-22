@@ -295,7 +295,12 @@ class StyleChanger(BaseProcessor):
             default='target',
             choices=['source', 'target']
         )
-        register_step_keys(['style_changer_model', 'style_changer_target'])
+        program.add_argument(
+            '--style-changer-skip-head',
+            help=wording.get('help.style_changer_skip_head'),
+            action='store_true'
+        )
+        register_step_keys(['style_changer_model', 'style_changer_target', 'style_changer_skip_head'])
 
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
         apply_state_item('style_changer_model', args.get('style_changer_model'))
