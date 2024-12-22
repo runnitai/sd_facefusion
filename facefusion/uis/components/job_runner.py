@@ -66,7 +66,7 @@ def listen() -> None:
     JOB_RUNNER_START_BUTTON.click(start, _js='start_status', outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON])
     JOB_RUNNER_START_BUTTON.click(run, inputs=[JOB_RUNNER_JOB_ACTION_DROPDOWN, JOB_RUNNER_JOB_ID_DROPDOWN],
                                   outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON, JOB_RUNNER_JOB_ID_DROPDOWN])
-    JOB_RUNNER_STOP_BUTTON.click(stop, outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON])
+    JOB_RUNNER_STOP_BUTTON.click(stop, _js='stop_status', outputs=[JOB_RUNNER_START_BUTTON, JOB_RUNNER_STOP_BUTTON])
 
     ui_workflow_dropdown = get_ui_component('ui_workflow_dropdown')
     if ui_workflow_dropdown:

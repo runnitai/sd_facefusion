@@ -91,15 +91,6 @@ def write_json(json_path: str, content: dict) -> bool:
     try:
         with open(json_path, 'w') as json_file:
             json.dump(content, json_file, indent=4, cls=FaceEncoder)
-
-        read_content = read_json(json_path)
-        if read_content is None:
-            print(f"Failed to read back JSON from {json_path}.")
-            return False
-
-        if not dicts_are_equal(read_content, content):
-            print(f"Conversion mismatch in {json_path}!")
-
         return is_file(json_path)
     except Exception as e:
         print(f"Error writing JSON to {json_path}: {e}")

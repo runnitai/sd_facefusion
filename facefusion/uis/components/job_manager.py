@@ -95,97 +95,121 @@ def remote_update(ui_workflow: UiWorkflow) -> Tuple[
 
 def apply(job_action: JobManagerAction, created_job_id: str, selected_job_id: str, selected_step_index: int) -> Tuple[
     gradio.update, gradio.update, gradio.update, gradio.update]:
+    # Helper functions
+    def handle_action(success, success_msg, error_msg, updates):
+        if success:
+            logger.info(success_msg, __name__)
+            return updates
+        else:
+            logger.error(error_msg, __name__)
+            return gradio.update(), gradio.update(), gradio.update(), gradio.update()
+
+    def update_jobs(job_state='drafted'):
+        return job_manager.find_job_ids(job_state) or ['none']
+
+    # Prepare input
     created_job_id = convert_str_none(created_job_id)
     selected_job_id = convert_str_none(selected_job_id)
     selected_step_index = convert_int_none(selected_step_index)
     step_args = collect_step_args()
     step_args['output_path'] = get_output_path_auto()
     output_path = step_args.get('output_path')
-    if is_directory(step_args.get('output_path')):
-        step_args['output_path'] = suggest_output_path(step_args.get('output_path'),
-                                                       state_manager.get_item('target_path'))
-    if job_action == 'job-create':
-        if created_job_id and job_manager.create_job(created_job_id):
-            updated_job_ids = job_manager.find_job_ids('drafted') or ['none']
 
-            logger.info(wording.get('job_created').format(job_id=created_job_id), __name__)
-            return gradio.update(value='job-add-step'), gradio.update(visible=False), gradio.update(
-                value=created_job_id, choices=updated_job_ids, visible=True), gradio.update()
-        else:
-            logger.error(wording.get('job_not_created').format(job_id=created_job_id), __name__)
-    if job_action == 'job-submit':
-        if selected_job_id and job_manager.submit_job(selected_job_id):
-            updated_job_ids = job_manager.find_job_ids('drafted') or ['none']
+    if is_directory(output_path):
+        step_args['output_path'] = suggest_output_path(output_path, state_manager.get_item('target_path'))
 
-            logger.info(wording.get('job_submitted').format(job_id=selected_job_id), __name__)
-            return gradio.update(), gradio.update(), gradio.update(value=get_last(updated_job_ids),
-                                                                        choices=updated_job_ids,
-                                                                        visible=True), gradio.update()
-        else:
-            logger.error(wording.get('job_not_submitted').format(job_id=selected_job_id), __name__)
-    if job_action == 'job-delete':
-        if selected_job_id and job_manager.delete_job(selected_job_id):
-            updated_job_ids = job_manager.find_job_ids('drafted') + job_manager.find_job_ids(
-                'queued') + job_manager.find_job_ids('failed') + job_manager.find_job_ids('completed') or ['none']
+    # Action handling
+    actions = {
+        'job-create': lambda: handle_action(
+            job_manager.create_job(created_job_id),
+            wording.get('job_created').format(job_id=created_job_id),
+            wording.get('job_not_created').format(job_id=created_job_id),
+            (
+                gradio.update(value='job-add-step'),
+                gradio.update(visible=False),
+                gradio.update(value=created_job_id, choices=update_jobs(), visible=True),
+                gradio.update(),
+            )
+        ),
+        'job-submit': lambda: handle_action(
+            job_manager.submit_job(selected_job_id),
+            wording.get('job_submitted').format(job_id=selected_job_id),
+            wording.get('job_not_submitted').format(job_id=selected_job_id),
+            (
+                gradio.update(),
+                gradio.update(),
+                gradio.update(value=get_last(update_jobs()), choices=update_jobs(), visible=True),
+                gradio.update(),
+            )
+        ),
+        'job-delete': lambda: handle_action(
+            job_manager.delete_job(selected_job_id),
+            wording.get('job_deleted').format(job_id=selected_job_id),
+            wording.get('job_not_deleted').format(job_id=selected_job_id),
+            (
+                gradio.update(),
+                gradio.update(),
+                gradio.update(value=get_last(update_jobs('all_states')), choices=update_jobs('all_states'),
+                              visible=True),
+                gradio.update(),
+            )
+        ),
+        'job-add-step': lambda: handle_action(
+            job_manager.add_step(selected_job_id, step_args),
+            wording.get('job_step_added').format(job_id=selected_job_id),
+            wording.get('job_step_not_added').format(job_id=selected_job_id),
+            (
+                gradio.update(),
+                gradio.update(),
+                gradio.update(visible=True),
+                gradio.update(visible=False),
+            )
+        ),
+        'job-remix-step': lambda: handle_action(
+            job_manager.has_step(selected_job_id, selected_step_index) and
+            job_manager.remix_step(selected_job_id, selected_step_index, step_args),
+            wording.get('job_remix_step_added').format(job_id=selected_job_id, step_index=selected_step_index),
+            wording.get('job_remix_step_not_added').format(job_id=selected_job_id, step_index=selected_step_index),
+            (
+                gradio.update(),
+                gradio.update(),
+                gradio.update(visible=True),
+                gradio.update(value=get_last(get_step_choices(selected_job_id)),
+                              choices=get_step_choices(selected_job_id), visible=True),
+            )
+        ),
+        'job-insert-step': lambda: handle_action(
+            job_manager.has_step(selected_job_id, selected_step_index) and
+            job_manager.insert_step(selected_job_id, selected_step_index, step_args),
+            wording.get('job_step_inserted').format(job_id=selected_job_id, step_index=selected_step_index),
+            wording.get('job_step_not_inserted').format(job_id=selected_job_id, step_index=selected_step_index),
+            (
+                gradio.update(),
+                gradio.update(),
+                gradio.update(visible=True),
+                gradio.update(value=get_last(get_step_choices(selected_job_id)),
+                              choices=get_step_choices(selected_job_id), visible=True),
+            )
+        ),
+        'job-remove-step': lambda: handle_action(
+            job_manager.has_step(selected_job_id, selected_step_index) and
+            job_manager.remove_step(selected_job_id, selected_step_index),
+            wording.get('job_step_removed').format(job_id=selected_job_id, step_index=selected_step_index),
+            wording.get('job_step_not_removed').format(job_id=selected_job_id, step_index=selected_step_index),
+            (
+                gradio.update(),
+                gradio.update(),
+                gradio.update(visible=True),
+                gradio.update(value=get_last(get_step_choices(selected_job_id)),
+                              choices=get_step_choices(selected_job_id), visible=True),
+            )
+        ),
+    }
 
-            logger.info(wording.get('job_deleted').format(job_id=selected_job_id), __name__)
-            return gradio.update(), gradio.update(), gradio.update(value=get_last(updated_job_ids),
-                                                                        choices=updated_job_ids,
-                                                                        visible=True), gradio.update()
-        else:
-            logger.error(wording.get('job_not_deleted').format(job_id=selected_job_id), __name__)
-    if job_action == 'job-add-step':
-        if selected_job_id and job_manager.add_step(selected_job_id, step_args):
-            state_manager.set_item('output_path', output_path)
-            logger.info(wording.get('job_step_added').format(job_id=selected_job_id), __name__)
-            return gradio.update(), gradio.update(), gradio.update(visible=True), gradio.update(visible=False)
-        else:
-            state_manager.set_item('output_path', output_path)
-            logger.error(wording.get('job_step_not_added').format(job_id=selected_job_id), __name__)
-    if job_action == 'job-remix-step':
-        if selected_job_id and job_manager.has_step(selected_job_id, selected_step_index) and job_manager.remix_step(
-            selected_job_id, selected_step_index, step_args):
-            updated_step_choices = get_step_choices(selected_job_id) or ['none']  # type:ignore[list-item]
+    # Execute the relevant action
+    if job_action in actions:
+        return actions[job_action]()
 
-            state_manager.set_item('output_path', output_path)
-            logger.info(
-                wording.get('job_remix_step_added').format(job_id=selected_job_id, step_index=selected_step_index),
-                __name__)
-            return gradio.update(), gradio.update(), gradio.update(visible=True), gradio.update(
-                value=get_last(updated_step_choices), choices=updated_step_choices, visible=True)
-        else:
-            state_manager.set_item('output_path', output_path)
-            logger.error(
-                wording.get('job_remix_step_not_added').format(job_id=selected_job_id, step_index=selected_step_index),
-                __name__)
-    if job_action == 'job-insert-step':
-        if selected_job_id and job_manager.has_step(selected_job_id, selected_step_index) and job_manager.insert_step(
-            selected_job_id, selected_step_index, step_args):
-            updated_step_choices = get_step_choices(selected_job_id) or ['none']  # type:ignore[list-item]
-
-            state_manager.set_item('output_path', output_path)
-            logger.info(wording.get('job_step_inserted').format(job_id=selected_job_id, step_index=selected_step_index),
-                        __name__)
-            return gradio.update(), gradio.update(), gradio.update(visible=True), gradio.update(
-                value=get_last(updated_step_choices), choices=updated_step_choices, visible=True)
-        else:
-            state_manager.set_item('output_path', output_path)
-            logger.error(
-                wording.get('job_step_not_inserted').format(job_id=selected_job_id, step_index=selected_step_index),
-                __name__)
-    if job_action == 'job-remove-step':
-        if selected_job_id and job_manager.has_step(selected_job_id, selected_step_index) and job_manager.remove_step(
-            selected_job_id, selected_step_index):
-            updated_step_choices = get_step_choices(selected_job_id) or ['none']  # type:ignore[list-item]
-
-            logger.info(wording.get('job_step_removed').format(job_id=selected_job_id, step_index=selected_step_index),
-                        __name__)
-            return gradio.update(), gradio.update(), gradio.update(visible=True), gradio.update(
-                value=get_last(updated_step_choices), choices=updated_step_choices, visible=True)
-        else:
-            logger.error(
-                wording.get('job_step_not_removed').format(job_id=selected_job_id, step_index=selected_step_index),
-                __name__)
     return gradio.update(), gradio.update(), gradio.update(), gradio.update()
 
 
@@ -204,20 +228,20 @@ def update(job_action: JobManagerAction, selected_job_id: str) -> Tuple[
         updated_job_id = selected_job_id if selected_job_id in updated_job_ids else get_last(updated_job_ids)
 
         return gradio.update(visible=False), gradio.update(value=updated_job_id, choices=updated_job_ids,
-                                                              visible=True), gradio.update(visible=False)
+                                                           visible=True), gradio.update(visible=False)
     if job_action in ['job-submit', 'job-add-step']:
         updated_job_ids = job_manager.find_job_ids('drafted') or ['none']
         updated_job_id = selected_job_id if selected_job_id in updated_job_ids else get_last(updated_job_ids)
 
         return gradio.update(visible=False), gradio.update(value=updated_job_id, choices=updated_job_ids,
-                                                              visible=True), gradio.update(visible=False)
+                                                           visible=True), gradio.update(visible=False)
     if job_action in ['job-remix-step', 'job-insert-step', 'job-remove-step']:
         updated_job_ids = job_manager.find_job_ids('drafted') or ['none']
         updated_job_id = selected_job_id if selected_job_id in updated_job_ids else get_last(updated_job_ids)
         updated_step_choices = get_step_choices(updated_job_id) or ['none']  # type:ignore[list-item]
 
         return gradio.update(visible=False), gradio.update(value=updated_job_id, choices=updated_job_ids,
-                                                              visible=True), gradio.update(
+                                                           visible=True), gradio.update(
             value=get_last(updated_step_choices), choices=updated_step_choices, visible=True)
     return gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
 
