@@ -166,7 +166,6 @@ def get_avg_faces():
     source_paths = state_manager.get_item('source_paths')
     source_paths_2 = state_manager.get_item('source_paths_2')
     if SOURCE_FRAMES_1 != source_paths or AVG_FACE_1 is None and source_paths and len(source_paths) > 0:
-        print("Updating AVG_FACE_1")
         SOURCE_FRAMES_1 = source_paths
         source_frames = read_static_images(source_paths)
         faces = []
@@ -177,7 +176,6 @@ def get_avg_faces():
         AVG_FACE_1 = get_average_face(faces)
 
     if SOURCE_FRAMES_2 != source_paths_2 or AVG_FACE_2 is None and source_paths_2 and len(source_paths_2) > 0:
-        print("Updating AVG_FACE_2")
         SOURCE_FRAMES_2 = source_paths_2
         source_frames_2 = read_static_images(source_paths_2)
         faces = []
