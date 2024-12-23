@@ -4,7 +4,7 @@ from typing import List, Tuple, Any
 import cv2
 import numpy
 
-from facefusion import logger, state_manager, wording, config
+from facefusion import logger, state_manager, wording, config, process_manager
 from facefusion.common_helper import create_float_metavar
 from facefusion.face_analyser import get_many_faces, get_one_face
 from facefusion.face_helper import paste_back, scale_face_landmark_5, warp_face_by_face_landmark_5
@@ -426,28 +426,31 @@ class FaceEditor(BaseProcessor):
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-        reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
-            'face_selector_mode') else None
-        results = []
-        for queue_payload in queue_payloads:
+        output_frames = []
+        for queue_payload in process_manager.manage(queue_payloads):
             target_vision_path = queue_payload['frame_path']
             target_frame_number = queue_payload['frame_number']
+            reference_faces = queue_payload['reference_faces']
+            reference_faces_2 = queue_payload['reference_faces_2']
             target_vision_frame = read_image(target_vision_path)
-            output_vision_frame = self.process_frame(
+            result_frame = self.process_frame(
                 {
                     'reference_faces': reference_faces,
                     'reference_faces_2': reference_faces_2,
-                    'target_vision_frame': target_vision_frame
+                    'target_vision_frame': target_vision_frame,
+                    'target_frame_number': target_frame_number
                 })
-            results.append((target_frame_number, output_vision_frame))
-        return results
+            write_image(target_vision_path, result_frame)
+            output_frames.append((target_frame_number, target_vision_path))
+        return output_frames
 
     def process_image(self, target_path: str, output_path: str) -> None:
-        reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
+        reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
         target_vision_frame = read_static_image(target_path)
         output_vision_frame = self.process_frame(
             {
                 'reference_faces': reference_faces,
+                'reference_faces_2': reference_faces_2,
                 'target_vision_frame': target_vision_frame
             })
         write_image(output_path, output_vision_frame)

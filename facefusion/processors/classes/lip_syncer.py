@@ -172,9 +172,6 @@ class LipSyncer(BaseProcessor):
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-        reference_faces, reference_faces_2 = (
-            get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None)
-        )
         source_paths = state_manager.get_item('source_paths')
         source_paths_2 = state_manager.get_item('source_paths_2')
         source_audio_path = get_first(filter_audio_paths(source_paths))
@@ -184,10 +181,13 @@ class LipSyncer(BaseProcessor):
         output_frames = []
 
         for queue_payload in process_manager.manage(queue_payloads):
-            frame_number = queue_payload['frame_number']
             target_vision_path = queue_payload['frame_path']
+            frame_number = queue_payload['frame_number']
             source_audio_frame = get_voice_frame(source_audio_path, temp_video_fps, frame_number)
             source_audio_frame_2 = get_voice_frame(source_audio_path_2, temp_video_fps, frame_number)
+            reference_faces = queue_payload['reference_faces']
+            reference_faces_2 = queue_payload['reference_faces_2']
+
             if not numpy.any(source_audio_frame):
                 source_audio_frame = create_empty_audio_frame()
             if not numpy.any(source_audio_frame_2):

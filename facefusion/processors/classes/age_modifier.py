@@ -168,24 +168,23 @@ class AgeModifier(BaseProcessor):
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-        reference_faces, reference_faces_2 = get_reference_faces() if "reference" in state_manager.get_item(
-            "face_selector_mode"
-        ) else (None, None)
-        results = []
+        output_frames = []
         for queue_payload in process_manager.manage(queue_payloads):
             target_vision_path = queue_payload["frame_path"]
             target_frame_number = queue_payload["frame_number"]
+            reference_faces = queue_payload['reference_faces']
+            reference_faces_2 = queue_payload['reference_faces_2']
             target_vision_frame = read_image(target_vision_path)
-            output_vision_frame = self.process_frame(
+            result_frame = self.process_frame(
                 {
                     "reference_faces": reference_faces,
                     "reference_faces_2": reference_faces_2,
                     "target_vision_frame": target_vision_frame,
                 }
             )
-            write_image(target_vision_path, output_vision_frame)
-            results.append((target_frame_number, target_vision_path))
-        return results
+            write_image(target_vision_path, result_frame)
+            output_frames.append((target_frame_number, target_vision_path))
+        return output_frames
 
     def process_image(self, target_path: str, output_path: str) -> None:
         reference_faces, reference_faces_2 = get_reference_faces() if "reference" in state_manager.get_item(
