@@ -20,6 +20,7 @@ class BaseProcessor(ABC):
     is_face_processor: bool = True
     priority = 1000
     model_path: str = "../.assets/models"
+    default_model = None
     display_name: str = None
     context_name: str = None
     __instances = {}
@@ -98,21 +99,41 @@ class BaseProcessor(ABC):
         return downloaded
 
     def get_inference_pool(self) -> InferencePool:
+        if not self.get_model_options():
+            if self.set_model_options():
+                print(f"Model options set for {self.model_key}.")
+            else:
+                raise ValueError(f"Model options not found for {self.model_key}.")
         model_sources = self.get_model_options().get('sources', [])
         model_context = self.context_name + '.' + (state_manager.get_item(self.model_key) or "default_key")
-        print(f"Getting inference pool for {model_context}")
-        return inference_manager.get_inference_pool(model_context, model_sources)
+        self.inference_pool = inference_manager.get_inference_pool(model_context, model_sources)
+        return self.inference_pool
 
     def clear_inference_pool(self) -> None:
         model_context = self.context_name + '.' + (state_manager.get_item(self.model_key) or "default_key")
         inference_manager.clear_inference_pool(model_context)
+        self.inference_pool = None
+
+    def set_model_options(self):
+        model_choice = state_manager.get_item(self.model_key)
+        if model_choice is None:
+            if self.default_model is not None:
+                model_choice = self.default_model
+                state_manager.set_item(self.model_key, model_choice)
+                logger.error(f"Model choice not found for {self.model_key}.", __name__)
+                return True
+            return False
+        model_options = self.MODEL_SET.get(model_choice, False)
+        return model_options is not False
 
     def get_model_options(self) -> dict:
         """
         Get the model options for the processor.
         """
         model_choice = state_manager.get_item(self.model_key)
-        if model_choice is None:
+        if model_choice is None and self.default_model is not None:
+            model_choice = self.default_model
+            state_manager.set_item(self.model_key, model_choice)
             logger.error(f"Model choice not found for {self.model_key}.", __name__)
             return {}
         return self.MODEL_SET.get(model_choice, {})
