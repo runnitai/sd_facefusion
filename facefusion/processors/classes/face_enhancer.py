@@ -242,7 +242,7 @@ class FaceEnhancer(BaseProcessor):
         }
 
     model_key = "face_enhancer_model"
-    priority = 10
+    priority = 12
 
     def register_args(self, program: ArgumentParser) -> None:
         group_processors = find_argument_group(program, "processors")

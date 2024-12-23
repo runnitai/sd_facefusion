@@ -81,7 +81,7 @@ class LipSyncer(BaseProcessor):
     }
 
     model_key: str = 'lip_syncer_model'
-    priority = 5
+    priority = 10
 
     def register_args(self, program: ArgumentParser) -> None:
         group_processors = find_argument_group(program, 'processors')
