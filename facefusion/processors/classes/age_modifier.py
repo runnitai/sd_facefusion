@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from typing import Any, List
+from typing import Any, List, Tuple
 
 import cv2
 import numpy
@@ -167,11 +167,11 @@ class AgeModifier(BaseProcessor):
                         target_vision_frame = self.modify_age(similar_face, target_vision_frame)
         return target_vision_frame
 
-    def process_frames(self, queue_payloads: List[QueuePayload]) -> List[tuple]:
+    def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
         reference_faces, reference_faces_2 = get_reference_faces() if "reference" in state_manager.get_item(
             "face_selector_mode"
         ) else (None, None)
-        output_frames = []
+        results = []
         for queue_payload in process_manager.manage(queue_payloads):
             target_vision_path = queue_payload["frame_path"]
             target_frame_number = queue_payload["frame_number"]
@@ -184,8 +184,8 @@ class AgeModifier(BaseProcessor):
                 }
             )
             write_image(target_vision_path, output_vision_frame)
-            output_frames.append((target_frame_number, target_vision_path))
-        return output_frames
+            results.append((target_frame_number, target_vision_path))
+        return results
 
     def process_image(self, target_path: str, output_path: str) -> None:
         reference_faces, reference_faces_2 = get_reference_faces() if "reference" in state_manager.get_item(
