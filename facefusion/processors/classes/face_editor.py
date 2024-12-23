@@ -11,6 +11,7 @@ from facefusion.face_helper import paste_back, scale_face_landmark_5, warp_face_
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import resolve_relative_path, is_image, is_video, in_directory, same_file_extension
+from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.live_portrait import create_rotation, limit_euler_angles, limit_expression
@@ -43,9 +44,10 @@ def calc_distance_ratio(face_landmark_68: FaceLandmark68, top_index: int, bottom
 
 def edit_head_rotation(pitch: LivePortraitPitch, yaw: LivePortraitYaw,
                        roll: LivePortraitRoll) -> LivePortraitRotation:
-    face_editor_head_pitch = state_manager.get_item('face_editor_head_pitch')
-    face_editor_head_yaw = state_manager.get_item('face_editor_head_yaw')
-    face_editor_head_roll = state_manager.get_item('face_editor_head_roll')
+    face_editor_head_pitch = state_manager.get_item('face_editor_head_pitch') or 0
+    face_editor_head_yaw = state_manager.get_item('face_editor_head_yaw') or 0
+    face_editor_head_roll = state_manager.get_item('face_editor_head_roll') or 0
+
     edit_pitch = pitch + float(numpy.interp(face_editor_head_pitch, [-1, 1], [20, -20]))
     edit_yaw = yaw + float(numpy.interp(face_editor_head_yaw, [-1, 1], [60, -60]))
     edit_roll = roll + float(numpy.interp(face_editor_head_roll, [-1, 1], [-15, 15]))
@@ -55,7 +57,8 @@ def edit_head_rotation(pitch: LivePortraitPitch, yaw: LivePortraitYaw,
 
 
 def edit_mouth_smile(expression: LivePortraitExpression) -> LivePortraitExpression:
-    face_editor_mouth_smile = state_manager.get_item('face_editor_mouth_smile')
+    face_editor_mouth_smile = state_manager.get_item('face_editor_mouth_smile') or 0
+
     if face_editor_mouth_smile > 0:
         expression[0, 20, 1] -= numpy.interp(face_editor_mouth_smile, [-1, 1], [-0.015, 0.015])
         expression[0, 14, 1] -= numpy.interp(face_editor_mouth_smile, [-1, 1], [-0.025, 0.025])
@@ -75,7 +78,8 @@ def edit_mouth_smile(expression: LivePortraitExpression) -> LivePortraitExpressi
 
 
 def edit_mouth_purse(expression: LivePortraitExpression) -> LivePortraitExpression:
-    face_editor_mouth_purse = state_manager.get_item('face_editor_mouth_purse')
+    face_editor_mouth_purse = state_manager.get_item('face_editor_mouth_purse') or 0
+
     if face_editor_mouth_purse > 0:
         expression[0, 19, 1] -= numpy.interp(face_editor_mouth_purse, [-1, 1], [-0.04, 0.04])
         expression[0, 19, 2] -= numpy.interp(face_editor_mouth_purse, [-1, 1], [-0.02, 0.02])
@@ -88,7 +92,8 @@ def edit_mouth_purse(expression: LivePortraitExpression) -> LivePortraitExpressi
 
 
 def edit_mouth_pout(expression: LivePortraitExpression) -> LivePortraitExpression:
-    face_editor_mouth_pout = state_manager.get_item('face_editor_mouth_pout')
+    face_editor_mouth_pout = state_manager.get_item('face_editor_mouth_pout') or 0
+
     if face_editor_mouth_pout > 0:
         expression[0, 19, 1] -= numpy.interp(face_editor_mouth_pout, [-1, 1], [-0.022, 0.022])
         expression[0, 19, 2] += numpy.interp(face_editor_mouth_pout, [-1, 1], [-0.025, 0.025])
@@ -101,8 +106,9 @@ def edit_mouth_pout(expression: LivePortraitExpression) -> LivePortraitExpressio
 
 
 def edit_mouth_position(expression: LivePortraitExpression) -> LivePortraitExpression:
-    face_editor_mouth_position_horizontal = state_manager.get_item('face_editor_mouth_position_horizontal')
-    face_editor_mouth_position_vertical = state_manager.get_item('face_editor_mouth_position_vertical')
+    face_editor_mouth_position_horizontal = state_manager.get_item('face_editor_mouth_position_horizontal') or 0
+    face_editor_mouth_position_vertical = state_manager.get_item('face_editor_mouth_position_vertical') or 0
+
     expression[0, 19, 0] += numpy.interp(face_editor_mouth_position_horizontal, [-1, 1], [-0.05, 0.05])
     expression[0, 20, 0] += numpy.interp(face_editor_mouth_position_horizontal, [-1, 1], [-0.04, 0.04])
     if face_editor_mouth_position_vertical > 0:
@@ -115,7 +121,7 @@ def edit_mouth_position(expression: LivePortraitExpression) -> LivePortraitExpre
 
 
 def edit_mouth_grim(expression: LivePortraitExpression) -> LivePortraitExpression:
-    face_editor_mouth_grim = state_manager.get_item('face_editor_mouth_grim')
+    face_editor_mouth_grim = state_manager.get_item('face_editor_mouth_grim') or 0
     if face_editor_mouth_grim > 0:
         expression[0, 17, 2] -= numpy.interp(face_editor_mouth_grim, [-1, 1], [-0.005, 0.005])
         expression[0, 19, 2] += numpy.interp(face_editor_mouth_grim, [-1, 1], [-0.01, 0.01])
@@ -129,8 +135,8 @@ def edit_mouth_grim(expression: LivePortraitExpression) -> LivePortraitExpressio
 
 
 def edit_eye_gaze(expression: LivePortraitExpression) -> LivePortraitExpression:
-    face_editor_eye_gaze_horizontal = state_manager.get_item('face_editor_eye_gaze_horizontal')
-    face_editor_eye_gaze_vertical = state_manager.get_item('face_editor_eye_gaze_vertical')
+    face_editor_eye_gaze_horizontal = state_manager.get_item('face_editor_eye_gaze_horizontal') or 0
+    face_editor_eye_gaze_vertical = state_manager.get_item('face_editor_eye_gaze_vertical') or 0
 
     if face_editor_eye_gaze_horizontal > 0:
         expression[0, 11, 0] += numpy.interp(face_editor_eye_gaze_horizontal, [-1, 1], [-0.015, 0.015])
@@ -148,7 +154,7 @@ def edit_eye_gaze(expression: LivePortraitExpression) -> LivePortraitExpression:
 
 
 def edit_eyebrow_direction(expression: LivePortraitExpression) -> LivePortraitExpression:
-    face_editor_eyebrow = state_manager.get_item('face_editor_eyebrow_direction')
+    face_editor_eyebrow = state_manager.get_item('face_editor_eyebrow_direction') or 0
 
     if face_editor_eyebrow > 0:
         expression[0, 1, 1] += numpy.interp(face_editor_eyebrow, [-1, 1], [-0.015, 0.015])
@@ -241,6 +247,7 @@ class FaceEditor(BaseProcessor):
                 }
         }
 
+    default_model = 'live_portrait'
     model_key = 'face_editor_model'
     priority = 9
 
@@ -345,6 +352,23 @@ class FaceEditor(BaseProcessor):
                                       default=config.get_float_value('processors.face_editor_head_roll', '0'),
                                       choices=processors_choices.face_editor_head_roll_range,
                                       metavar=create_float_metavar(processors_choices.face_editor_head_roll_range))
+        job_store.register_step_keys([
+            'face_editor_model',
+            'face_editor_eyebrow_direction',
+            'face_editor_eye_gaze_horizontal',
+            'face_editor_eye_gaze_vertical',
+            'face_editor_eye_open_ratio',
+            'face_editor_lip_open_ratio',
+            'face_editor_mouth_grim',
+            'face_editor_mouth_pout',
+            'face_editor_mouth_purse',
+            'face_editor_mouth_smile',
+            'face_editor_mouth_position_horizontal',
+            'face_editor_mouth_position_vertical',
+            'face_editor_head_pitch',
+            'face_editor_head_yaw',
+            'face_editor_head_roll'
+        ])
 
     def apply_args(self, args: Any, apply_state_item: Any) -> None:
         apply_state_item('face_editor_model', args.get('face_editor_model'))
@@ -375,10 +399,12 @@ class FaceEditor(BaseProcessor):
                 [state_manager.get_item('target_path'), state_manager.get_item('output_path')]):
             logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
             return False
+        self.inference_pool = self.get_inference_pool()
         return True
 
     def process_frame(self, inputs: FaceEditorInputs) -> VisionFrame:
         reference_faces = inputs.get('reference_faces')
+        reference_faces_2 = inputs.get('reference_faces_2')
         target_vision_frame = inputs.get('target_vision_frame')
         many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
 
@@ -391,26 +417,29 @@ class FaceEditor(BaseProcessor):
             if target_face:
                 target_vision_frame = self.edit_face(target_face, target_vision_frame)
         if state_manager.get_item('face_selector_mode') == 'reference':
-            similar_faces = find_similar_faces(many_faces, reference_faces,
-                                               state_manager.get_item('reference_face_distance'))
-            if similar_faces:
-                for similar_face in similar_faces:
-                    target_vision_frame = self.edit_face(similar_face, target_vision_frame)
+            for ref_faces in [reference_faces, reference_faces_2]:
+                similar_faces = find_similar_faces(many_faces, ref_faces,
+                                                   state_manager.get_item('reference_face_distance'))
+                if similar_faces:
+                    for similar_face in similar_faces:
+                        target_vision_frame = self.edit_face(similar_face, target_vision_frame)
         return target_vision_frame
 
-    def process_frames(self, queue_payloads: List[QueuePayload]) -> List[tuple]:
-        reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
+    def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
+        reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item(
+            'face_selector_mode') else None
         results = []
-
         for queue_payload in queue_payloads:
             target_vision_path = queue_payload['frame_path']
+            target_frame_number = queue_payload['frame_number']
             target_vision_frame = read_image(target_vision_path)
             output_vision_frame = self.process_frame(
                 {
                     'reference_faces': reference_faces,
+                    'reference_faces_2': reference_faces_2,
                     'target_vision_frame': target_vision_frame
                 })
-            results.append((target_vision_path, output_vision_frame))
+            results.append((target_frame_number, output_vision_frame))
         return results
 
     def process_image(self, target_path: str, output_path: str) -> None:
@@ -431,8 +460,9 @@ class FaceEditor(BaseProcessor):
         crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, face_landmark_5,
                                                                         model_template,
                                                                         model_size)
-        box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
-                                          (0, 0, 0, 0))
+        box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1],
+                                                 state_manager.get_item('face_mask_blur'),
+                                                 (0, 0, 0, 0))
         crop_vision_frame = self.prepare_crop_frame(crop_vision_frame)
         crop_vision_frame = self.apply_edit(crop_vision_frame, target_face.landmark_set.get('68'))
         crop_vision_frame = normalize_crop_frame(crop_vision_frame)
@@ -464,7 +494,7 @@ class FaceEditor(BaseProcessor):
         return crop_vision_frame
 
     def forward_extract_feature(self, crop_vision_frame: VisionFrame) -> LivePortraitFeatureVolume:
-        feature_extractor = self.get_inference_pool().get('feature_extractor')
+        feature_extractor = self.inference_pool.get('feature_extractor')
 
         with conditional_thread_semaphore():
             feature_volume = feature_extractor.run(None,
@@ -476,7 +506,7 @@ class FaceEditor(BaseProcessor):
 
     def forward_extract_motion(self, crop_vision_frame: VisionFrame) -> Tuple[
         LivePortraitPitch, LivePortraitYaw, LivePortraitRoll, LivePortraitScale, LivePortraitTranslation, LivePortraitExpression, LivePortraitMotionPoints]:
-        motion_extractor = self.get_inference_pool().get('motion_extractor')
+        motion_extractor = self.inference_pool.get('motion_extractor')
 
         with conditional_thread_semaphore():
             pitch, yaw, roll, scale, translation, expression, motion_points = motion_extractor.run(None,
@@ -487,7 +517,7 @@ class FaceEditor(BaseProcessor):
         return pitch, yaw, roll, scale, translation, expression, motion_points
 
     def forward_retarget_eye(self, eye_motion_points: LivePortraitMotionPoints) -> LivePortraitMotionPoints:
-        eye_retargeter = self.get_inference_pool().get('eye_retargeter')
+        eye_retargeter = self.inference_pool.get('eye_retargeter')
 
         with conditional_thread_semaphore():
             eye_motion_points = eye_retargeter.run(None,
@@ -498,7 +528,7 @@ class FaceEditor(BaseProcessor):
         return eye_motion_points
 
     def forward_retarget_lip(self, lip_motion_points: LivePortraitMotionPoints) -> LivePortraitMotionPoints:
-        lip_retargeter = self.get_inference_pool().get('lip_retargeter')
+        lip_retargeter = self.inference_pool.get('lip_retargeter')
 
         with conditional_thread_semaphore():
             lip_motion_points = lip_retargeter.run(None,
@@ -510,7 +540,7 @@ class FaceEditor(BaseProcessor):
 
     def forward_stitch_motion_points(self, source_motion_points: LivePortraitMotionPoints,
                                      target_motion_points: LivePortraitMotionPoints) -> LivePortraitMotionPoints:
-        stitcher = self.get_inference_pool().get('stitcher')
+        stitcher = self.inference_pool.get('stitcher')
 
         with thread_semaphore():
             motion_points = stitcher.run(None,
@@ -524,7 +554,7 @@ class FaceEditor(BaseProcessor):
     def forward_generate_frame(self, feature_volume: LivePortraitFeatureVolume,
                                source_motion_points: LivePortraitMotionPoints,
                                target_motion_points: LivePortraitMotionPoints) -> VisionFrame:
-        generator = self.get_inference_pool().get('generator')
+        generator = self.inference_pool.get('generator')
 
         with thread_semaphore():
             crop_vision_frame = generator.run(None,
@@ -538,7 +568,7 @@ class FaceEditor(BaseProcessor):
 
     def edit_eye_open(self, motion_points: LivePortraitMotionPoints,
                       face_landmark_68: FaceLandmark68) -> LivePortraitMotionPoints:
-        face_editor_eye_open_ratio = state_manager.get_item('face_editor_eye_open_ratio')
+        face_editor_eye_open_ratio = state_manager.get_item('face_editor_eye_open_ratio') or 0
         left_eye_ratio = calc_distance_ratio(face_landmark_68, 37, 40, 39, 36)
         right_eye_ratio = calc_distance_ratio(face_landmark_68, 43, 46, 45, 42)
 
@@ -553,7 +583,7 @@ class FaceEditor(BaseProcessor):
 
     def edit_lip_open(self, motion_points: LivePortraitMotionPoints,
                       face_landmark_68: FaceLandmark68) -> LivePortraitMotionPoints:
-        face_editor_lip_open_ratio = state_manager.get_item('face_editor_lip_open_ratio')
+        face_editor_lip_open_ratio = state_manager.get_item('face_editor_lip_open_ratio') or 0
         lip_ratio = calc_distance_ratio(face_landmark_68, 62, 66, 54, 48)
 
         if face_editor_lip_open_ratio < 0:
