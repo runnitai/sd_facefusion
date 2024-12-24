@@ -19,13 +19,13 @@ class StyleTransfer(BaseProcessor):
         'style_transfer': {
             'hashes': {
                 'style_transfer': {
-                    'url': 'PLACEHOLDER_HASH_URL',
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/style_net-TIP-final.hash',
                     'path': resolve_relative_path('../.assets/models/style/style_net-TIP-final.hash')
                 }
             },
             'sources': {
                 'style_transfer': {
-                    'url': 'PLACEHOLDER_MODEL_URL',
+                    'url': 'https://github.com/runnitai/sd_facefusion/releases/download/1.0.0/style_net-TIP-final.pth',
                     'path': resolve_relative_path('../.assets/models/style/style_net-TIP-final.pth')
                 }
             }
