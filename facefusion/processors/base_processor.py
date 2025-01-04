@@ -108,9 +108,7 @@ class BaseProcessor(ABC):
 
     def get_inference_pool(self) -> InferencePool:
         if not self.get_model_options():
-            if self.set_model_options():
-                print(f"Model options set for {self.model_key}.")
-            else:
+            if not self.set_model_options():
                 raise ValueError(f"Model options not found for {self.model_key}.")
         model_sources = self.get_model_options().get('sources', [])
         model_context = self.context_name + '.' + (state_manager.get_item(self.model_key) or "default_key")

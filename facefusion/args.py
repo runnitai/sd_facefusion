@@ -88,7 +88,7 @@ def apply_args(args: Args, apply_state_item: bool) -> None:
         try:
             processor_module.apply_args(args, cmd)
         except Exception as e:
-            print(f"Error while applying args for processor {processor_module}: {e}")
+            logger.errror(f"Error while applying args for processor {processor_module}: {e}", __name__)
 
 
 

@@ -396,17 +396,10 @@ class FaceSwapper(BaseProcessor):
             source_face_keys = set(source_faces.keys())
             all_keys = reference_face_keys.union(source_face_keys)  # Combined set of keys
 
-            print(f"All face keys: {all_keys}")
             for src_face_idx in all_keys:
                 ref_faces = reference_faces.get(src_face_idx)
                 src_face = source_faces.get(src_face_idx)
 
-                if not ref_faces:
-                    print(f"Missing reference faces for key: {src_face_idx}")
-                if not src_face:
-                    print(f"Missing source face for key: {src_face_idx}")
-
-                # Skip further processing if either reference or source faces are missing
                 if not ref_faces or not src_face:
                     continue
 
@@ -416,14 +409,11 @@ class FaceSwapper(BaseProcessor):
                 )
 
                 if similar_faces:
-                    print(f"Similar faces found for source face {src_face_idx}")
                     for similar_face in similar_faces:
                         target_vision_frame = self.swap_face(
                             src_face, similar_face, target_vision_frame, src_face_idx
                         )
-                else:
-                    print(f"No similar faces found for source face {src_face_idx}")
-
+                
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:

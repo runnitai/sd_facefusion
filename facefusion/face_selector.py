@@ -13,21 +13,18 @@ def find_similar_faces(faces: List[Face], reference_faces: FaceSet, face_distanc
             if not similar_faces:
                 for face in faces:
                     if compare_faces(face, reference_face, face_distance):
-                        print('Face found')
                         similar_faces.append(face)
     return similar_faces
 
 
 def compare_faces(face: Face, reference_face: Face, face_distance: float) -> bool:
     current_face_distance = calc_face_distance(face, reference_face)
-    print(f'Face distance: {current_face_distance}')
     return current_face_distance < face_distance
 
 
 def calc_face_distance(face: Face, reference_face: Face) -> float:
     if hasattr(face, 'normed_embedding') and hasattr(reference_face, 'normed_embedding'):
         return 1 - numpy.dot(face.normed_embedding, reference_face.normed_embedding)
-    print('Face distance calculation failed')
     return 1
 
 

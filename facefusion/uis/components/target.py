@@ -4,7 +4,7 @@ from typing import Tuple, Optional, List
 
 import gradio
 
-from facefusion import wording, state_manager
+from facefusion import wording, state_manager, logger
 from facefusion.download import download_video
 from facefusion.face_store import clear_reference_faces, clear_static_faces
 from facefusion.ffmpeg import extract_audio_from_video
@@ -113,8 +113,6 @@ def update_from_path(path: str) -> Tuple[gradio.update, gradio.update]:
             out_file = gradio.update(value=path, visible=True)
 
         elif is_video(path):
-            # if get_file_size(path) > FILE_SIZE_LIMIT:
-            #     raise ValueError("File size exceeds the limit.")
             state_manager.set_item('target_path', path)
             out_path = gradio.update(visible=False)
             out_file = gradio.update(value=path, visible=True)
@@ -123,7 +121,7 @@ def update_from_path(path: str) -> Tuple[gradio.update, gradio.update]:
             raise ValueError("Unsupported file type.")
 
     except Exception as e:
-        print(f"Error processing path: {e}")
+        logger.error(f"Error updating target path: {e}", __name__)
         state_manager.clear_item('target_path')
         out_file = gradio.update(value=None, visible=True)
         out_path = gradio.update(value=path, visible=True)

@@ -1,4 +1,3 @@
-import time
 from collections import namedtuple
 from typing import Union, List
 
@@ -10,10 +9,6 @@ import torch.nn.functional as F
 import torchvision.models as models
 from torch.backends import cudnn
 
-
-# mean_std = namedtuple("mean_std", ['mean', 'std'])
-# vgg_outputs = namedtuple("VggOutputs", ['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1'])
-# vgg_outputs_super = namedtuple("VggOutputs", ['map', 'relu1_1', 'relu2_1', 'relu3_1', 'relu4_1'])
 
 def numpy2tensor(img):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -54,7 +49,9 @@ class ResidualBlock(nn.Module):
         self.upsample = upsample
         self.style_num = style_num
 
-    def forward(self, x, style_weight=[1.]):
+    def forward(self, x, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
         if self.upsample:
             x = F.interpolate(x, mode='nearest', scale_factor=2)
         x_s = self.conv_shortcut(x)
@@ -96,7 +93,9 @@ class FilterPredictor(nn.Module):
         self.style_num = style_num
         self.filter = [None for _ in range(self.style_num)]
 
-    def forward(self, style_weight=[1.]):
+    def forward(self, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
         tmp_filter = 0.
         for style_id in range(self.style_num):
             tmp_filter += self.filter[style_id] * style_weight[style_id]
@@ -137,7 +136,8 @@ class KernelFilter(nn.Module):
 
         self.style_num = style_num
 
-    def apply_filter(self, input_, filter_):
+    @staticmethod
+    def apply_filter(input_, filter_):
         ''' input_: [B,inC,H,W], filter_: [B,inC,outC,1]
         '''
         B = input_.shape[0]
@@ -151,7 +151,9 @@ class KernelFilter(nn.Module):
 
         return torch.cat(results, 0)
 
-    def forward(self, content, style_weight=[1.]):
+    def forward(self, content, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
         content_ = self.down_sample(content)
         content_ = self.apply_filter(content_, self.F1(style_weight))
         content_ = self.relu(content_)
@@ -192,8 +194,8 @@ class Vgg19(nn.Module):
             for param in self.parameters():
                 param.requires_grad = False
 
-    def forward(self, X):
-        h = self.slice1(X)
+    def forward(self, x):
+        h = self.slice1(x)
         h_relu1_1 = h
         h = self.slice2(h)
         h_relu2_1 = h
@@ -222,7 +224,6 @@ class EncoderStyle(nn.Module):
 
     def __init__(self):
         super(EncoderStyle, self).__init__()
-        ## VGG
         vgg_pretrained_features = models.vgg19(pretrained=False).features
 
         self.slice1 = nn.Sequential()
@@ -239,12 +240,13 @@ class EncoderStyle(nn.Module):
         for x in range(12, 21):
             self.slice4.add_module(str(x), vgg_pretrained_features[x])
 
-    def cal_mean_std(self, feat, eps=1e-5):
+    @staticmethod
+    def cal_mean_std(feat, eps=1e-5):
         size = feat.size()
-        N, C = size[:2]
-        feat_var = feat.view(N, C, -1).var(dim=2) + eps
-        feat_std = feat_var.sqrt().view(N, C, 1, 1)
-        feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
+        n, c = size[:2]
+        feat_var = feat.view(n, c, -1).var(dim=2) + eps
+        feat_std = feat_var.sqrt().view(n, c, 1, 1)
+        feat_mean = feat.view(n, c, -1).mean(dim=2).view(n, c, 1, 1)
 
         mean_std = namedtuple("mean_std", ['mean', 'std'])
         out = mean_std(feat_mean, feat_std)
@@ -284,7 +286,9 @@ class InstanceNorm(nn.Module):
         self.saved_mean = [None for _ in range(self.style_num)]
         self.saved_std = [None for _ in range(self.style_num)]
 
-    def forward(self, x, style_weight=[1.]):
+    def forward(self, x, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
         tmp_saved_mean = 0.
         tmp_saved_std = 0.
         tmp_x_min = 0.
@@ -311,7 +315,6 @@ class InstanceNorm(nn.Module):
         self.saved_std[style_id] = torch.rsqrt(torch.mean(tmp, (0, 2, 3), True) + self.epsilon)
         x = x * self.saved_std[style_id]
 
-        ## max and min
         tmp_max, _ = torch.max(x, 2, True)
         tmp_max, _ = torch.max(tmp_max, 0, True)
         self.x_max[style_id], _ = torch.max(tmp_max, 3, True)
@@ -360,7 +363,9 @@ class Decoder(nn.Module):
     #############################
     # For forward Transfer
     # ---------------------------
-    def AdaIN(self, content_feat, norm_id, style_weight=[1.]):
+    def AdaIN(self, content_feat, norm_id, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
         normalized_feat = self.norm[norm_id](content_feat, style_weight)
 
         style_mean = 0.
@@ -372,7 +377,9 @@ class Decoder(nn.Module):
         result = normalized_feat * style_std + style_mean
         return result
 
-    def AdaIN_filter(self, content_feat, style_weight=[1.]):
+    def AdaIN_filter(self, content_feat, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
         normalized_content = self.norm[0](content_feat, style_weight)
         results = self.Filter1(normalized_content, style_weight)
         results = self.Filter2(results, style_weight)
@@ -440,7 +447,9 @@ class Decoder(nn.Module):
 
         del h
 
-    def forward(self, x, style_weight=[1.]):
+    def forward(self, x, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
         h = self.AdaIN_filter(x, style_weight)
         h = self.AdaIN(h, 1, style_weight)
         h = self.slice4(h, style_weight)
@@ -471,15 +480,17 @@ class TransformerNet(nn.Module):
     def generate_style_features(self, style, style_id):
         self.F_style[style_id] = self.EncoderStyle(style)
 
-    def forward(self, F_content, style_weight=[1.]):
-        styled_pre_frame = self.Decoder(F_content, style_weight)
+    def forward(self, f_content, style_weight=None):
+        if style_weight is None:
+            style_weight = [1.]
+        styled_pre_frame = self.Decoder(f_content, style_weight)
         return styled_pre_frame
 
     def generate_content_features(self, content):
         return self.Encoder(self.RGB2Gray(content))
 
-    def add_patch(self, F_patch):
-        self.F_patches.append(F_patch)
+    def add_patch(self, f_patch):
+        self.F_patches.append(f_patch)
 
     def compute_norm(self):
         self.Decoder.compute_norm(torch.cat(self.F_patches, dim=0), self.F_style)
@@ -488,7 +499,8 @@ class TransformerNet(nn.Module):
     def clean(self):
         self.Decoder.clean()
 
-    def RGB2Gray(self, image):
+    @staticmethod
+    def RGB2Gray(image):
         mean = image.new_tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
         std = image.new_tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
 
@@ -666,22 +678,22 @@ class ReshapeTool:
         self.record_W = 0
 
     def process(self, img):
-        H, W, C = img.shape
+        h, w, c = img.shape
 
         if self.record_H == 0 and self.record_W == 0:
-            new_H = H + 128
-            if new_H % 64 != 0:
-                new_H += 64 - new_H % 64
+            new_h = h + 128
+            if new_h % 64 != 0:
+                new_h += 64 - new_h % 64
 
-            new_W = W + 128
-            if new_W % 64 != 0:
-                new_W += 64 - new_W % 64
+            new_w = w + 128
+            if new_w % 64 != 0:
+                new_w += 64 - new_w % 64
 
-            self.record_H = new_H
-            self.record_W = new_W
+            self.record_H = new_h
+            self.record_W = new_w
 
-        new_img = cv2.copyMakeBorder(img, 64, self.record_H - 64 - H,
-                                     64, self.record_W - 64 - W, cv2.BORDER_REFLECT)
+        new_img = cv2.copyMakeBorder(img, 64, self.record_H - 64 - h,
+                                     64, self.record_W - 64 - w, cv2.BORDER_REFLECT)
         return new_img
 
 
