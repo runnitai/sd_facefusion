@@ -2,7 +2,7 @@ from typing import List, Optional
 
 import numpy
 
-from facefusion import state_manager
+from facefusion import state_manager, logger
 from facefusion.common_helper import get_first
 from facefusion.face_helper import apply_nms, convert_to_face_landmark_5, estimate_face_angle, get_nms_threshold
 from facefusion.face_store import get_static_faces, set_static_faces
@@ -17,6 +17,8 @@ AVG_FACE_1: Optional[Face] = None
 AVG_FACE_2: Optional[Face] = None
 SOURCE_FRAMES_1: Optional[List[str]] = None
 SOURCE_FRAMES_2: Optional[List[str]] = None
+SOURCE_FRAME_DICT: Optional[dict] = {}
+AVERAGE_FACE_DICT: Optional[dict] = {}
 landmarker = FaceLandmarker()
 detector = FaceDetector()
 recognizer = FaceRecognizer()
@@ -161,28 +163,52 @@ def get_many_faces(vision_frames: List[VisionFrame]) -> List[Face]:
     return many_faces
 
 
-def get_avg_faces():
-    global AVG_FACE_1, AVG_FACE_2, SOURCE_FRAMES_1, SOURCE_FRAMES_2
-    source_paths = state_manager.get_item('source_paths')
-    source_paths_2 = state_manager.get_item('source_paths_2')
-    if SOURCE_FRAMES_1 != source_paths or AVG_FACE_1 is None and source_paths and len(source_paths) > 0:
-        SOURCE_FRAMES_1 = source_paths
-        source_frames = read_static_images(source_paths)
-        faces = []
-        for frame in source_frames:
-            face = get_one_face(get_many_faces([frame]))
-            if face:
-                faces.append(face)
-        AVG_FACE_1 = get_average_face(faces)
+def get_average_faces():
+    global SOURCE_FRAME_DICT, AVERAGE_FACE_DICT
 
-    if SOURCE_FRAMES_2 != source_paths_2 or AVG_FACE_2 is None and source_paths_2 and len(source_paths_2) > 0:
-        SOURCE_FRAMES_2 = source_paths_2
-        source_frames_2 = read_static_images(source_paths_2)
-        faces = []
-        for frame in source_frames_2:
-            face = get_one_face(get_many_faces([frame]))
-            if face:
-                faces.append(face)
-        AVG_FACE_2 = get_average_face(faces)
+    # Ensure SOURCE_FRAME_DICT and AVERAGE_FACE_DICT are initialized
+    if SOURCE_FRAME_DICT is None:
+        SOURCE_FRAME_DICT = {}
+    if AVERAGE_FACE_DICT is None:
+        AVERAGE_FACE_DICT = {}
 
-    return AVG_FACE_1, AVG_FACE_2
+    source_frame_dict = state_manager.get_item('source_frame_dict') or {}
+    new_average_face_dict = {}
+
+    for source_face_index, frame_paths in source_frame_dict.items():
+        # Retrieve the cached frame paths for the current index
+        cached_paths = SOURCE_FRAME_DICT.get(source_face_index, [])
+
+        # Only process if the frame paths have changed or are new
+        if cached_paths != frame_paths or source_face_index not in AVERAGE_FACE_DICT:
+            faces = []
+
+            for frame_path in frame_paths:
+                try:
+                    frames = read_static_images([frame_path])
+                    if not frames:
+                        logger.warn(f"No frames found for path: {frame_path}", __name__)
+                        continue
+
+                    face = get_one_face(get_many_faces(frames))
+                    if face:
+                        faces.append(face)
+                except Exception as e:
+                    logger.error(f"Error processing frame {frame_path}: {e}", __name__)
+
+            # Compute the average face only if faces were detected
+            if faces:
+                new_average_face_dict[source_face_index] = get_average_face(faces)
+            else:
+                logger.warn(f"No faces detected for index {source_face_index}", __name__)
+
+        # Retain existing average faces if frame paths are unchanged
+        elif source_face_index in AVERAGE_FACE_DICT:
+            new_average_face_dict[source_face_index] = AVERAGE_FACE_DICT[source_face_index]
+
+    # Update global dictionaries
+    AVERAGE_FACE_DICT = new_average_face_dict
+    SOURCE_FRAME_DICT = source_frame_dict
+
+    return AVERAGE_FACE_DICT
+

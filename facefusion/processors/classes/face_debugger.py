@@ -165,7 +165,6 @@ class FaceDebugger(BaseProcessor):
 
     def process_frame(self, inputs: FaceDebuggerInputs) -> VisionFrame:
         reference_faces = inputs.get("reference_faces")
-        reference_faces_2 = inputs.get("reference_faces_2", None)
         target_vision_frame = inputs.get("target_vision_frame")
         many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
 
@@ -183,7 +182,7 @@ class FaceDebugger(BaseProcessor):
             from facefusion.typing import Face
             from facefusion.face_selector import find_similar_faces
             distance_threshold = state_manager.get_item("reference_face_distance")
-            for ref_faces in [reference_faces, reference_faces_2]:
+            for src_face_idx, ref_faces in reference_faces.items():
                 if not ref_faces:
                     continue
                 similar_faces = find_similar_faces(many_faces, ref_faces, distance_threshold)

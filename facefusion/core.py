@@ -92,42 +92,12 @@ def conditional_process() -> ErrorCode:
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         if not processor_module.pre_process('output'):
             return 2
-    average_reference_faces()
+    #average_reference_faces()
     if is_image(state_manager.get_item('target_path')):
         return process_image(start_time)
     if is_video(state_manager.get_item('target_path')):
         return process_video(start_time)
     return 0
-
-
-def average_reference_faces():
-    for ref_faces, face_dict_key in [(state_manager.get_item('reference_face_dict'), 'reference_face_dict'),
-                                     (state_manager.get_item('reference_face_dict_2'), 'reference_face_dict_2')]:
-        if len(ref_faces.keys()) > 1:
-            all_faces = []
-            embedding_list = []
-            normed_embedding_list = []
-            first_key = None
-            for key, faces in ref_faces.items():
-                if not first_key:
-                    first_key = key
-                for face in faces:
-                    all_faces.append(face)
-                    embedding_list.append(face.embedding)
-                    normed_embedding_list.append(face.normed_embedding)
-            first_face = all_faces[0]
-            average_face = Face(
-                bounding_box=first_face.bounding_box,
-                landmark_set=first_face.landmark_set,
-                score_set=first_face.score_set,
-                embedding=numpy.mean(embedding_list, axis=0),
-                normed_embedding=numpy.mean(normed_embedding_list, axis=0),
-                gender=first_face.gender,
-                age=first_face.age,
-                angle=first_face.angle,
-                race=first_face.race
-            )
-            state_manager.set_item(face_dict_key, {first_key: [average_face]})
 
 
 def force_download() -> ErrorCode:

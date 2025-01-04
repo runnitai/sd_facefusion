@@ -1,18 +1,17 @@
 from typing import List, Optional, Tuple
 
 import gradio
-import numpy as np
 from gradio import SelectData
 
 import facefusion.choices
-from facefusion import state_manager, wording
+from facefusion import wording, state_manager
 from facefusion.common_helper import calc_float_step, calc_int_step
 from facefusion.face_analyser import get_many_faces
-from facefusion.face_selector import sort_and_filter_faces
+from facefusion.face_selector import sort_and_filter_faces, current_sort_values
 from facefusion.face_store import clear_reference_faces, clear_static_faces
 from facefusion.filesystem import is_image, is_video
-from facefusion.processors.core import list_processors, get_processors_modules
-from facefusion.typing import FaceSelectorMode, VisionFrame, Race, Gender, FaceSelectorOrder
+from facefusion.processors.core import get_processors_modules
+from facefusion.typing import FaceSelectorMode, VisionFrame, Race, Gender, FaceSelectorOrder, FaceReference
 from facefusion.uis.components.face_masker import clear_mask_times
 from facefusion.uis.core import get_ui_component, register_ui_component, get_ui_components
 # from gradio_rangeslider import RangeSlider
@@ -542,156 +541,114 @@ def extract_gallery_frames(temp_vision_frame: VisionFrame) -> List[VisionFrame]:
     return gallery_vision_frames
 
 
-def add_reference_face(src_gallery, dest_gallery, reference_frame_number) -> gradio.Gallery:
-    global selected_face_index
-    global current_selected_faces
-    global selector_face_index
+def append_reference_face(src_gallery, dest_gallery, reference_frame_number, src_face_idx, selector_face_index, current_selected_faces):
     dest_items = [item["name"] for item in dest_gallery]
     if src_gallery is not None and any(src_gallery):
-        # If the number of items in gallery is less than selected_face_index, then the selected_face_index is invalid
         if len(src_gallery) <= selector_face_index:
-            selector_face_index = -1
             print("Invalid index")
             return gradio.update()
+
         selected_item = src_gallery[selector_face_index]
         face_data = current_reference_faces[selector_face_index]
-        reference_face_dict = state_manager.get_item('reference_face_dict')
+        reference_face_dict = state_manager.get_item("reference_face_dict")
+
         if not reference_face_dict:
             reference_face_dict = {}
-        if reference_frame_number not in reference_face_dict:
-            reference_face_dict[reference_frame_number] = []
-            state_manager.set_item('reference_face_dict', reference_face_dict)
-        found = False
-        for existing_face_data in state_manager.get_item('reference_face_dict')[reference_frame_number]:
-            if np.array_equal(face_data, existing_face_data):
-                found = True
-                break
+
+        ref_face_list = reference_face_dict.get(src_face_idx, [])
+
+        found = any(
+            entry["frame_number"] == reference_frame_number and
+            entry["face_index"] == selector_face_index
+            for entry in ref_face_list
+        )
 
         if not found:
-            if not reference_face_dict:
-                reference_face_dict = {}
-            reference_face_dict[reference_frame_number].append(face_data)
-            state_manager.set_item('reference_face_dict', reference_face_dict)
+            sorts = current_sort_values()
+            ref_face_list.append(FaceReference(
+                frame_number=reference_frame_number,
+                face_index=selector_face_index,
+                sorts=sorts
+            ))
+            reference_face_dict[src_face_idx] = ref_face_list
+            state_manager.set_item("reference_face_dict", reference_face_dict)
             current_selected_faces.append(face_data)
             dest_items.append(selected_item["name"])
+
         from facefusion.uis.components.preview import update_preview_image
 
         preview, enable_button, disable_button = update_preview_image(reference_frame_number)
         return gradio.update(value=dest_items), preview, enable_button, disable_button
-    else:
-        return gradio.update(), gradio.update(), gradio.update(), gradio.update()  # Return the original gallery if no item is selected or if it's empty
+
+    return gradio.update(), gradio.update(), gradio.update(), gradio.update()
 
 
-def remove_reference_face(gallery: gradio.Gallery, preview_frame_number) -> gradio.Gallery:
-    global selected_face_index, current_selected_faces
-    if len(gallery) <= selected_face_index or len(current_selected_faces) <= selected_face_index:
-        selected_face_index = -1
+def delete_reference_face(gallery, preview_frame_number, src_face_idx):
+    global current_selected_faces, selected_face_index, current_selected_faces_2, selected_face_index_2
+    selected_faces = current_selected_faces if src_face_idx == 0 else current_selected_faces_2
+    selected_index = selected_face_index if src_face_idx == 0 else selected_face_index_2
+
+    if len(gallery) <= selected_index or len(selected_faces) <= selected_index:
         print("Invalid index")
         return gradio.update()
 
-    # Remove the selected item from the gallery
     new_items = []
-    gallery_index = 0
-    for item in gallery:
-        if gallery_index != selected_face_index:
+    for idx, item in enumerate(gallery):
+        if idx != selected_index:
             new_items.append(item["name"])
-        gallery_index += 1
-    global_reference_faces = state_manager.get_item('reference_face_dict')
-    if not global_reference_faces:
-        global_reference_faces = {}
-    face_to_remove = current_selected_faces[selected_face_index]
-    found = False
-    for frame_no, faces in global_reference_faces.items():
-        cleaned_faces = []
-        for existing_face_data in faces:
-            if np.array_equal(face_to_remove, existing_face_data):
-                print("Found face to remove")
-                found = True
-                continue
-            cleaned_faces.append(existing_face_data)
-        global_reference_faces[frame_no] = cleaned_faces
-        if found:
-            break
 
-    state_manager.set_item('reference_face_dict', global_reference_faces)
-    current_selected_faces.pop(selected_face_index)
+    reference_face_dict = state_manager.get_item("reference_face_dict")
+    if not reference_face_dict:
+        reference_face_dict = {}
+
+    ref_face_list = reference_face_dict.get(src_face_idx, [])
+
+    ref_face_list = [
+        entry for entry in ref_face_list
+        if not (
+            entry["frame_number"] == preview_frame_number and
+            entry["face_index"] == selected_index
+        )
+    ]
+
+    reference_face_dict[src_face_idx] = ref_face_list
+    state_manager.set_item("reference_face_dict", reference_face_dict)
+    selected_faces.pop(selected_index)
+
     from facefusion.uis.components.preview import update_preview_image
     preview_image, enable_button, disable_button = update_preview_image(preview_frame_number)
     return gradio.update(value=new_items), preview_image, enable_button, disable_button
 
 
-def add_reference_face_2(src_gallery, dest_gallery, reference_frame_number) -> gradio.Gallery:
-    global selector_face_index, current_selected_faces_2
-    dest_items = [item["name"] for item in dest_gallery]
-    if src_gallery is not None and any(src_gallery):
-        # If the number of items in gallery is less than selected_face_index, then the selected_face_index is invalid
-        if len(src_gallery) <= selector_face_index:
-            selector_face_index = -1
-            print("Invalid index")
-            return gradio.update()
-        selected_item = src_gallery[selector_face_index]
-        face_data = current_reference_faces[selector_face_index]
-        reference_face_dict = state_manager.get_item('reference_face_dict_2')
-        if not reference_face_dict:
-            reference_face_dict = {}
-        if reference_frame_number not in reference_face_dict:
-            reference_face_dict[reference_frame_number] = []
-            state_manager.set_item('reference_face_dict_2', reference_face_dict)
-        found = False
-        for existing_face_data in state_manager.get_item('reference_face_dict_2')[reference_frame_number]:
-            if np.array_equal(face_data, existing_face_data):
-                found = True
-                break
-
-        if not found:
-            reference_face_dict[reference_frame_number].append(face_data)
-            state_manager.set_item('reference_face_dict_2', reference_face_dict)
-            current_selected_faces_2.append(face_data)
-            dest_items.append(selected_item["name"])
-        from facefusion.uis.components.preview import update_preview_image
-
-        preview, enable_button, disable_button = update_preview_image(reference_frame_number)
-        return gradio.update(value=dest_items), preview, enable_button, disable_button
-    else:
-        return gradio.update(), gradio.update(), gradio.update(), gradio.update()  # Return the original gallery if no item is selected or if it's empty
+def add_reference_face(src_gallery, dest_gallery, reference_frame_number):
+    return append_reference_face(
+        src_gallery, dest_gallery, reference_frame_number,
+        src_face_idx=0,  # Replace with actual src_face_idx if available
+        selector_face_index=selector_face_index,
+        current_selected_faces=current_selected_faces
+    )
 
 
-def remove_reference_face_2(gallery: gradio.Gallery, preview_frame_number) -> gradio.Gallery:
-    global selected_face_index_2, current_selected_faces_2
-    if len(gallery) <= selected_face_index_2 or len(current_selected_faces) <= selected_face_index_2:
-        selected_face_index_2 = -1
-        print("Invalid index")
-        return gradio.update()
+def remove_reference_face(gallery, preview_frame_number):
+    return delete_reference_face(
+        gallery, preview_frame_number,0
+    )
 
-    # Remove the selected item from the gallery
-    new_items = []
-    gallery_index = 0
-    for item in gallery:
-        if gallery_index != selected_face_index_2:
-            new_items.append(item["name"])
-        gallery_index += 1
-    global_reference_faces = state_manager.get_item('reference_face_dict_2')
-    if not global_reference_faces:
-        global_reference_faces = {}
-    face_to_remove = current_selected_faces[selected_face_index_2]
-    found = False
-    for frame_no, faces in global_reference_faces.items():
-        cleaned_faces = []
-        for existing_face_data in faces:
-            if np.array_equal(face_to_remove, existing_face_data):
-                print("Found face to remove")
-                found = True
-                continue
-            cleaned_faces.append(existing_face_data)
-        global_reference_faces[frame_no] = cleaned_faces
-        if found:
-            break
 
-    state_manager.set_item('reference_face_dict_2', global_reference_faces)
-    current_selected_faces_2.pop(selected_face_index_2)
-    from facefusion.uis.components.preview import update_preview_image
-    preview, enable_button, disable_button = update_preview_image(preview_frame_number)
-    return gradio.update(value=new_items), preview, enable_button, disable_button
+def add_reference_face_2(src_gallery, dest_gallery, reference_frame_number):
+    return append_reference_face(
+        src_gallery, dest_gallery, reference_frame_number,
+        src_face_idx=1,  # Replace with actual src_face_idx if available
+        selector_face_index=selector_face_index,
+        current_selected_faces=current_selected_faces_2
+    )
+
+
+def remove_reference_face_2(gallery, preview_frame_number):
+    return delete_reference_face(
+        gallery, preview_frame_number,
+        1
+    )
 
 
 def reference_frame_back(reference_frame_number: int) -> None:

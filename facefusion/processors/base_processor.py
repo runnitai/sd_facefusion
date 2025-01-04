@@ -23,9 +23,9 @@ class BaseProcessor(ABC):
     default_model = None
     display_name: str = None
     context_name: str = None
-    __instances = {}
     preload: bool = False
     preferred_provider: str = "default"
+    __instances = {}
 
     def __init__(self):
         if self.MODEL_SET is None or self.model_key is None:
@@ -91,12 +91,20 @@ class BaseProcessor(ABC):
         model_sources = self.get_model_options().get('sources', {})
 
         downloaded = (
-                conditional_download_hashes(download_directory_path, model_hashes) and conditional_download_sources(
-            download_directory_path, model_sources))
-        if downloaded and self.preload and not self.inference_pool:
+                conditional_download_hashes(download_directory_path, model_hashes) and
+                conditional_download_sources(download_directory_path, model_sources)
+        )
+
+        return downloaded
+
+    def pre_load(self):
+        if self.pre_check() and self.preload and not self.inference_pool:
             logger.debug(f"Preloaded: {self.display_name}", self.context_name)
             self.inference_pool = self.get_inference_pool()
-        return downloaded
+
+    def set_inference_pool(self):
+        """Sets the inference pool."""
+        self.inference_pool = self.get_inference_pool()
 
     def get_inference_pool(self) -> InferencePool:
         if not self.get_model_options():

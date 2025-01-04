@@ -22,45 +22,37 @@ FaceSwapperSet = Dict[FaceSwapperModel, List[str]]
 
 AgeModifierInputs = TypedDict('AgeModifierInputs',
                               {
-                                  'reference_faces': FaceSet,
-                                  'reference_faces_2': FaceSet,
-                                  'source_face': Face,
-                                  'source_face_2': Face,
+                                  'reference_faces': Dict[int, FaceSet],
+                                  'source_faces': Dict[int, List[Face]],
                                   'target_vision_frame': VisionFrame
                               })
 ExpressionRestorerInputs = TypedDict('ExpressionRestorerInputs',
                                      {
-                                         'reference_faces': FaceSet,
-                                         'reference_faces_2': FaceSet,
+                                         'reference_faces': Dict[int, FaceSet],
                                          'source_vision_frame': VisionFrame,
                                          'target_vision_frame': VisionFrame
                                      })
 FaceDebuggerInputs = TypedDict('FaceDebuggerInputs',
                                {
-                                   'reference_faces': FaceSet,
-                                   'reference_faces_2': FaceSet,
+                                   'reference_faces': Dict[int, FaceSet],
                                    'target_vision_frame': VisionFrame,
                                    'source_frame': VisionFrame,
                                    'target_frame_number': int
                                })
 FaceEditorInputs = TypedDict('FaceEditorInputs',
                              {
-                                 'reference_faces': FaceSet,
-                                 'reference_faces_2': FaceSet,
+                                 'reference_faces': Dict[int, FaceSet],
                                  'target_vision_frame': VisionFrame
                              })
 FaceEnhancerInputs = TypedDict('FaceEnhancerInputs',
                                {
-                                   'reference_faces': FaceSet,
-                                   'reference_faces_2': FaceSet,
+                                   'reference_faces': Dict[int, FaceSet],
                                    'target_vision_frame': VisionFrame
                                })
 FaceSwapperInputs = TypedDict('FaceSwapperInputs',
                               {
-                                  'reference_faces': FaceSet,
-                                  'reference_faces_2': FaceSet,
-                                  'source_face': Face,
-                                  'source_face_2': Face,
+                                  'reference_faces': Dict[int, FaceSet],
+                                  'source_faces': Dict[int, Face],
                                   'target_vision_frame': VisionFrame,
                                   'target_frame_number': int
                               })
@@ -79,8 +71,7 @@ StyleChangerInputs = TypedDict('StyleChangerInputs',
                                })
 LipSyncerInputs = TypedDict('LipSyncerInputs',
                             {
-                                'reference_faces': FaceSet,
-                                'reference_faces_2': FaceSet,
+                                'reference_faces': Dict[int, FaceSet],
                                 'source_audio_frame': AudioFrame,
                                 'source_audio_frame_2': AudioFrame,
                                 'target_vision_frame': VisionFrame

@@ -1,17 +1,17 @@
 from argparse import ArgumentParser
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import cv2
 import torch
 
 from facefusion import logger, wording, state_manager, process_manager
 from facefusion.filesystem import resolve_relative_path, in_directory, is_image, is_video, same_file_extension
+from facefusion.jobs import job_store
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import VisionFrame
-from facefusion.style_transfer_src import Stylization, ReshapeTool, TransformerNet
+from facefusion.style_network import Stylization, ReshapeTool, TransformerNet
 from facefusion.typing import QueuePayload, ApplyStateItem, Args, ProcessMode
 from facefusion.vision import read_image, read_static_image, write_image
-from facefusion.workers.core import clear_worker_modules
 
 
 class StyleTransfer(BaseProcessor):
@@ -34,13 +34,12 @@ class StyleTransfer(BaseProcessor):
 
     model_key = 'style_transfer_model'
     is_face_processor: bool = False
-
-    def __init__(self):
-        super().__init__()
-        self.frame_processor = None
-        self.style_input = None
-        self.style_input_path = None
-        self.reshape_tool = None
+    style_input_path: Union[str, List[str]] = None
+    default_model = 'style_transfer'
+    priority = 1000
+    frame_processor = None
+    style_input = None
+    reshape_tool = None
 
     def register_args(self, program: ArgumentParser) -> None:
         group_processors = program.add_argument_group('processors')
@@ -48,6 +47,7 @@ class StyleTransfer(BaseProcessor):
                                       help=wording.get('help.style_transfer_model'),
                                       default='style_transfer',
                                       choices=['style_transfer'])
+        job_store.register_step_keys(["style_transfer_model", "style_transfer_image"])
 
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
         apply_state_item('style_transfer_model', args.get('style_transfer_model'))
@@ -77,9 +77,8 @@ class StyleTransfer(BaseProcessor):
 
     def process_frame(self, inputs: dict) -> VisionFrame:
         target_vision_frame = inputs.get('target_vision_frame')
-        is_preview = inputs.get('is_preview', False)
-        if is_preview:
-            self.load_processor_global([target_vision_frame])
+        #is_preview = inputs.get('is_preview', False)
+        self.load_processor_global([target_vision_frame])
         return self.run_style_transfer(target_vision_frame)
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -96,7 +95,7 @@ class StyleTransfer(BaseProcessor):
 
     def process_image(self, target_path: str, output_path: str) -> None:
         target_vision_frame = read_static_image(target_path)
-        self.load_processor_global([target_path])
+        #self.load_processor_global([target_path])
         output_vision_frame = self.process_frame({'target_vision_frame': target_vision_frame})
         write_image(output_path, output_vision_frame)
 
@@ -106,20 +105,24 @@ class StyleTransfer(BaseProcessor):
             cuda = torch.cuda.is_available()
 
             frame_processor = TransformerNet()
-            frame_processor.load_state_dict(torch.load(checkpoint_path))
+            frame_processor.load_state_dict(torch.load(checkpoint_path), strict=False)
             if cuda:
                 frame_processor.cuda()
 
             for param in frame_processor.parameters():
                 param.requires_grad = False
+            styles = state_manager.get_item('style_transfer_image')
+            style_images = []
+            for style in styles:
+                style_image = cv2.imread(style)
+                style_images.append(style_image)
 
-            framework = Stylization(checkpoint_path, cuda)
+            framework = Stylization(checkpoint_path, cuda, style_num=len(style_images))
             framework.clean()
-            style = cv2.imread(state_manager.get_item('style_transfer_image'))
-            framework.prepare_style(style)
+            framework.prepare_styles(style_images)
 
             self.frame_processor = framework
-            self.style_input_path = state_manager.get_item('style_transfer_image')
+            self.style_input_path = styles
 
         if not self.reshape_tool:
             self.reshape_tool = ReshapeTool()
@@ -128,7 +131,8 @@ class StyleTransfer(BaseProcessor):
 
     def load_processor_global(self, target_frames: List[VisionFrame]):
         processor = self.get_frame_processor()
-        processor.prepare_global(target_frames)
+        if not processor.computed:
+            processor.prepare_global(target_frames)
         return processor
 
     def run_style_transfer(self, frame: VisionFrame) -> VisionFrame:

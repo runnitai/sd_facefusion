@@ -1,4 +1,5 @@
 import importlib
+import importlib
 import inspect
 import os
 import pkgutil
@@ -8,14 +9,12 @@ import gradio as gr
 from facefusion.args import apply_args
 from facefusion.core import route
 from facefusion.download import conditional_download
-from facefusion.jobs import job_manager
 from facefusion.memory import tune_performance
 from facefusion.processors.core import get_processors_modules
 from facefusion.program import create_program
 from facefusion.program_helper import validate_args
-from facefusion.typing import JobStatus
 from facefusion.uis.core import load_ui_layout_module
-from facefusion.workers.core import list_workers
+from facefusion.workers.core import get_worker_modules
 from modules import script_callbacks
 from modules.paths_internal import script_path
 
@@ -53,6 +52,22 @@ def run_pre_checks(package):
     find_submodules(package)
 
 
+def run_preloads(_ , __):
+    """
+    Run the preloads asynchronously using a ThreadPoolExecutor.
+    """
+    all_processors = get_processors_modules()
+    all_workers = get_worker_modules()
+
+    # Create tasks for all preloads
+    for processor in all_processors:
+        print(f"Preloading processor {processor.display_name}")
+        processor.pre_load()
+    for worker in all_workers:
+        print(f"Preloading worker {worker.display_name}")
+        worker.pre_load()
+
+
 def load_facefusion():
     from facefusion import logger, globals, state_manager
     from modules.paths_internal import default_output_dir
@@ -63,9 +78,13 @@ def load_facefusion():
     og_args = vars(program.parse_args())
     program.add_argument_group('processors')
     all_processors = get_processors_modules()
+    all_workers = get_worker_modules()
     for processor in all_processors:
         processor.register_args(program)
-    list_workers()
+        processor.apply_args(og_args, state_manager.init_item)
+    for worker in all_workers:
+        worker.register_args(program)
+        worker.apply_args(og_args, state_manager.init_item)
 
     globals_dict = {}
 
@@ -80,7 +99,7 @@ def load_facefusion():
     for key in globals.__dict__:
         if not key.startswith('__') and key not in globals_dict:
             globals_dict[key] = globals.__dict__[key]
-            #logger.warn(f"Global variable {key} is not set.", __name__)
+            # logger.warn(f"Global variable {key} is not set.", __name__)
 
     ff_ini = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'facefusion.ini'))
     globals_dict['config_path'] = ff_ini
@@ -96,7 +115,6 @@ def load_facefusion():
     apply_args(globals_dict, False)
     state_manager.init_item("config_path", ff_ini)
 
-    #run_pre_checks(facefusion)
     tune_performance()
 
     with gr.Blocks() as ff_ui:
@@ -117,4 +135,4 @@ def load_facefusion():
 
 
 script_callbacks.on_ui_tabs(load_facefusion)
-
+script_callbacks.on_app_started(run_preloads)

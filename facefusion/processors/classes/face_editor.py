@@ -404,7 +404,6 @@ class FaceEditor(BaseProcessor):
 
     def process_frame(self, inputs: FaceEditorInputs) -> VisionFrame:
         reference_faces = inputs.get('reference_faces')
-        reference_faces_2 = inputs.get('reference_faces_2')
         target_vision_frame = inputs.get('target_vision_frame')
         many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
 
@@ -417,7 +416,7 @@ class FaceEditor(BaseProcessor):
             if target_face:
                 target_vision_frame = self.edit_face(target_face, target_vision_frame)
         if state_manager.get_item('face_selector_mode') == 'reference':
-            for ref_faces in [reference_faces, reference_faces_2]:
+            for src_face_idx, ref_faces in reference_faces.items():
                 similar_faces = find_similar_faces(many_faces, ref_faces,
                                                    state_manager.get_item('reference_face_distance'))
                 if similar_faces:
@@ -431,12 +430,10 @@ class FaceEditor(BaseProcessor):
             target_vision_path = queue_payload['frame_path']
             target_frame_number = queue_payload['frame_number']
             reference_faces = queue_payload['reference_faces']
-            reference_faces_2 = queue_payload['reference_faces_2']
             target_vision_frame = read_image(target_vision_path)
             result_frame = self.process_frame(
                 {
                     'reference_faces': reference_faces,
-                    'reference_faces_2': reference_faces_2,
                     'target_vision_frame': target_vision_frame,
                     'target_frame_number': target_frame_number
                 })
@@ -445,12 +442,11 @@ class FaceEditor(BaseProcessor):
         return output_frames
 
     def process_image(self, target_path: str, output_path: str) -> None:
-        reference_faces, reference_faces_2 = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
+        reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
         target_vision_frame = read_static_image(target_path)
         output_vision_frame = self.process_frame(
             {
                 'reference_faces': reference_faces,
-                'reference_faces_2': reference_faces_2,
                 'target_vision_frame': target_vision_frame
             })
         write_image(output_path, output_vision_frame)

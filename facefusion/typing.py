@@ -29,6 +29,12 @@ Embedding = NDArray[numpy.float64]
 Gender = Literal['female', 'male']
 Age = range
 Race = Literal['white', 'black', 'latino', 'asian', 'indian', 'arabic']
+FaceReference = TypedDict('FaceReference',
+                          {
+                               'frame_number': int,
+                               'face_index': int,
+                               'sorts': Dict[str, Any]
+                          })
 Face = namedtuple('Face',
                   [
                       'bounding_box',
@@ -74,10 +80,8 @@ QueuePayload = TypedDict('QueuePayload',
                          {
                              'frame_number': int,
                              'frame_path': str,
-                             'source_face': Any,
-                             'source_face_2': Any,
+                             'source_faces': Any,
                              'reference_faces': Any,
-                             'reference_faces_2': Any,
                              'is_preview': bool
                          })
 Args = Dict[str, Any]
@@ -204,6 +208,7 @@ StateKey = Literal[
     'jobs_path',
     'source_paths',
     'source_paths_2',
+    'source_frame_dict',
     'target_path',
     'output_path',
     'face_detector_model',
@@ -222,7 +227,6 @@ StateKey = Literal[
     'reference_face_distance',
     'reference_frame_number',
     'reference_face_dict',
-    'reference_face_dict_2',
     'face_mask_types',
     'face_mask_blur',
     'face_mask_padding',
@@ -263,6 +267,7 @@ State = TypedDict('State',
                       'jobs_path': str,
                       'source_paths': List[str],
                       'source_paths_2': List[str],
+                      'source_frame_dict': Dict[str, List[str]],
                       'target_path': str,
                       'output_path': str,
                       'face_detector_model': FaceDetectorModel,
@@ -280,8 +285,7 @@ State = TypedDict('State',
                       'reference_face_position': int,
                       'reference_face_distance': float,
                       'reference_frame_number': int,
-                      'reference_face_dict': FaceSet,
-                      'reference_face_dict_2': FaceSet,
+                      'reference_face_dict': Dict[int, FaceReference],
                       'face_mask_types': List[FaceMaskType],
                       'face_mask_blur': float,
                       'face_mask_padding': Padding,

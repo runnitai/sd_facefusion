@@ -277,7 +277,6 @@ class FaceEnhancer(BaseProcessor):
 
     def process_frame(self, inputs: FaceEnhancerInputs) -> VisionFrame:
         reference_faces = inputs.get("reference_faces")
-        reference_faces_2 = inputs.get("reference_faces_2", None)
         target_vision_frame = inputs.get("target_vision_frame")
         many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
 
@@ -289,7 +288,7 @@ class FaceEnhancer(BaseProcessor):
             if target_face:
                 target_vision_frame = self.enhance_face(target_face, target_vision_frame)
         elif state_manager.get_item("face_selector_mode") == "reference":
-            for ref_faces in [reference_faces, reference_faces_2]:
+            for src_face_idx, ref_faces in reference_faces.items():
                 similar_faces = find_similar_faces(many_faces, ref_faces, state_manager.get_item("reference_face_distance"))
                 if similar_faces:
                     for similar_face in similar_faces:
@@ -297,7 +296,7 @@ class FaceEnhancer(BaseProcessor):
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-        reference_faces, reference_faces_2 = (get_reference_faces() if state_manager.get_item(
+        reference_faces = (get_reference_faces() if state_manager.get_item(
             "face_selector_mode") == "reference" else (None, None))
         output_frames = []
         for queue_payload in process_manager.manage(queue_payloads):
@@ -305,7 +304,6 @@ class FaceEnhancer(BaseProcessor):
             target_vision_frame = read_image(target_vision_path)
             result_frame = self.process_frame({
                 "reference_faces": reference_faces,
-                "reference_faces_2": reference_faces_2,
                 "target_vision_frame": target_vision_frame,
             })
             write_image(target_vision_path, result_frame)
@@ -313,7 +311,7 @@ class FaceEnhancer(BaseProcessor):
         return output_frames
 
     def process_image(self, target_path: str, output_path: str) -> None:
-        reference_faces, reference_faces_2 = (get_reference_faces() if state_manager.get_item(
+        reference_faces = (get_reference_faces() if state_manager.get_item(
             "face_selector_mode") == "reference" else (None, None))
         target_vision_frame = read_static_image(target_path)
         output_vision_frame = self.process_frame({

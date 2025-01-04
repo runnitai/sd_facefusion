@@ -9,7 +9,7 @@ from typing import Any, List, Dict
 
 import facefusion.globals
 from facefusion import logger, wording, state_manager
-from facefusion.face_analyser import get_avg_faces
+from facefusion.face_analyser import get_average_faces
 from facefusion.ff_status import FFStatus
 from facefusion.mytqdm import mytqdm as tqdm
 from facefusion.processors import classes
@@ -47,40 +47,44 @@ def get_processors_modules(frame_processors: List[str] = None) -> List[BaseProce
     """
     Discover all subclasses of BaseProcessor and return instances filtered by frame_processors.
     """
-    global PROCESSOR_INSTANCES
-    if frame_processors is None:
-        frame_processors = []
+    frame_processors = frame_processors or []
+    processor_instances = {}
 
     # Discover and load all processors
     for loader, module_name, is_pkg in pkgutil.walk_packages(
-            path=classes.__path__,
-            prefix="facefusion.processors.classes."):
+            path=classes.__path__, prefix="facefusion.processors.classes."
+    ):
+        if not module_name.startswith("facefusion.processors.classes."):
+            continue
+
         try:
             module = importlib.import_module(module_name)
         except Exception as e:
             logger.error(f"Failed to import {module_name}: {e}", __name__)
             continue
 
-        for name, obj in inspect.getmembers(module, inspect.isclass):
+        for name, obj in inspect.getmembers(module, lambda member: isinstance(member, type)):
+            # Safely check if obj is a valid subclass of BaseProcessor
             try:
                 if issubclass(obj, BaseProcessor) and obj is not BaseProcessor:
-                    if name not in PROCESSOR_INSTANCES:
+                    if name not in processor_instances:
                         instance = obj()
-                        PROCESSOR_INSTANCES[name] = instance
-                        logger.info(f"Loaded processor: {name}", __name__)
+                        processor_instances[name] = instance
+            except TypeError:
+                # Ignore non-class objects or invalid subclass checks
+                continue
             except Exception as e:
-                # logger.error(f"Failed to instantiate processor {name}: {e}", __name__)
-                pass
+                logger.error(f"Failed to instantiate processor {name}: {e}", __name__)
 
     # Filter and sort processors
-    sorted_processors = []
-    for processor in PROCESSOR_INSTANCES.values():
-        if not frame_processors or processor.display_name in frame_processors:
-            sorted_processors.append(processor)
+    sorted_processors = [
+        processor
+        for processor in processor_instances.values()
+        if not frame_processors or processor.display_name in frame_processors
+    ]
 
     # Sort by priority
-    sorted_processors.sort(key=lambda x: x.priority)
-    return sorted_processors
+    return sorted(sorted_processors, key=lambda x: x.priority)
 
 
 def list_processors(frame_processors: List[str] = None) -> List[str]:
@@ -170,8 +174,8 @@ def create_queue_payloads(temp_frame_paths: List[str]) -> List[QueuePayload]:
     from facefusion.face_store import get_reference_faces
 
     queue_payloads = []
-    source_face, source_face_2 = get_avg_faces()
-    reference_faces, reference_faces_2 = (
+    source_faces = get_average_faces()
+    reference_faces = (
         get_reference_faces() if 'reference' in facefusion.globals.face_selector_mode else (None, None))
 
     temp_frame_paths = sorted(temp_frame_paths, key=os.path.basename)
@@ -181,10 +185,8 @@ def create_queue_payloads(temp_frame_paths: List[str]) -> List[QueuePayload]:
             {
                 'frame_number': frame_number,
                 'frame_path': frame_path,
-                'source_face': source_face,
-                'source_face_2': source_face_2,
-                'reference_faces': reference_faces,
-                'reference_faces_2': reference_faces_2
+                'source_faces': source_faces,
+                'reference_faces': reference_faces
             }
         queue_payloads.append(frame_payload)
     return queue_payloads

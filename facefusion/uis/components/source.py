@@ -141,7 +141,11 @@ def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
     style_changer = StyleChanger()
     target = state_manager.get_item('style_changer_target')
     state_key = 'source_paths_2' if is_src_2 else 'source_paths'
-    
+    src_idx = 1 if is_src_2 else 0
+    source_dict = state_manager.get_item('source_frame_dict')
+    if not source_dict:
+        print('source_dict is empty')
+        source_dict = {}
     if 'source' in target and 'style_changer' in state_manager.get_item('processors'):
         all_image_files = filter_image_paths(file_names)
         for base_file in all_image_files:
@@ -157,9 +161,15 @@ def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
     has_audio_files = has_audio(file_names)
     has_image_files = has_image(file_names)
     if file_names:
+        source_dict[src_idx] = file_names
         state_manager.set_item(state_key, file_names)
+        print(f"source_dict: {source_dict} src 2 {is_src_2}")
+        state_manager.set_item('source_frame_dict', source_dict)
     else:
+        source_dict[src_idx] = []
         state_manager.clear_item(state_key)
+        print(f"source_dict: {source_dict} src 2 {is_src_2} (empty)")
+        state_manager.set_item('source_frame_dict', source_dict)
 
     # Return UI updates
     return (

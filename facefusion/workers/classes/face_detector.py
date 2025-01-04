@@ -261,6 +261,7 @@ class FaceDetector(BaseWorker):
         return bounding_boxes, face_scores, face_landmarks_5
 
     def forward_with_retinaface(self, detect_vision_frame: VisionFrame) -> Detection:
+        inference_pool = self.get_inference_pool()
         face_detector = self.get_inference_pool().get('retinaface')
 
         with thread_semaphore():

@@ -70,7 +70,7 @@ class FaceMasker(BaseWorker):
             'lower-lip': 13
         }
 
-    default_model = None
+    default_model = 'face_occluder'
     model_key = None
     multi_model = True
     preload = True

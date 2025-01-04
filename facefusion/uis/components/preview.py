@@ -10,7 +10,7 @@ import gradio
 from facefusion import wording, process_manager, state_manager
 from facefusion.audio import get_audio_frame, create_empty_audio_frame
 from facefusion.common_helper import get_first
-from facefusion.face_analyser import get_avg_faces
+from facefusion.face_analyser import get_average_faces
 from facefusion.face_store import clear_static_faces, get_reference_faces, clear_reference_faces
 from facefusion.filesystem import is_video, is_image, filter_audio_paths
 from facefusion.processors.core import get_processors_modules
@@ -62,7 +62,7 @@ def render() -> None:
         }
     #conditional_append_reference_faces()
 
-    source_face, source_face_2 = get_avg_faces()
+    source_faces = get_average_faces()
     source_audio_path = get_first(filter_audio_paths(state_manager.get_item('source_paths')))
     source_audio_path_2 = get_first(filter_audio_paths(state_manager.get_item('source_paths_2')))
     if source_audio_path and state_manager.get_item('output_video_fps'):
@@ -76,20 +76,18 @@ def render() -> None:
     target_path = state_manager.get_item('target_path')
     if is_image(target_path):
         target_frame = read_static_image(target_path)
-        preview_frame = process_preview_frame(source_face, source_face_2,
+        preview_frame = process_preview_frame(source_faces,
                                               source_audio_frame, source_audio_frame_2, target_frame, -1)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
 
     if is_video(target_path):
         frame_number = 0
         temp_frame = get_video_frame(target_path, frame_number)
-        preview_frame = process_preview_frame(source_face, source_face_2,
+        preview_frame = process_preview_frame(source_faces,
                                               source_audio_frame, source_audio_frame_2, temp_frame, frame_number)
         preview_image_args['value'] = normalize_frame_color(preview_frame)
-        #preview_image_args['visible'] = True
         preview_frame_slider_args['value'] = 0
         preview_frame_slider_args['maximum'] = count_video_frame_total(target_path)
-        #preview_frame_slider_args['visible'] = True
 
     PREVIEW_IMAGE = gradio.Image(**preview_image_args)
     with gradio.Row(visible=is_video(state_manager.get_item('target_path'))) as PREVIEW_FRAME_ROW:
@@ -287,7 +285,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
 
     try:
         #conditional_append_reference_faces()
-        source_face, source_face_2 = get_avg_faces()
+        source_faces = get_average_faces()
         source_audio_frame = create_empty_audio_frame()
         source_audio_frame_2 = create_empty_audio_frame()
 
@@ -295,7 +293,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
             target_vision_frame = read_static_image(state_manager.get_item('target_path'))
             if target_vision_frame is not None:
                 preview_vision_frame = process_preview_frame(
-                    source_face, source_face_2,
+                    source_faces,
                     source_audio_frame, source_audio_frame_2, target_vision_frame
                 )
                 preview_vision_frame = normalize_frame_color(preview_vision_frame)
@@ -305,7 +303,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
             temp_vision_frame = get_video_frame(state_manager.get_item('target_path'), frame_number)
             if temp_vision_frame is not None:
                 preview_vision_frame = process_preview_frame(
-                    source_face, source_face_2,
+                    source_faces,
                     source_audio_frame, source_audio_frame_2, temp_vision_frame
                 )
                 preview_vision_frame = normalize_frame_color(preview_vision_frame)
@@ -358,7 +356,7 @@ def update_preview_frame_slider() -> gradio.update:
     return gradio.update(value=None, maximum=None, visible=False), gradio.update(visible=False)
 
 
-def process_preview_frame(source_face: Face, source_face_2: Face,
+def process_preview_frame(source_faces: Dict[int, Face],
                           source_audio_frame: AudioFrame, source_audio_frame_2: AudioFrame,
                           target_vision_frame: VisionFrame,
                           frame_number=-1) -> VisionFrame:
@@ -372,24 +370,16 @@ def process_preview_frame(source_face: Face, source_face_2: Face,
         source_frame = target_vision_frame.copy()
 
         for frame_processor_module in processors:
-            if frame_processor_module.display_name == 'Face Swapper':
-                reference_faces, reference_faces_2 = (
-                    get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (
-                    None, None))
-            else:
-                reference_faces, reference_faces_2 = (
-                    get_reference_faces(False) if 'reference' in state_manager.get_item('face_selector_mode') else (
-                    None, None))
-
+            reference_faces = (
+                get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (
+                None, None))
             try:
                 start_time = datetime.now()
                 #frame_processor_module = load_processor_module(frame_processor)
                 if frame_processor_module.pre_process('preview'):
                     target_vision_frame = frame_processor_module.process_frame({
                         'reference_faces': reference_faces,
-                        'reference_faces_2': reference_faces_2,
-                        'source_face': source_face,
-                        'source_face_2': source_face_2,
+                        'source_faces': source_faces,
                         'source_visual_frame': source_frame,
                         'source_audio_frame': source_audio_frame,
                         'source_audio_frame_2': source_audio_frame_2,

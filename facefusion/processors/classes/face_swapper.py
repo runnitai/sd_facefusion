@@ -6,7 +6,7 @@ import numpy
 from facefusion import config, inference_manager, logger, process_manager, state_manager, wording
 from facefusion.common_helper import get_first
 from facefusion.execution import has_execution_provider
-from facefusion.face_analyser import get_many_faces, get_one_face, get_avg_faces
+from facefusion.face_analyser import get_many_faces, get_one_face, get_average_faces
 from facefusion.face_helper import paste_back, warp_face_by_face_landmark_5
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
@@ -346,8 +346,9 @@ class FaceSwapper(BaseProcessor):
         if not has_image(source_paths) and not has_image(source_paths_2):
             logger.error(wording.get('choose_image_source') + wording.get('exclamation_mark'), __name__)
             return False
-        source_faces, source_faces_2 = get_avg_faces()
-        if not get_one_face([source_faces]) and not get_one_face([source_faces_2]):
+        source_faces = get_average_faces()
+        source_face_values = [value for value in source_faces.values()]
+        if not len(source_face_values):
             logger.error(wording.get('no_source_face_detected') + wording.get('exclamation_mark'), __name__)
             return False
         if mode in ['output', 'preview'] and not is_image(state_manager.get_item('target_path')) and not is_video(
@@ -371,19 +372,16 @@ class FaceSwapper(BaseProcessor):
             clear_worker_modules()
 
     def process_frame(self, inputs: FaceSwapperInputs) -> VisionFrame:
-        # watch = StopWatch()
-        # watch.start("face_swapper")
         reference_faces = inputs.get('reference_faces')
-        reference_faces_2 = inputs.get('reference_faces_2')
-        source_face = inputs.get('source_face')
-        source_face_2 = inputs.get('source_face_2')
-        target_vision_frame = inputs.get('target_vision_frame')
-        # watch.next("get_faces")
-        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
+        source_faces = inputs.get('source_faces')
         face_selector_mode = state_manager.get_item('face_selector_mode')
+
+        source_face = next(iter(source_faces.values())) if not face_selector_mode == 'reference' else None
+
+        target_vision_frame = inputs.get('target_vision_frame')
+        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
         src_idx = 0
         if face_selector_mode == 'many':
-            # watch.next("many_faces")
             if many_faces:
                 for target_face in many_faces:
                     target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx)
@@ -393,20 +391,39 @@ class FaceSwapper(BaseProcessor):
             if target_face:
                 target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx)
         if face_selector_mode == 'reference':
-            # watch.next("reference_faces")
-            for ref_faces, src_face in [(reference_faces, source_face), (reference_faces_2, source_face_2)]:
+            # Make a unique set of keys from reference_faces and source_faces
+            reference_face_keys = set(reference_faces.keys())
+            source_face_keys = set(source_faces.keys())
+            all_keys = reference_face_keys.union(source_face_keys)  # Combined set of keys
+
+            print(f"All face keys: {all_keys}")
+            for src_face_idx in all_keys:
+                ref_faces = reference_faces.get(src_face_idx)
+                src_face = source_faces.get(src_face_idx)
+
+                if not ref_faces:
+                    print(f"Missing reference faces for key: {src_face_idx}")
+                if not src_face:
+                    print(f"Missing source face for key: {src_face_idx}")
+
+                # Skip further processing if either reference or source faces are missing
                 if not ref_faces or not src_face:
                     continue
-                similar_faces = find_similar_faces(many_faces, ref_faces,
-                                                   state_manager.get_item('reference_face_distance'))
+
+                similar_faces = find_similar_faces(
+                    many_faces, ref_faces,
+                    state_manager.get_item('reference_face_distance')
+                )
+
                 if similar_faces:
-                    similar_idx = 0
+                    print(f"Similar faces found for source face {src_face_idx}")
                     for similar_face in similar_faces:
-                        target_vision_frame = self.swap_face(src_face, similar_face, target_vision_frame, src_idx)
-                        similar_idx += 1
-                src_idx += 1
-        # watch.stop()
-        # watch.report()
+                        target_vision_frame = self.swap_face(
+                            src_face, similar_face, target_vision_frame, src_face_idx
+                        )
+                else:
+                    print(f"No similar faces found for source face {src_face_idx}")
+
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -414,17 +431,13 @@ class FaceSwapper(BaseProcessor):
         for queue_payload in process_manager.manage(queue_payloads):
             target_vision_path = queue_payload['frame_path']
             target_frame_number = queue_payload['frame_number']
-            source_face = queue_payload['source_face']
-            source_face_2 = queue_payload['source_face_2']
+            source_faces = queue_payload['source_faces']
             reference_faces = queue_payload['reference_faces']
-            reference_faces_2 = queue_payload['reference_faces_2']
             target_vision_frame = read_image(target_vision_path)
             result_frame = self.process_frame(
                 {
                     'reference_faces': reference_faces,
-                    'reference_faces_2': reference_faces_2,
-                    'source_face': source_face,
-                    'source_face_2': source_face_2,
+                    'source_faces': source_faces,
                     'target_vision_frame': target_vision_frame,
                     'target_frame_number': target_frame_number
                 })
@@ -433,16 +446,14 @@ class FaceSwapper(BaseProcessor):
         return output_frames
 
     def process_image(self, target_path: str, output_path: str) -> None:
-        reference_faces, reference_faces_2 = (
-            get_reference_faces(True) if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
-        source_face, source_face_2 = get_avg_faces()
+        reference_faces = (
+            get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
+        source_faces = get_average_faces()
         target_vision_frame = read_static_image(target_path)
         result_frame = self.process_frame(
             {
                 'reference_faces': reference_faces,
-                'reference_faces_2': reference_faces_2,
-                'source_face': source_face,
-                'source_face_2': source_face_2,
+                'source_faces': source_faces,
                 'target_vision_frame': target_vision_frame,
                 'target_frame_number': -1
             })

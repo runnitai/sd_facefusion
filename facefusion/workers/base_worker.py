@@ -1,5 +1,5 @@
 import re
-from abc import ABC
+from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from typing import List, Any, Callable, Tuple
 
@@ -26,8 +26,8 @@ class BaseWorker(ABC):
     __instances = {}
 
     def __init__(self):
-        if self.MODEL_SET is None or self.model_key is None:
-            raise ValueError("MODEL_SET and model_key must be defined in the child class.")
+        if self.MODEL_SET is None or (self.model_key is None and self.default_model is None):
+            raise ValueError("MODEL_SET and model_key (or default_model) must be defined in the child class.")
         self.inference_pool = None
         self.model_path = "../.assets/models"
 
@@ -41,7 +41,7 @@ class BaseWorker(ABC):
                 word.capitalize() for word in re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).split('_')
             )
             cls.__instances[cls].context_name = class_name
-            cls.__instances[cls].model_key = cls.__instances[cls].model_key or f"{class_name}_model"
+            #cls.__instances[cls].model_key = cls.__instances[cls].model_key or f"{class_name}_model"
         return cls.__instances[cls]
 
     def register_args(self, program: ArgumentParser) -> None:
@@ -62,26 +62,57 @@ class BaseWorker(ABC):
 
         downloaded = (conditional_download_hashes(download_directory_path, model_hashes) and
                       conditional_download_sources(download_directory_path, model_sources))
-        if downloaded and self.preload and not self.inference_pool:
-            logger.debug(f"Preloaded: {self.display_name}", self.context_name)
-            self.inference_pool = self.get_inference_pool()
         return downloaded
 
+    def pre_load(self):
+        if self.pre_check() and self.preload and not self.inference_pool:
+            logger.debug(f"Preloaded: {self.display_name}", self.context_name)
+            self.inference_pool = self.get_inference_pool()
+
+    def set_inference_pool(self):
+        """Sets the inference pool."""
+        self.inference_pool = self.get_inference_pool()
+
     def get_inference_pool(self) -> InferencePool:
+        # if not self.get_model_options():
+        #     if self.set_model_options():
+        #         print(f"Model options set for {self.model_key}.")
+        #     else:
+        #         raise ValueError(f"Model options not found for {self.model_key}.")
+        model_context = self.context_name + '.' + (state_manager.get_item(self.model_key) or self.default_model)
+
         if self.multi_model:
             _, model_sources = self.collect_model_downloads()
-            model_context = f"{self.context_name}.{state_manager.get_item(self.model_key)}" if self.model_key else __name__
         else:
             model_sources = self.get_model_options().get('sources')
-            model_context = self.context_name
         return inference_manager.get_inference_pool(model_context, model_sources)
 
     def clear_inference_pool(self) -> None:
-        model_context = f"{self.context_name}.{state_manager.get_item(self.model_key)}" if self.model_key else self.context_name
+        model_context = self.context_name + '.' + (state_manager.get_item(self.model_key) or self.default_model)
         inference_manager.clear_inference_pool(model_context)
 
-    def get_model_options(self) -> ModelOptions:
-        return self.MODEL_SET.get(self.default_model)
+    def set_model_options(self):
+        model_choice = self.default_model
+        if self.model_key:
+            model_choice = state_manager.get_item(self.model_key)
+        if model_choice is None:
+            logger.error(f"Model choice not set for {self.model_key}.", __name__)
+            return False
+        model_options = self.MODEL_SET.get(model_choice, False)
+        return model_options is not False
+
+    def get_model_options(self) -> dict:
+        """
+        Get the model options for the processor.
+        """
+        if self.model_key:
+            model_choice = state_manager.get_item(self.model_key)
+        else:
+            model_choice = self.default_model
+        if model_choice is None:
+            logger.error(f"Model choice not set for {self.model_key}.", __name__)
+            return {}
+        return self.MODEL_SET.get(model_choice, {})
 
     def collect_model_downloads(self) -> Tuple[DownloadSet, DownloadSet]:
         # Overridden in subclasses if multi-model requires specific logic.

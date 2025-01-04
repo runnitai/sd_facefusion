@@ -8,38 +8,41 @@ from facefusion.typing import Face, FaceSelectorOrder, FaceSet, Gender, Race
 
 def find_similar_faces(faces: List[Face], reference_faces: FaceSet, face_distance: float) -> List[Face]:
     similar_faces: List[Face] = []
-
     if faces and reference_faces:
-        for reference_set in reference_faces:
+        for reference_face in reference_faces:
             if not similar_faces:
-                for reference_face in reference_faces[reference_set]:
-                    for face in faces:
-                        if compare_faces(face, reference_face, face_distance):
-                            similar_faces.append(face)
+                for face in faces:
+                    if compare_faces(face, reference_face, face_distance):
+                        print('Face found')
+                        similar_faces.append(face)
     return similar_faces
 
 
 def compare_faces(face: Face, reference_face: Face, face_distance: float) -> bool:
     current_face_distance = calc_face_distance(face, reference_face)
+    print(f'Face distance: {current_face_distance}')
     return current_face_distance < face_distance
 
 
 def calc_face_distance(face: Face, reference_face: Face) -> float:
     if hasattr(face, 'normed_embedding') and hasattr(reference_face, 'normed_embedding'):
         return 1 - numpy.dot(face.normed_embedding, reference_face.normed_embedding)
-    return 0
+    print('Face distance calculation failed')
+    return 1
 
 
-def sort_and_filter_faces(faces: List[Face]) -> List[Face]:
+def sort_and_filter_faces(faces: List[Face], sorts=None) -> List[Face]:
+    if not sorts:
+        sorts = current_sort_values()
     if faces:
-        if state_manager.get_item('face_selector_order'):
+        if sorts.get('face_selector_order'):
             faces = sort_by_order(faces, state_manager.get_item('face_selector_order'))
-        if state_manager.get_item('face_selector_gender'):
+        if sorts.get('face_selector_gender'):
             faces = filter_by_gender(faces, state_manager.get_item('face_selector_gender'))
-        if state_manager.get_item('face_selector_race'):
+        if sorts.get('face_selector_race'):
             faces = filter_by_race(faces, state_manager.get_item('face_selector_race'))
-        age_start = state_manager.get_item('face_selector_age_start')
-        age_end = state_manager.get_item('face_selector_age_end')
+        age_start = sorts.get('face_selector_age_start')
+        age_end = sorts.get('face_selector_age_end')
         if age_start == 0:
             age_start = None
         if age_end == 100:
@@ -47,6 +50,15 @@ def sort_and_filter_faces(faces: List[Face]) -> List[Face]:
         if age_start or age_end:
             faces = filter_by_age(faces, age_start, age_end)
     return faces
+
+
+def current_sort_values():
+    keys = ['face_selector_order', 'face_selector_gender', 'face_selector_race', 'face_selector_age_start',
+            'face_selector_age_end']
+    sorts = {}
+    for key in keys:
+        sorts[key] = state_manager.get_item(key)
+    return sorts
 
 
 def sort_by_order(faces: List[Face], order: FaceSelectorOrder) -> List[Face]:
