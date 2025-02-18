@@ -174,7 +174,8 @@ def get_average_faces():
 
     source_frame_dict = state_manager.get_item('source_frame_dict') or {}
     new_average_face_dict = {}
-
+    # Make a copy of source_frame_dict so we avoid issues with the original changing during iteration
+    source_frame_dict = source_frame_dict.copy()
     for source_face_index, frame_paths in source_frame_dict.items():
         # Retrieve the cached frame paths for the current index
         cached_paths = SOURCE_FRAME_DICT.get(source_face_index, [])
