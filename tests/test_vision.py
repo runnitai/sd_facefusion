@@ -1,8 +1,11 @@
 import subprocess
+
 import pytest
 
 from facefusion.download import conditional_download
-from facefusion.vision import detect_image_resolution, restrict_image_resolution, create_image_resolutions, get_video_frame, count_video_frame_total, detect_video_fps, restrict_video_fps, detect_video_resolution, restrict_video_resolution, create_video_resolutions, normalize_resolution, pack_resolution, unpack_resolution
+from facefusion.vision import detect_image_resolution, restrict_image_resolution, create_image_resolutions, \
+    get_video_frame, count_video_frame_total, detect_video_fps, restrict_video_fps, detect_video_resolution, \
+    restrict_video_resolution, create_video_resolutions, normalize_resolution, pack_resolution, unpack_resolution
 
 
 @pytest.fixture(scope = 'module', autouse = True)

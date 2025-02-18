@@ -1,23 +1,22 @@
 import importlib
+import importlib
 import inspect
 import os
 import pkgutil
-import time
-from typing import Union, List
 
-import gradio
 import gradio as gr
-from PIL import Image
-from transformers.image_transforms import to_pil_image
 
-from facefusion import face_analyser, wording, globals
-from facefusion.processors.frame import choices as frame_processors_choices, globals as frame_processors_globals
+from facefusion.args import apply_args
+from facefusion.core import route
 from facefusion.download import conditional_download
-from facefusion.filesystem import TEMP_DIRECTORY_PATH
-from facefusion.job_params import JobParams
 from facefusion.memory import tune_performance
+from facefusion.processors.core import get_processors_modules
+from facefusion.program import create_program
+from facefusion.program_helper import validate_args
 from facefusion.uis.core import load_ui_layout_module
-from modules import script_callbacks, scripts, scripts_postprocessing, ui_components
+from facefusion.workers.core import get_worker_modules
+from modules import script_callbacks
+from modules.paths_internal import script_path
 
 # export CUDA_MODULE_LOADING=LAZY
 os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
@@ -53,11 +52,71 @@ def run_pre_checks(package):
     find_submodules(package)
 
 
+def run_preloads(_ , __):
+    """
+    Run the preloads asynchronously using a ThreadPoolExecutor.
+    """
+    all_processors = get_processors_modules()
+    all_workers = get_worker_modules()
+
+    # Create tasks for all preloads
+    for processor in all_processors:
+        print(f"Preloading processor {processor.display_name}")
+        processor.pre_load()
+    for worker in all_workers:
+        print(f"Preloading worker {worker.display_name}")
+        worker.pre_load()
+
+
 def load_facefusion():
-    import facefusion
-    run_pre_checks(facefusion)
-    face_analyser.pre_check()
+    from facefusion import logger, globals, state_manager
+    from modules.paths_internal import default_output_dir
+    out_dir = os.path.join(script_path, default_output_dir, 'facefusion')
+    globals.output_path = out_dir
+    state_manager.init_item('output_path', out_dir)
+    program = create_program()
+    og_args = vars(program.parse_args())
+    program.add_argument_group('processors')
+    all_processors = get_processors_modules()
+    all_workers = get_worker_modules()
+    for processor in all_processors:
+        processor.register_args(program)
+        processor.apply_args(og_args, state_manager.init_item)
+    for worker in all_workers:
+        worker.register_args(program)
+        worker.apply_args(og_args, state_manager.init_item)
+
+    globals_dict = {}
+
+    if validate_args(program):
+        args = vars(program.parse_args())
+        ff_args = {key: args[key] for key in args if key not in og_args}
+        globals_dict.update(ff_args)
+        if state_manager.get_item('command'):
+            logger.init(state_manager.get_item('log_level'))
+            route(args)
+
+    for key in globals.__dict__:
+        if not key.startswith('__') and key not in globals_dict:
+            globals_dict[key] = globals.__dict__[key]
+            # logger.warn(f"Global variable {key} is not set.", __name__)
+
+    ff_ini = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'facefusion.ini'))
+    globals_dict['config_path'] = ff_ini
+    # Load the ini file, read each line and set the key-value pair in globals_dict if the value is not None
+    with open(ff_ini, 'r') as f:
+        for line in f:
+            if "=" not in line or line.startswith("#"):
+                continue
+            key, value = line.strip().split('=')
+            if value != 'None' and value != "" and value != "''":
+                print(f"Setting {key} to {value} from facefusion.ini")
+                globals_dict[key] = value
+    apply_args(globals_dict, False)
+    state_manager.init_item("config_path", ff_ini)
+
     tune_performance()
+
     with gr.Blocks() as ff_ui:
         with gr.Tabs():
             with gr.Tab(label="File"):
@@ -76,294 +135,4 @@ def load_facefusion():
 
 
 script_callbacks.on_ui_tabs(load_facefusion)
-
-__version__ = "0.0.1"
-
-
-def process_internal(is_ff_enabled, image, source_paths: List[str], face_selector_mode="one",
-                     frame_processors=["face_swapper"],
-                     face_swapper_model="inswapper_128_fp16", face_enhancer_model="gfpgan_1.4",
-                     frame_enhancer_model="real_esrgan_x4plus"):
-    if not is_ff_enabled:
-        return
-
-    if not len(source_paths):
-        print("No source images provided")
-        return
-
-    temp_dir = TEMP_DIRECTORY_PATH
-    # Ensure the image is in RGB format
-    if not isinstance(image, Image.Image):
-        image = to_pil_image(image)
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-
-    # Prepare the image for FaceFusion processing
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
-    temp_name = f"facefusion_{time.time()}"
-    temp_file = os.path.join(temp_dir, f"{temp_name}.jpg")
-    image.save(temp_file)
-    ff_params = JobParams.from_globals()
-    ff_params.target_path = temp_file
-    ff_params.source_paths = source_paths
-    ff_params.output_image_quality = 100
-    ff_params.temp_frame_quality = 100
-    ff_params.face_selector_mode = face_selector_mode
-    ff_params.frame_processors = frame_processors
-    frame_processors_globals.face_swapper_model = face_swapper_model
-    frame_processors_globals.face_enhancer_model = face_enhancer_model
-    frame_processors_globals.frame_enhancer_model = frame_enhancer_model
-    from facefusion.uis.components.output import start_job
-
-    out_path = start_job(ff_params)
-
-    # Handle the output from FaceFusion
-    if out_path and os.path.exists(out_path):
-        with Image.open(out_path) as img:
-            result_image = img.copy()
-        os.remove(temp_file)
-        os.remove(out_path)
-        return result_image
-    else:
-        print("FaceFusion failed")
-        return None
-
-
-class FaceFusionScript(scripts.Script):
-    def __init__(self):
-        super().__init__()
-        self.is_ff_enabled = False
-        self.selector_mode = "one"
-        self.sources = []
-        self.frame_processors = ["face_swapper"]
-        self.face_swapper_model = frame_processors_globals.face_swapper_model
-        self.face_enhancer_model = frame_processors_globals.face_enhancer_model
-        self.frame_enhancer_model = frame_processors_globals.frame_enhancer_model
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(version={__version__})"
-
-    def title(self):
-        return "FaceFusion"
-
-    def show(self, is_img2img):
-        return scripts.AlwaysVisible
-
-    def ui(self, is_img2img):
-        enable, selector_mode, sources, processors, swapper_model, face_enhancer_model, frame_enhancer_model = ui_internal(self)
-        return [enable, selector_mode, sources, processors,swapper_model, face_enhancer_model, frame_enhancer_model]
-
-    def postprocess_image(self, p, pp, *args_):
-        result_image = process_internal(self.is_ff_enabled, pp.image, self.sources, self.selector_mode,
-                                        self.frame_processors, self.face_swapper_model, self.face_enhancer_model,
-                                        self.frame_enhancer_model)
-        if result_image:
-            pp.image = result_image
-
-
-class FaceFusionPostProcessing(scripts_postprocessing.ScriptPostprocessing):
-    name = "FaceFusion"
-    order = 1999
-
-    def __init__(self):
-        super().__init__()
-        self.is_ff_enabled = False
-        self.selector_mode = "one"
-        self.sources = []
-        self.frame_processors = ["face_swapper"]
-        self.face_swapper_model = frame_processors_globals.face_swapper_model
-        self.face_enhancer_model = frame_processors_globals.face_enhancer_model
-        self.frame_enhancer_model = frame_processors_globals.frame_enhancer_model
-
-    def ui(self):
-        enable, selector_mode, sources, processors, swapper_model, face_enhancer_model, frame_enhancer_model = ui_internal(self)
-        return {
-            "is_ff_enabled": enable,
-            "facefusion_selector_mode": selector_mode,
-            "facefusion_sources": sources,
-            "frame_processors": processors,
-            "face_swapper_model": swapper_model,
-            "face_enhancer_model": face_enhancer_model,
-            "frame_enhancer_model": frame_enhancer_model,
-        }
-
-    def process_firstpass(self, pp, **args):
-        # This method can be used to set any preliminary flags or checks before the main processing
-        pass
-
-    def process(self, pp, **args):
-        result_image = process_internal(self.is_ff_enabled, pp.image, self.sources, self.selector_mode,
-                                        self.frame_processors,
-                                        self.face_swapper_model, self.face_enhancer_model, self.frame_enhancer_model)
-        if result_image:
-            pp.image = result_image
-
-    def image_changed(self):
-        pass  # Implement if needed to handle image change events
-
-
-def ui_internal(script_cls: Union[FaceFusionScript, FaceFusionPostProcessing]):
-    accordion_title = "FaceFusion"
-    checkbox_label = "Process with FaceFusion"
-    if isinstance(script_cls, FaceFusionPostProcessing):
-        with ui_components.InputAccordion(False, label="FaceFusion") as ff_enable:
-            with gr.Column(variant="panel", visible=False) as settings_row:
-                with gr.Row():
-                    frame_processors = gr.CheckboxGroup(
-                        label="Frame Processors",
-                        choices=["face_swapper", "face_enhancer", "frame_enhancer"],
-                        value=["face_swapper"]
-                    )
-                with gr.Row():
-                    selector_mode = gr.Radio(
-                        label="Face Selector Mode",
-                        choices=["one", "many"],
-                        default="one",
-                        value="one",
-                        elem_id="facefusion_selector_mode",
-                    )
-                with gr.Row():
-                    swapper_model = gradio.Dropdown(
-                        label=wording.get('uis.swapper_model'),
-                        choices=frame_processors_choices.face_swapper_models,
-                        value=frame_processors_globals.face_swapper_model,
-                        visible='face_swapper' in globals.frame_processors
-                    )
-                with gr.Row():
-                    face_enhancer_model = gradio.Dropdown(
-                        label=wording.get('uis.face_enhancer_model'),
-                        choices=frame_processors_choices.face_enhancer_models,
-                        value=frame_processors_globals.face_enhancer_model,
-                        visible='face_enhancer' in globals.frame_processors,
-                        elem_id='face_enhancer_model'
-                    )
-                with gr.Row():
-                    frame_enhancer_model = gradio.Dropdown(
-                        label=wording.get('uis.frame_enhancer_model'),
-                        choices=frame_processors_choices.frame_enhancer_models,
-                        value=frame_processors_globals.frame_enhancer_model,
-                        visible=False,
-                        elem_id='frame_enhancer_model'
-                    )
-                with gr.Row():
-                    source_files = gr.Files(
-                        label="Source Images",
-                        interactive=True,
-                        file_types=
-                        [
-                            '.png',
-                            '.jpg',
-                            '.webp'
-                        ],
-                        elem_id="facefusion_sources",
-                    )
-                    source_image = gr.Image(
-                        label="Source Images",
-                        interactive=False,
-                        visible=False,
-                        type="filepath",
-                        elem_id="facefusion_sources",
-                    )
-    else:
-        with gr.Accordion(accordion_title, open=False):
-            ff_enable = gr.Checkbox(
-                label=checkbox_label,
-                value=False,
-                visible=True,
-            )
-            with gr.Column(variant="panel", visible=False) as settings_row:
-                with gr.Row():
-                    frame_processors = gr.CheckboxGroup(
-                        label="Frame Processors",
-                        choices=["face_swapper", "face_enhancer", "frame_enhancer"],
-                        value=["face_swapper"]
-                    )
-                with gr.Row():
-                    selector_mode = gr.Radio(
-                        label="Face Selector Mode",
-                        choices=["one", "many"],
-                        default="one",
-                        elem_id="facefusion_selector_mode",
-                    )
-                with gr.Row():
-                    swapper_model = gradio.Dropdown(
-                        label="Face Swapper Model",
-                        choices=frame_processors_choices.face_swapper_models,
-                        value=frame_processors_globals.face_swapper_model,
-                        visible='face_swapper' in globals.frame_processors
-                    )
-                with gr.Row():
-                    face_enhancer_model = gradio.Dropdown(
-                        label="Face Enhancer Model",
-                        choices=frame_processors_choices.face_enhancer_models,
-                        value=frame_processors_globals.face_enhancer_model,
-                        visible='face_enhancer' in globals.frame_processors,
-                        elem_id='face_enhancer_model'
-                    )
-                with gr.Row():
-                    frame_enhancer_model = gradio.Dropdown(
-                        label="Frame Enhancer Model",
-                        choices=frame_processors_choices.frame_enhancer_models,
-                        value=frame_processors_globals.frame_enhancer_model,
-                        visible=False,
-                        elem_id='frame_enhancer_model'
-                    )
-                with gr.Row():
-                    source_files = gr.Files(
-                        label="Source Images",
-                        interactive=True,
-                        file_types=
-                        [
-                            '.png',
-                            '.jpg',
-                            '.webp'
-                        ],
-                        elem_id="facefusion_sources",
-                    )
-                    source_image = gr.Image(
-                        label="Source Images",
-                        interactive=False,
-                        type="filepath",
-                        visible=False,
-                        elem_id="facefusion_sources",
-                    )
-
-    def update_sources(files):
-
-        file_names = [file.name for file in files] if files else []
-        setattr(script_cls, "sources", file_names)
-        if len(file_names):
-            return gr.update(value=file_names[0], visible=True)
-        return gr.update(value=None, visible=False)
-
-    def toggle_settings(enable):
-        setattr(script_cls, "is_ff_enabled", enable)
-        return gr.update(visible=enable)
-
-    def toggle_dropdowns(processors):
-        show_swap_model = 'face_swapper' in processors
-        show_face_model = 'face_enhancer' in processors
-        show_frame_model = 'frame_enhancer' in processors
-        return gr.update(visible=show_swap_model), gr.update(visible=show_face_model), gr.update(visible=show_frame_model)
-
-    ff_enable.change(fn=toggle_settings, inputs=[ff_enable], outputs=[settings_row])
-    source_files.change(fn=update_sources, inputs=[source_files], outputs=[source_image])
-    frame_processors.change(fn=toggle_dropdowns, inputs=[frame_processors], outputs=[swapper_model, face_enhancer_model, frame_enhancer_model])
-
-    selector_mode.change(fn=lambda mode: setattr(script_cls, "selector_mode", mode), inputs=[selector_mode])
-
-    swapper_model.change(
-        fn=lambda model: setattr(frame_processors_globals, "face_swapper_model", model),
-        inputs=[swapper_model]
-    )
-    face_enhancer_model.change(
-        fn=lambda model: setattr(frame_processors_globals, "face_enhancer_model", model),
-        inputs=[face_enhancer_model]
-    )
-    frame_enhancer_model.change(
-        fn=lambda model: setattr(frame_processors_globals, "frame_enhancer_model", model),
-        inputs=[frame_enhancer_model]
-    )
-
-    return ff_enable, selector_mode, source_files, frame_processors, swapper_model, face_enhancer_model, frame_enhancer_model
+script_callbacks.on_app_started(run_preloads)

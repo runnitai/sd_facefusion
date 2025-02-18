@@ -3,21 +3,10 @@ let stoppedCount = 0;
 
 function start_status() {
     stoppedCount = 0;
-    let queueBtn = gradioApp().getElementById("ff_enqueue");
-    if (queueBtn == null) {
-        return;
-    }
-    queueBtn.click();
     ffProgressTimeout = setTimeout(recheck_status, 2000);
 }
 
 function stop_status() {
-    console.log("Stop status...");
-    let queueBtn = gradioApp().getElementById("ff_dequeue");
-    if (queueBtn == null) {
-        return;
-    }
-    queueBtn.click();
     clearTimeout(ffProgressTimeout);
 }
 
@@ -27,19 +16,16 @@ function recheck_status() {
         console.log("Can't find the status element.");
         return;
     }
-    let btn = gradioApp().getElementById("ff_check_status");
+    let btn = gradioApp().getElementById("ff3_check_status");
     if (!btn) {
         console.log("Can't find the button.");
         return;
     }
     btn.click();
-    console.log("Data-started value: ", status_element.dataset.started);
     let started = status_element.dataset.started === 'true';
     if (!started) {
-        console.log("Job not started, waiting...");
         ffProgressTimeout = setTimeout(recheck_status, 2000);
     } else {
-        console.log("Job started, awaiting progress stop...");
         await_progress_stop();
     }
 }
@@ -54,8 +40,7 @@ function await_progress_stop() {
     console.log("Data-started value: ", status_element.dataset.started);
     let started = status_element.dataset.started === 'true';
     if (started) {
-        console.log("Job still in progress...");
-        let btn = gradioApp().getElementById("ff_check_status");
+        let btn = gradioApp().getElementById("ff3_check_status");
         if (!btn) {
             console.log("Can't find the button.");
             return;
@@ -93,10 +78,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 if (!selected) {
                     e.target.parentElement.classList.add("selected");
-                    let ff_toggle_remove = gradioApp().getElementById("ff_toggle_remove");
-                    if (ff_toggle_remove) {
-                        console.log("Clicking toggle remove");
-                        ff_toggle_remove.click();
+                    let ff3_toggle_remove = gradioApp().getElementById("ff3_toggle_remove");
+                    if (ff3_toggle_remove) {
+                        ff3_toggle_remove.click();
                     } else {
                         console.log("Can't find toggle remove");
                     }

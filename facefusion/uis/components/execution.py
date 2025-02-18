@@ -1,12 +1,12 @@
-import gradio
-import onnxruntime
 from typing import List, Optional
 
-import facefusion.globals
-from facefusion import wording
-from facefusion.execution import encode_execution_providers, decode_execution_providers
-from facefusion.face_analyser import clear_face_analyser
-from facefusion.processors.frame.core import clear_frame_processors_modules
+import gradio
+
+from facefusion import state_manager, wording
+from facefusion.execution import get_execution_provider_choices
+from facefusion.processors.core import clear_processors_modules
+from facefusion.typing import ExecutionProviderKey
+from facefusion.workers.core import clear_worker_modules
 
 EXECUTION_PROVIDERS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
 
@@ -16,9 +16,8 @@ def render() -> None:
 
     EXECUTION_PROVIDERS_CHECKBOX_GROUP = gradio.CheckboxGroup(
         label=wording.get('uis.execution_providers_checkbox_group'),
-        choices=encode_execution_providers(onnxruntime.get_available_providers()),
-        value=encode_execution_providers(facefusion.globals.execution_providers),
-        visible=False
+        choices=get_execution_provider_choices(),
+        value=state_manager.get_item('execution_providers')
     )
 
 
@@ -27,9 +26,9 @@ def listen() -> None:
                                               outputs=EXECUTION_PROVIDERS_CHECKBOX_GROUP)
 
 
-def update_execution_providers(execution_providers: List[str]) -> gradio.CheckboxGroup:
-    clear_face_analyser()
-    clear_frame_processors_modules()
-    execution_providers = execution_providers or encode_execution_providers(onnxruntime.get_available_providers())
-    facefusion.globals.execution_providers = decode_execution_providers(execution_providers)
-    return gradio.update(value=execution_providers, visible=False)
+def update_execution_providers(execution_providers: List[ExecutionProviderKey]) -> gradio.update:
+    clear_worker_modules()
+    clear_processors_modules(state_manager.get_item('processors'))
+    execution_providers = execution_providers or get_execution_provider_choices()
+    state_manager.set_item('execution_providers', execution_providers)
+    return gradio.update(value=state_manager.get_item('execution_providers'))

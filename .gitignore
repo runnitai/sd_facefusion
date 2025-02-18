@@ -3,4 +3,5 @@
 .vscode
 # Ignore all __pycache__ directories everywhere
 __pycache__/
+jobs/*
 

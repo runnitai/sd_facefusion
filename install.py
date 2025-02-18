@@ -16,10 +16,10 @@ except:
     except:
         model_path = os.path.abspath("models")
 
-
 req_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")
 
-models_dir = os.path.join(models_path, "facefusion")
+
+# models_dir = os.path.join(models_path, "facefusion")
 
 
 def pip_install(*args):
@@ -38,7 +38,7 @@ def is_installed(pkg: str, version: Optional[str] = None, check_strict: bool = T
         installed_version = metadata.version(pkg)
         print(f"Installed version of {pkg}: {installed_version}")
         # If version is not specified, just return True as the package is installed
-        if version is None:
+        if version is None and installed_version is not None:
             return True
 
         # Compare the installed version with the required version
@@ -64,10 +64,6 @@ def download(url, path):
     with tqdm(total=total, desc='Downloading...', unit='B', unit_scale=True, unit_divisor=1024) as progress:
         urllib.request.urlretrieve(url, path,
                                    reporthook=lambda count, block_size, total_size: progress.update(block_size))
-
-
-if not os.path.exists(models_dir):
-    os.makedirs(models_dir)
 
 
 def install_requirements():
@@ -126,9 +122,7 @@ def print_requirement_installation_error(err):
 
 
 def install_runtimes():
-    torch_version = '2.0.1'
-    torch_cuda_wheel = 'cu118'  # Update this to the correct CUDA version if needed
-    onnxruntime_version = '1.16.3'
+    onnxruntime_version = '1.20.1'
     onnxruntime_cuda_name = 'onnxruntime-gpu'
     # Uninstall existing PyTorch and ONNX Runtime installations
     if not is_installed(onnxruntime_cuda_name, onnxruntime_version, True):
@@ -137,8 +131,29 @@ def install_runtimes():
         pip_install(f"{onnxruntime_cuda_name}=={onnxruntime_version}")
 
 
+def install_torchaudio():
+    cu_version = 'cu118'
+    # Do some package magick and get the version of torch installed, including the cuda version
+    torch_version = metadata.version('torch')
+    if torch_version is None:
+        print("Error: torch is not installed.")
+        return
+    if '+' in torch_version:
+        torch_version_parts = torch_version.split('+')
+        torch_pkg_version = torch_version_parts[0]
+        cu_version = torch_version_parts[1]
+    else:
+        torch_pkg_version = torch_version
+    # Set index_url to the correct URL for the installed torch version
+    index_url = f"https://download.pytorch.org/whl/{cu_version}"
+    # Install torchvision
+    if not is_installed('torchaudio'):
+        print("Installing torchaudio...")
+        pip_install(f'torchaudio=={torch_pkg_version}', f'--index-url={index_url}')
+
+
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-ext_dir = os.path.join(base_dir, 'extensions-builtin', 'sd_facefusion', 'facefusion')
+ext_dir = os.path.join(base_dir, 'extensions', 'sd_facefusion')
 
 if ext_dir not in sys.path:
     sys.path.insert(0, ext_dir)
@@ -147,3 +162,4 @@ else:
 
 install_requirements()
 install_runtimes()
+install_torchaudio()

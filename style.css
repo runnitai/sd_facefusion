@@ -7,35 +7,13 @@
     background-color: #e6e6e6;
     border: 1px solid #d9d9d9;
 }
-#queueTable {
-    width: 100%;
-    table-layout: fixed;
-}
-
-#queueTable th, #queueTable td {
-    overflow: hidden; /* Optional: use this to ensure content doesn't overflow the cells */
-    text-overflow: ellipsis; /* Optional: displays an ellipsis when the text overflows */
-    white-space: nowrap; /* Optional: prevents text from wrapping to the next line */
-}
-
-#queueTable th:nth-child(1), #queueTable td:nth-child(1) {
-    width: 10%; /* Sets the width of the first column */
-}
-
-#queueTable th:nth-child(n+2), #queueTable td:nth-child(n+2) {
-    width: 30%; /* Sets the width of the remaining columns */
-}
-
-.queueRow {
-    flex-grow: 0 !important;
-}
 
 .scrollable-div {
     width: 100%;
     overflow-y: auto;
 }
 
-#ff_status {
+#ff3_status {
     margin-top: 20px !important;
 }
 
@@ -51,18 +29,18 @@
     min-width: 0 !important;
 }
 
-#ff_reference_face_position_gallery {
+#ff3_reference_face_position_gallery {
     width: 100% !important;
     max-height: 85px;
     height: 85px;
 }
 
-#ff_reference_faces_selection_gallery {
+#ff3_reference_faces_selection_gallery, #ff3_reference_faces_selection_gallery_2{
     max-height: 85px;
     width: calc(100% - 2.2em);
 }
 
-#ff_add_reference_face_button, .remove_reference_faces_button {
+#ff3_add_reference_face_button, .remove_reference_faces_button {
     flex: none;
     max-width: 2.2em;
     min-width: 2.2em !important;
@@ -70,8 +48,14 @@
     line-height: 1em;
     border-radius: 0.5em;
 }
+#ff3_reference_faces_selection_gallery .grid-wrap.fixed-height,
+#ff3_reference_faces_selection_gallery_2 .grid-wrap.fixed-height,
+#ff3_reference_face_position_gallery .grid-wrap.fixed-height {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
 
-#ff_reference_face_position_gallery .grid-wrap.fixed-height {
+#ff3_reference_face_position_gallery .grid-wrap.fixed-height {
     overflow-x: hidden;
     overflow-y: auto;
 }
@@ -101,13 +85,13 @@
     margin: 5px 5px !important;
 }
 
-#bottom_mask_positions {
+#ff3_bottom_mask_positions {
     margin: 5px;
     padding: 4px;
     overflow: hidden;
 }
 
-#bottom_mask_positions p {
+#ff3_bottom_mask_positions p {
     margin: 0;
     padding: 0;
     line-height: 1.2;

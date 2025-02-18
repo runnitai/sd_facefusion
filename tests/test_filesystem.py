@@ -1,7 +1,8 @@
 import pytest
 
 from facefusion.download import conditional_download
-from facefusion.filesystem import is_file, is_directory, is_audio, has_audio, is_image, has_image, is_video, filter_audio_paths, filter_image_paths, list_directory
+from facefusion.filesystem import is_file, is_directory, is_audio, has_audio, is_image, has_image, is_video, \
+    filter_audio_paths, filter_image_paths, list_directory
 
 
 @pytest.fixture(scope = 'module', autouse = True)

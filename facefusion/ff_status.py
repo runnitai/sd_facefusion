@@ -1,8 +1,8 @@
 import os.path
 import time
 
+from facefusion import state_manager
 from facefusion.vision import count_video_frame_total, detect_video_fps
-from facefusion.job_params import JobParams
 
 
 class FFStatus:
@@ -29,10 +29,10 @@ class FFStatus:
             # Mark as initialized to prevent reinitialization, unless explicitly requested
             FFStatus._is_initialized = True
 
-    def start(self, job_queue, status: str = None):
-        print(f"Starting FFStatus with {len(job_queue)} jobs")
+    def start(self, status: str = None):
+        print(f"Starting FFStatus with 1 job.")
         """Start the status tracker with the first job in the queue"""
-        self.queue_total = len(job_queue)
+        self.queue_total = 1
         self.queue_current = 0
         self.preview_image = None
         self.status = status
@@ -41,7 +41,7 @@ class FFStatus:
         if self.queue_total > 0:
             self.started = True
             self.cancelled = False
-            self.job_total = self._compute_total_steps(job_queue[0])
+            self.job_total = self._compute_total_steps()
             self.job_current = 0
             print(f"Starting job with {self.job_total} steps")
 
@@ -65,12 +65,12 @@ class FFStatus:
         if self.job_current > self.job_total:
             self.job_total = self.job_current
 
-    def next(self, job: JobParams, status: str = None, step_queue=True):
+    def next(self, status: str = None, step_queue=True):
         """Move to the next job in the queue"""
         if step_queue:
             self.queue_current += 1
         self.job_current = 0
-        self.job_total = self._compute_total_steps(job)
+        self.job_total = self._compute_total_steps()
         if self.preview_image and not os.path.exists(self.preview_image):
             self.preview_image = None
         self.status = status
@@ -104,15 +104,15 @@ class FFStatus:
             self.status = status
 
     @staticmethod
-    def _compute_total_steps(job: JobParams):
-        target_path = job.target_path
-        frame_processors = job.frame_processors
-        trim_frame_start = job.trim_frame_start
-        trim_frame_end = job.trim_frame_end
+    def _compute_total_steps():
+        target_path = state_manager.get_item('target_path')
+        frame_processors = state_manager.get_item('processors')
+        trim_frame_start = state_manager.get_item('trim_frame_start')
+        trim_frame_end = state_manager.get_item('trim_frame_end')
         from facefusion.filesystem import is_video, is_image
         if is_video(target_path):
             original_fps = detect_video_fps(target_path)
-            fps = job.output_video_fps
+            fps = state_manager.get_item('output_video_fps')
             video_frame_total = count_video_frame_total(target_path)
             if trim_frame_start is not None:
                 video_frame_total -= trim_frame_start
@@ -122,7 +122,7 @@ class FFStatus:
             print(f"Total frames: {total_frames}, execution providers: {len(frame_processors)}")
             total_steps = total_frames * len(frame_processors)
             total_steps += 2
-            if not job.skip_audio:
+            if not state_manager.get_item('skip_audio'):
                 total_steps += 1
         elif is_image(target_path):
             total_steps = len(frame_processors) + 1
