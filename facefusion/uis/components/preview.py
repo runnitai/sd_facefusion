@@ -166,7 +166,7 @@ def listen() -> None:
                 'source_image_2',
                 'target_image',
                 'target_video',
-                'style_transfer_image',
+                'style_transfer_images',
             ]):
         for method in ['upload', 'change', 'clear']:
             getattr(ui_component, method)(update_preview_image, inputs=PREVIEW_FRAME_SLIDER,

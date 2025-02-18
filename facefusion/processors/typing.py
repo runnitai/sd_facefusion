@@ -110,7 +110,7 @@ ProcessorStateKey = Literal[
     'style_changer_model',
     'style_changer_target',
     'style_changer_skip_head',
-    'style_transfer_image'
+    'style_transfer_images'
 ]
 
 ProcessorState = TypedDict('ProcessorState',

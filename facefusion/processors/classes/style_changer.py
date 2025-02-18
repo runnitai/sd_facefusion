@@ -75,11 +75,6 @@ def forward_head(session, head_img: np.ndarray) -> np.ndarray:
     return session.run(None, {"input_image:0": processed})[0]
 
 
-def clear_inference_pool() -> None:
-    head_context = f"{NAME}.head"
-    bg_context = f"{NAME}.bg"
-    inference_manager.clear_inference_pool(head_context)
-    inference_manager.clear_inference_pool(bg_context)
 
 
 class StyleChanger(BaseProcessor):
@@ -319,13 +314,19 @@ class StyleChanger(BaseProcessor):
 
     def get_inference_pool(self) -> InferencePool:
         model_opts = self.get_model_options().get("sources")
-        head_sources = {"head":model_opts.get("head")}
+        head_sources = {"head": model_opts.get("head")}
         bg_sources = {"bg": model_opts.get("background")}
         head_context = f"{NAME}.head"
         bg_context = f"{NAME}.bg"
         head_pool = inference_manager.get_inference_pool(head_context, head_sources)
         bg_pool = inference_manager.get_inference_pool(bg_context, bg_sources)
         return head_pool, bg_pool
+
+    def clear_inference_pool(self) -> None:
+        head_context = f"{NAME}.head"
+        bg_context = f"{NAME}.bg"
+        inference_manager.clear_inference_pool(head_context)
+        inference_manager.clear_inference_pool(bg_context)
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
         if 'target' not in state_manager.get_item('style_changer_target'):

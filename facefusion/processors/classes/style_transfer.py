@@ -47,7 +47,7 @@ class StyleTransfer(BaseProcessor):
                                       help=wording.get('help.style_transfer_model'),
                                       default='style_transfer',
                                       choices=['style_transfer'])
-        job_store.register_step_keys(["style_transfer_model", "style_transfer_image"])
+        job_store.register_step_keys(["style_transfer_model", "style_transfer_images"])
 
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
         apply_state_item('style_transfer_model', args.get('style_transfer_model'))
@@ -67,7 +67,7 @@ class StyleTransfer(BaseProcessor):
             logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
             return False
 
-        style_path = state_manager.get_item('style_transfer_image')
+        style_path = state_manager.get_item('style_transfer_images')
         if not style_path:
             logger.error("No style_image provided.", __name__)
             return False
@@ -77,7 +77,6 @@ class StyleTransfer(BaseProcessor):
 
     def process_frame(self, inputs: dict) -> VisionFrame:
         target_vision_frame = inputs.get('target_vision_frame')
-        #is_preview = inputs.get('is_preview', False)
         self.load_processor_global([target_vision_frame])
         return self.run_style_transfer(target_vision_frame)
 
@@ -86,7 +85,7 @@ class StyleTransfer(BaseProcessor):
         for queue_payload in process_manager.manage(queue_payloads):
             target_vision_path = queue_payload['frame_path']
             is_preview = queue_payload.get('is_preview', False)
-            target_vision_frame = read_image(target_vision_path)
+            target_vision_frame = read_static_image(target_vision_path)
             output_vision_frame = self.process_frame(
                 {'target_vision_frame': target_vision_frame, 'is_preview': is_preview})
             write_image(target_vision_path, output_vision_frame)
@@ -100,10 +99,9 @@ class StyleTransfer(BaseProcessor):
         write_image(output_path, output_vision_frame)
 
     def get_frame_processor(self):
-        if self.frame_processor is None or state_manager.get_item('style_transfer_image') != self.style_input_path:
+        if self.frame_processor is None or state_manager.get_item('style_transfer_images') != self.style_input_path:
             checkpoint_path = self.get_model_options()['sources']['style_transfer']['path']
             cuda = torch.cuda.is_available()
-
             frame_processor = TransformerNet()
             frame_processor.load_state_dict(torch.load(checkpoint_path), strict=False)
             if cuda:
@@ -111,7 +109,7 @@ class StyleTransfer(BaseProcessor):
 
             for param in frame_processor.parameters():
                 param.requires_grad = False
-            styles = state_manager.get_item('style_transfer_image')
+            styles = state_manager.get_item('style_transfer_images')
             style_images = []
             for style in styles:
                 style_image = cv2.imread(style)

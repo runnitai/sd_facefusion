@@ -117,6 +117,7 @@ class BaseProcessor(ABC):
 
     def clear_inference_pool(self) -> None:
         model_context = self.context_name + '.' + (state_manager.get_item(self.model_key) or "default_key")
+        print(f"Clearing inference pool for {model_context}")
         inference_manager.clear_inference_pool(model_context)
         self.inference_pool = None
 

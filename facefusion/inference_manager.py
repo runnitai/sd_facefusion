@@ -52,6 +52,8 @@ def create_inference_pool(model_sources: DownloadSet, execution_device_id: str,
     return inference_pool
 
 
+
+
 def clear_inference_pool(model_context: str, preferred_provider: str = "default") -> None:
     global INFERENCE_POOLS
 

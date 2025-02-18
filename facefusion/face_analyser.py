@@ -199,8 +199,6 @@ def get_average_faces():
             # Compute the average face only if faces were detected
             if faces:
                 new_average_face_dict[source_face_index] = get_average_face(faces)
-            else:
-                logger.warn(f"No faces detected for index {source_face_index}", __name__)
 
         # Retain existing average faces if frame paths are unchanged
         elif source_face_index in AVERAGE_FACE_DICT:

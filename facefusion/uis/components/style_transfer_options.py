@@ -14,26 +14,26 @@ PROCESSOR_KEY = 'Style Transfer'
 
 def render() -> None:
     global STYLE_TARGET_IMAGE, STYLE_TARGET_GALLERY
-    style_images = state_manager.get_item('style_transfer_image')
+    style_images = state_manager.get_item('style_transfer_images')
     STYLE_TARGET_IMAGE = gradio.File(
         label=wording.get('uis.style_target_image'),
         file_types=['image'],
-        value=state_manager.get_item('style_transfer_image'),
+        value=state_manager.get_item('style_transfer_images'),
         file_count='multiple',
         visible=PROCESSOR_KEY in state_manager.get_item('processors') and not has_image(style_images)
     )
     STYLE_TARGET_GALLERY = gradio.Gallery(
         label=wording.get('uis.style_target_image'),
-        value=state_manager.get_item('style_transfer_image'),
+        value=state_manager.get_item('style_transfer_images'),
         visible=PROCESSOR_KEY in state_manager.get_item('processors') and has_image(style_images)
     )
-    register_ui_component('style_target_image', STYLE_TARGET_IMAGE)
+    register_ui_component('style_target_images', STYLE_TARGET_IMAGE)
     register_ui_component('style_target_gallery', STYLE_TARGET_GALLERY)
 
 
 def listen() -> None:
-    STYLE_TARGET_IMAGE.change(update_style_target, inputs=STYLE_TARGET_IMAGE, outputs=[STYLE_TARGET_IMAGE, STYLE_TARGET_GALLERY])
-    STYLE_TARGET_IMAGE.clear(update_style_target, inputs=STYLE_TARGET_IMAGE, outputs=[STYLE_TARGET_IMAGE, STYLE_TARGET_GALLERY])
+    STYLE_TARGET_IMAGE.change(update_style_target, inputs=STYLE_TARGET_IMAGE, outputs=STYLE_TARGET_GALLERY)
+    STYLE_TARGET_IMAGE.clear(update_style_target, inputs=STYLE_TARGET_IMAGE, outputs=STYLE_TARGET_GALLERY)
 
     processors_checkbox_group = get_ui_component('processors_checkbox_group')
     if processors_checkbox_group:
@@ -48,7 +48,7 @@ def remote_update(processors: List[str]) -> gradio.update:
 def update_style_target(style_target: List[File]):
     print('style_target:', style_target)
     target_names = [style_target.name for style_target in style_target]
-    state_manager.set_item('style_transfer_image', target_names)
-    return gradio.update(visible=not has_image(target_names)), gradio.update(value=target_names, visible=has_image(target_names))
+    state_manager.set_item('style_transfer_images', target_names)
+    return gradio.update(value=target_names, visible=has_image(target_names))
 
 

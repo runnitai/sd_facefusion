@@ -413,7 +413,7 @@ class FaceSwapper(BaseProcessor):
                         target_vision_frame = self.swap_face(
                             src_face, similar_face, target_vision_frame, src_face_idx
                         )
-                
+
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
