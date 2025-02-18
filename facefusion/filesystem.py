@@ -126,7 +126,10 @@ def move_file(file_path: str, move_path: str) -> bool:
 
 def remove_file(file_path: str) -> bool:
     if is_file(file_path):
-        os.remove(file_path)
+        try:
+            os.remove(file_path)
+        except:
+            return False
         return not is_file(file_path)
     return False
 
