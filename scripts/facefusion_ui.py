@@ -9,6 +9,7 @@ import gradio as gr
 from facefusion.args import apply_args
 from facefusion.core import route
 from facefusion.download import conditional_download
+from facefusion.filesystem import output_dir
 from facefusion.memory import tune_performance
 from facefusion.processors.core import get_processors_modules
 from facefusion.program import create_program
@@ -70,10 +71,8 @@ def run_preloads(_ , __):
 
 def load_facefusion():
     from facefusion import logger, globals, state_manager
-    from modules.paths import default_output_dir
-    out_dir = os.path.join(script_path, default_output_dir, 'facefusion')
-    globals.output_path = out_dir
-    state_manager.init_item('output_path', out_dir)
+    globals.output_path = output_dir
+    state_manager.init_item('output_path', output_dir)
     program = create_program()
     og_args = vars(program.parse_args())
     program.add_argument_group('processors')
