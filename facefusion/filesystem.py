@@ -6,7 +6,12 @@ from typing import List, Optional
 import filetype
 
 from facefusion.common_helper import is_windows
-from modules.paths_internal import script_path, default_output_dir
+
+from modules.paths_internal import script_path
+try:
+    from modules.paths_internal import default_output_dir
+except:
+    default_output_dir = os.path.join(script_path, 'outputs', 'facefusion')
 
 output_dir = os.path.join(script_path, 'outputs', 'facefusion')
 TEMP_DIRECTORY_PATH = os.path.join(output_dir, 'temp')

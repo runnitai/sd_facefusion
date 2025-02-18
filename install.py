@@ -8,18 +8,7 @@ from typing import Optional
 from packaging import version as pv
 from tqdm import tqdm
 
-try:
-    from modules.paths_internal import models_path, script_path
-except:
-    try:
-        from modules.paths import models_path
-    except:
-        model_path = os.path.abspath("models")
-
 req_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")
-
-
-# models_dir = os.path.join(models_path, "facefusion")
 
 
 def pip_install(*args):
