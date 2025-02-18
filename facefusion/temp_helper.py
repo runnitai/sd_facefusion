@@ -4,7 +4,6 @@ from typing import List
 
 from facefusion import state_manager
 from facefusion.filesystem import create_directory, move_file, remove_directory, get_output_path_auto
-from modules.paths_internal import script_path
 
 
 def get_temp_file_path(file_path: str) -> str:
