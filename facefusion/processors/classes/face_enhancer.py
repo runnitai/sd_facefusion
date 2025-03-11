@@ -252,7 +252,7 @@ class FaceEnhancer(BaseProcessor):
                                           choices=self.list_models())
             group_processors.add_argument("--face-enhancer-blend", help=wording.get("help.face_enhancer_blend"),
                                           type=int,
-                                          default=config.get_int_value("processors.face_enhancer_blend", "80"),
+                                          default=config.get_int_value("processors.face_enhancer_blend", "85"),
                                           choices=processors_choices.face_enhancer_blend_range,
                                           metavar=create_int_metavar(processors_choices.face_enhancer_blend_range))
             job_store.register_step_keys(["face_enhancer_model", "face_enhancer_blend"])
@@ -310,9 +310,10 @@ class FaceEnhancer(BaseProcessor):
             output_frames.append((queue_payload["frame_number"], target_vision_path))
         return output_frames
 
-    def process_image(self, target_path: str, output_path: str) -> None:
-        reference_faces = (get_reference_faces() if state_manager.get_item(
-            "face_selector_mode") == "reference" else (None, None))
+    def process_image(self, target_path: str, output_path: str, reference_faces=None) -> None:
+        if reference_faces is None:
+            reference_faces = (
+                get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
         target_vision_frame = read_static_image(target_path)
         output_vision_frame = self.process_frame({
             "reference_faces": reference_faces,

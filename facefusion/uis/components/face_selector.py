@@ -405,11 +405,11 @@ def toggle_group(processors: List[str]) -> gradio.update:
 def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gradio.Gallery, gradio.update]:
     state_manager.set_item('face_selector_mode', face_selector_mode)
     if face_selector_mode == 'many':
-        return gradio.update(visible=False), gradio.update(visible=False)
+        return gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
     if face_selector_mode == 'one':
-        return gradio.update(visible=False), gradio.update(visible=False)
+        return gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
     if face_selector_mode == 'reference':
-        return gradio.update(visible=True), gradio.update(visible=True)
+        return gradio.update(visible=True), gradio.update(visible=True), gradio.update(visible=True), gradio.update(visible=True)
 
 
 def update_face_selector_order(face_analyser_order: FaceSelectorOrder) -> gradio.Gallery:

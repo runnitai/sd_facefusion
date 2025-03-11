@@ -2,20 +2,26 @@ import importlib
 import inspect
 import os
 import pkgutil
+import time
+from typing import List, Union
+from PIL import Image
 
 import gradio as gr
 
-from facefusion.args import apply_args
+from facefusion import state_manager
+from facefusion.args import apply_args, collect_step_args
 from facefusion.core import route
 from facefusion.download import conditional_download
-from facefusion.filesystem import output_dir
+from facefusion.filesystem import output_dir, get_output_path_auto
 from facefusion.memory import tune_performance
 from facefusion.processors.core import get_processors_modules
 from facefusion.program import create_program
 from facefusion.program_helper import validate_args
 from facefusion.uis.core import load_ui_layout_module
 from facefusion.workers.core import get_worker_modules
-from modules import script_callbacks
+from facefusion.uis.components.instant_runner import create_and_run_job
+from facefusion.filesystem import TEMP_DIRECTORY_PATH
+from modules import script_callbacks, scripts, scripts_postprocessing
 
 # export CUDA_MODULE_LOADING=LAZY
 os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
@@ -51,7 +57,7 @@ def run_pre_checks(package):
     find_submodules(package)
 
 
-def run_preloads(_ , __):
+def run_preloads(_, __):
     """
     Run the preloads asynchronously using a ThreadPoolExecutor.
     """
@@ -133,3 +139,152 @@ def load_facefusion():
 
 script_callbacks.on_ui_tabs(load_facefusion)
 script_callbacks.on_app_started(run_preloads)
+
+
+def update_source_faces(file_paths: List[str]) -> None:
+    if not file_paths:
+        print("No source faces provided")
+        return
+
+    # Initialize or get the source frame dictionary
+    source_dict = state_manager.get_item('source_frame_dict')
+    if not source_dict:
+        source_dict = {}
+
+    # Update the source paths and dictionary
+    source_dict[0] = file_paths  # Use index 0 for primary source faces
+    state_manager.set_item('source_paths', file_paths)
+    state_manager.set_item('source_frame_dict', source_dict)
+    print(f"Updated source_frame_dict: {source_dict}")
+
+
+def process_internal(is_ff_enabled, image, source_paths=None):
+    if not is_ff_enabled:
+        print("FaceFusion is disabled")
+        return
+
+    if not source_paths or not any(source_paths):
+        print("No source faces selected")
+        return
+
+    print("FaceFusion is enabled")
+    temp_dir = TEMP_DIRECTORY_PATH
+    # Ensure the image is in RGB format
+    if not isinstance(image, Image.Image):
+        image = Image.fromarray(image)
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    # Prepare the image for FaceFusion processing
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+    temp_name = f"facefusion_{time.time()}"
+    temp_file = os.path.join(temp_dir, f"{temp_name}.jpg")
+    image.save(temp_file)
+    print(f"FaceFusion processing image: {temp_file}")
+
+    # Set up output directory
+    output_dir_path = os.path.join(temp_dir, "output")
+    if not os.path.exists(output_dir_path):
+        os.makedirs(output_dir_path)
+    output_path = os.path.join(output_dir_path, f"{temp_name}_output.jpg")
+
+    # Update source faces in state manager
+    update_source_faces(source_paths)
+
+    # Collect arguments from FaceFusion's state
+    step_args = collect_step_args()
+    step_args['target_path'] = temp_file
+    step_args['output_path'] = output_path
+    step_args['face_selector_mode'] = 'one'  # Force one face mode for consistent results
+
+    # Create and run the job using instant_runner
+    success = create_and_run_job(step_args, keep_state=True)
+
+    # Handle the output from FaceFusion
+    if success and os.path.exists(output_path):
+        print(f"FaceFusion succeeded: {output_path}")
+        with Image.open(output_path) as img:
+            result_image = img.copy()
+        os.remove(temp_file)
+        os.remove(output_path)
+        try:
+            os.rmdir(output_dir_path)  # Try to remove output dir if empty
+        except:
+            pass  # Ignore if not empty or other error
+        return result_image
+    else:
+        print("FaceFusion failed")
+        return None
+
+
+class FaceFusionScript(scripts.Script):
+    def __init__(self):
+        super().__init__()
+        self.is_ff_enabled = False
+        self.source_paths = []
+
+    def title(self):
+        return "FaceFusion"
+
+    def show(self, is_img2img):
+        return scripts.AlwaysVisible
+
+    def ui(self, is_img2img):
+        with gr.Accordion("FaceFusion", open=False):
+            with gr.Row():
+                enable = gr.Checkbox(
+                    label="Process with FaceFusion",
+                    value=False,
+                    visible=True,
+                )
+            with gr.Row():
+                source_images = gr.Files(
+                    label="Source Face(s)",
+                    file_types=["image"],
+                    visible=True
+                )
+        return [enable, source_images]
+
+    def postprocess_image(self, p, pp, enable, source_files):
+        self.is_ff_enabled = enable
+        self.source_paths = [f.name for f in source_files] if source_files else []
+        result_image = process_internal(self.is_ff_enabled, pp.image, self.source_paths)
+        if result_image:
+            pp.image = result_image
+
+
+class FaceFusionPostProcessing(scripts_postprocessing.ScriptPostprocessing):
+    name = "FaceFusion"
+    order = 1999
+
+    def __init__(self):
+        super().__init__()
+        self.is_ff_enabled = False
+        self.source_paths = []
+
+    def ui(self):
+        with gr.Accordion("FaceFusion", open=False):
+            with gr.Row():
+                enable = gr.Checkbox(
+                    label="Process with FaceFusion",
+                    value=False,
+                    visible=True,
+                )
+            with gr.Row():
+                source_images = gr.Files(
+                    label="Source Face(s)",
+                    file_types=["image"],
+                    visible=True
+                )
+        return {
+            "is_ff_enabled": enable,
+            "source_files": source_images
+        }
+
+    def process(self, pp, *, is_ff_enabled, source_files):
+        self.is_ff_enabled = is_ff_enabled
+        self.source_paths = [f.name for f in source_files] if source_files else []
+        result_image = process_internal(self.is_ff_enabled, pp.image, self.source_paths)
+        if result_image:
+            pp.image = result_image

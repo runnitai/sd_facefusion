@@ -211,15 +211,14 @@ class FaceDebugger(BaseProcessor):
             output_frames.append((queue_payload["frame_number"], target_vision_path))
         return output_frames
 
-    def process_image(self, target_path: str, output_path: str) -> None:
-        reference_faces, reference_faces_2 = (
-            get_reference_faces() if "reference" in state_manager.get_item("face_selector_mode") else (None, None)
-        )
+    def process_image(self, target_path: str, output_path: str, reference_faces=None) -> None:
+        if reference_faces is None:
+            reference_faces = (
+                get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
         target_vision_frame = read_static_image(target_path)
         result_frame = self.process_frame(
             {
                 "reference_faces": reference_faces,
-                "reference_faces_2": reference_faces_2,
                 "target_vision_frame": target_vision_frame,
             }
         )

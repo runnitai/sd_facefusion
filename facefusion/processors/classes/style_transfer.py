@@ -92,7 +92,7 @@ class StyleTransfer(BaseProcessor):
             processed_frames.append((queue_payload['frame_number'], target_vision_path))
         return processed_frames
 
-    def process_image(self, target_path: str, output_path: str) -> None:
+    def process_image(self, target_path: str, output_path: str, _=None) -> None:
         target_vision_frame = read_static_image(target_path)
         #self.load_processor_global([target_path])
         output_vision_frame = self.process_frame({'target_vision_frame': target_vision_frame})

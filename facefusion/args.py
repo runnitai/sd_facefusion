@@ -45,6 +45,7 @@ def apply_args(args: Args, apply_state_item: bool) -> None:
         'output_video_resolution',
         'output_video_fps',
         'target_path',  # used for is_image / is_video checks
+        'target_folder'
     }
 
     # 1) face_mask_padding -> normalize
@@ -88,7 +89,7 @@ def apply_args(args: Args, apply_state_item: bool) -> None:
         try:
             processor_module.apply_args(args, cmd)
         except Exception as e:
-            logger.errror(f"Error while applying args for processor {processor_module}: {e}", __name__)
+            pass
 
 
 

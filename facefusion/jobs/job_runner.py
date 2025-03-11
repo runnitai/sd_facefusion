@@ -7,14 +7,16 @@ from facefusion.jobs import job_helper, job_manager
 from facefusion.typing import JobOutputSet, JobStep, ProcessStep
 
 
-def run_job(job_id: str, process_step: ProcessStep) -> bool:
+def run_job(job_id: str, process_step: ProcessStep, keep_state: bool = False) -> bool:
     queued_job_ids = job_manager.find_job_ids('queued')
 
     if job_id in queued_job_ids:
         if run_steps(job_id, process_step) and finalize_steps(job_id):
-            clean_steps(job_id)
+            if not keep_state:
+                clean_steps(job_id)
             return job_manager.move_job_file(job_id, 'completed')
-        clean_steps(job_id)
+        if not keep_state:
+            clean_steps(job_id)
         job_manager.move_job_file(job_id, 'failed')
     return False
 

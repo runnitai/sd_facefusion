@@ -1,3 +1,4 @@
+import os
 from argparse import ArgumentParser
 from typing import List, Tuple
 
@@ -348,17 +349,22 @@ class FaceSwapper(BaseProcessor):
             return False
         source_faces = get_average_faces()
         source_face_values = [value for value in source_faces.values()]
+        target_folder = state_manager.get_item('target_folder')
+        is_batch = False
+        if target_folder is not None and target_folder != "" and os.path.isdir(target_folder):
+            is_batch = True
+            logger.info("Batch processing is enabled", __name__)
         if not len(source_face_values):
             logger.error(wording.get('no_source_face_detected') + wording.get('exclamation_mark'), __name__)
             return False
         if mode in ['output', 'preview'] and not is_image(state_manager.get_item('target_path')) and not is_video(
-                state_manager.get_item('target_path')):
+                state_manager.get_item('target_path')) and not is_batch:
             logger.error(wording.get('choose_image_or_video_target') + wording.get('exclamation_mark'), __name__)
             return False
-        if mode == 'output' and not in_directory(state_manager.get_item('output_path')):
+        if mode == 'output' and not in_directory(state_manager.get_item('output_path')) and not is_batch:
             logger.error(wording.get('specify_image_or_video_output') + wording.get('exclamation_mark'), __name__)
             return False
-        if mode == 'output' and not same_file_extension(
+        if mode == 'output' and not is_batch and not same_file_extension(
                 [state_manager.get_item('target_path'), state_manager.get_item('output_path')]):
             logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
             return False
@@ -375,7 +381,6 @@ class FaceSwapper(BaseProcessor):
         reference_faces = inputs.get('reference_faces')
         source_faces = inputs.get('source_faces')
         face_selector_mode = state_manager.get_item('face_selector_mode')
-
         source_face = next(iter(source_faces.values())) if not face_selector_mode == 'reference' else None
 
         target_vision_frame = inputs.get('target_vision_frame')
@@ -385,11 +390,15 @@ class FaceSwapper(BaseProcessor):
             if many_faces:
                 for target_face in many_faces:
                     target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx)
+            else:
+                print("No target face found")
         if face_selector_mode == 'one':
-            # watch.next("one_face")
+           # watch.next("one_face")
             target_face = get_one_face(many_faces)
             if target_face:
                 target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx)
+            else:
+                logger.info("No target face found", __name__)
         if face_selector_mode == 'reference':
             # Make a unique set of keys from reference_faces and source_faces
             reference_face_keys = set(reference_faces.keys())
@@ -435,9 +444,10 @@ class FaceSwapper(BaseProcessor):
             output_frames.append((target_frame_number, target_vision_path))
         return output_frames
 
-    def process_image(self, target_path: str, output_path: str) -> None:
-        reference_faces = (
-            get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
+    def process_image(self, target_path: str, output_path: str, reference_faces=None) -> None:
+        if reference_faces is None:
+            reference_faces = (
+                get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
         source_faces = get_average_faces()
         target_vision_frame = read_static_image(target_path)
         result_frame = self.process_frame(

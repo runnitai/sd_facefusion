@@ -75,8 +75,6 @@ def forward_head(session, head_img: np.ndarray) -> np.ndarray:
     return session.run(None, {"input_image:0": processed})[0]
 
 
-
-
 class StyleChanger(BaseProcessor):
     def process_image(self, target_path: str, output_path: str) -> None:
         pass
@@ -342,7 +340,7 @@ class StyleChanger(BaseProcessor):
         return output_frames
 
     def process_src_image(self, input_path: str, output_path: str) -> str:
-        #input_file, input_extension = os.path.splitext(input_path)
+        # input_file, input_extension = os.path.splitext(input_path)
         style_target = state_manager.get_item('style_changer_target')
         skip_head = state_manager.get_item('style_changer_skip_head') if style_target == 'source' else False
         skip_bg = "source head" in style_target

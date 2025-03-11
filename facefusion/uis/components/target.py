@@ -16,6 +16,7 @@ from facefusion.vision import normalize_frame_color, get_video_frame
 
 FILE_SIZE_LIMIT = 512 * 1024 * 1024
 TARGET_FILE: Optional[gradio.File] = None
+TARGET_FOLDER: Optional[gradio.File] = None
 TARGET_IMAGE: Optional[gradio.Image] = None
 TARGET_VIDEO: Optional[gradio.Video] = None
 TARGET_PATH: Optional[gradio.Text] = None
@@ -26,6 +27,7 @@ SOURCE_FILES: Optional[gradio.File] = None
 def render() -> None:
     global TARGET_FILE
     global TARGET_IMAGE
+    global TARGET_FOLDER
     global TARGET_VIDEO
     global TARGET_PATH
     global SYNC_VIDEO_LIP
@@ -37,6 +39,10 @@ def render() -> None:
         label="Target URL/Remote Path",
         value=target_path if is_target_path else None,
         elem_id='ff_target_path',
+    )
+    TARGET_FOLDER = gradio.Textbox(
+        label="Target Directory",
+        value=state_manager.get_item('target_folder')
     )
     TARGET_FILE = gradio.File(
         label=wording.get('uis.target_file'),
@@ -79,6 +85,7 @@ def render() -> None:
     )
     register_ui_component('target_image', TARGET_IMAGE)
     register_ui_component('target_video', TARGET_VIDEO)
+    register_ui_component('target_folder', TARGET_FOLDER)
     register_ui_component('target_file', TARGET_FILE)
     register_ui_component('sync_video_lip', SYNC_VIDEO_LIP)
 
@@ -86,9 +93,15 @@ def render() -> None:
 def listen() -> None:
     TARGET_PATH.input(update_from_path, inputs=TARGET_PATH, outputs=[TARGET_PATH, TARGET_FILE])
     TARGET_FILE.change(update, inputs=TARGET_FILE, outputs=[TARGET_IMAGE, TARGET_VIDEO, TARGET_PATH, SYNC_VIDEO_LIP])
+    TARGET_FOLDER.change(update_folder, inputs=TARGET_FOLDER)
     global SOURCE_FILES
     SOURCE_FILES = get_ui_component('source_file')
     SYNC_VIDEO_LIP.change(update_sync_video_lip, inputs=[SYNC_VIDEO_LIP, SOURCE_FILES], outputs=[SOURCE_FILES])
+
+
+def update_folder(folder: str):
+    logger.info(f"Updating target folder: {folder}", __name__)
+    state_manager.set_item('target_folder', folder)
 
 
 def update_from_path(path: str) -> Tuple[gradio.update, gradio.update]:

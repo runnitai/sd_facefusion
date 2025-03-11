@@ -1,3 +1,4 @@
+import os.path
 import shutil
 import sys
 from time import time
@@ -8,9 +9,9 @@ from facefusion import logger, process_manager, state_manager, wording
 from facefusion.args import apply_args, collect_job_args, reduce_step_args
 from facefusion.common_helper import get_first
 from facefusion.exit_helper import conditional_exit, hard_exit
-from facefusion.face_store import clear_reference_faces
+from facefusion.face_store import clear_reference_faces, get_reference_faces
 from facefusion.ffmpeg import copy_image, extract_frames, finalize_image, merge_video, replace_audio, restore_audio
-from facefusion.filesystem import filter_audio_paths, is_image, is_video
+from facefusion.filesystem import filter_audio_paths, is_image, is_video, get_output_path_auto
 from facefusion.jobs import job_helper, job_manager, job_runner
 from facefusion.jobs.job_list import compose_job_list
 from facefusion.memory import limit_system_memory
@@ -19,8 +20,9 @@ from facefusion.statistics import conditional_log_statistics
 from facefusion.temp_helper import clear_temp_directory, create_temp_directory, get_temp_file_path, \
     get_temp_frame_paths, move_temp_file
 from facefusion.typing import Args, ErrorCode, Face
+from facefusion.uis.ui_helper import suggest_output_path
 from facefusion.vision import pack_resolution, restrict_image_resolution, \
-    restrict_video_fps, restrict_video_resolution, unpack_resolution
+    restrict_video_fps, restrict_video_resolution, unpack_resolution, detect_image_resolution, create_image_resolutions
 from facefusion.workers.classes.content_analyser import ContentAnalyser
 from facefusion.workers.core import get_worker_modules
 
@@ -92,10 +94,41 @@ def conditional_process() -> ErrorCode:
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         if not processor_module.pre_process('output'):
             return 2
-    #average_reference_faces()
-    if is_image(state_manager.get_item('target_path')):
+    # average_reference_faces()
+    target_folder = state_manager.get_item('target_folder')
+    logger.info(f"Target folder: {target_folder}", "CORE")
+    if target_folder:
+        failed = False
+        reference_faces = (
+            get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else (None, None))
+        og_output_path = get_output_path_auto()
+        batch_path = os.path.join(og_output_path, os.path.basename(target_folder))
+        os.makedirs(batch_path, exist_ok=True)
+        if os.path.exists(target_folder) and os.path.isdir(target_folder):
+            for file in os.listdir(target_folder):
+                file_path = os.path.join(target_folder, file)
+                state_manager.set_item('target_path', file_path)
+                state_manager.set_item('output_path', suggest_output_path(batch_path, file_path))
+                logger.info(f"Processing file {file_path} to {state_manager.get_item('output_path')}", "CORE")
+
+                if is_image(file_path):
+                    logger.info(f"Processing image {file_path}", "CORE")
+                    output_image_resolution = detect_image_resolution(state_manager.get_item('target_path'))
+                    state_manager.set_item('output_image_resolution', pack_resolution(output_image_resolution))
+                    img_proc = process_image(start_time, True, reference_faces)
+                    if not img_proc:
+                        failed = True
+                if is_video(file_path):
+                    state_manager.set_item('target_path', file_path)
+                    img_proc = process_video(start_time)
+                    if not img_proc:
+                        failed = True
+        for processor_module in get_processors_modules(state_manager.get_item('processors')):
+            processor_module.post_process()
+        return 0 if not failed else 1
+    elif is_image(state_manager.get_item('target_path')):
         return process_image(start_time)
-    if is_video(state_manager.get_item('target_path')):
+    elif is_video(state_manager.get_item('target_path')):
         return process_video(start_time)
     return 0
 
@@ -247,7 +280,7 @@ def process_headless(args: Args) -> ErrorCode:
     return 1
 
 
-def process_image(start_time: float) -> ErrorCode:
+def process_image(start_time: float, is_batch: bool = False, reference_faces=None) -> ErrorCode:
     analyser = ContentAnalyser()
     if analyser.analyse_image(state_manager.get_item('target_path')):
         return 3
@@ -273,8 +306,9 @@ def process_image(start_time: float) -> ErrorCode:
     temp_file_path = get_temp_file_path(state_manager.get_item('target_path'))
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         logger.info(wording.get('processing'), processor_module.display_name)
-        processor_module.process_image(temp_file_path, temp_file_path)
-        processor_module.post_process()
+        processor_module.process_image(temp_file_path, temp_file_path, reference_faces)
+        if not is_batch:
+            processor_module.post_process()
     if is_process_stopping():
         process_manager.end()
         return 4
@@ -305,7 +339,7 @@ def process_image(start_time: float) -> ErrorCode:
 def process_video(start_time: float) -> ErrorCode:
     analyser = ContentAnalyser()
     if analyser.analyse_video(state_manager.get_item('target_path'), state_manager.get_item('trim_frame_start'),
-                     state_manager.get_item('trim_frame_end')):
+                              state_manager.get_item('trim_frame_end')):
         return 3
     # clear temp
     logger.debug(wording.get('clearing_temp'), __name__)

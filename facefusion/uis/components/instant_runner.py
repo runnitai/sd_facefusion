@@ -80,14 +80,16 @@ def start() -> Tuple[gradio.update, gradio.update]:
 
 def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     status = FFStatus()
+    truncated_target_base_name = ""
     target_path = state_manager.get_item('target_path')
-    target_file = os.path.basename(target_path)
-    if len(target_file) > 50:
-        truncated_target_base_name = f"{target_file[:20]}...{target_file[-20:]}"
-    else:
-        truncated_target_base_name = target_file
+    if target_path is not None and target_path != "":
+        target_file = os.path.basename(target_path)
+        if len(target_file) > 50:
+            truncated_target_base_name = f"{target_file[:20]}...{target_file[-20:]}"
+        else:
+            truncated_target_base_name = target_file
 
-    status.start(f"Processing target file: {truncated_target_base_name}")
+        status.start(f"Processing target file: {truncated_target_base_name}")
 
     step_args = collect_step_args()
     output_path = get_output_path_auto()
@@ -110,14 +112,15 @@ def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
         value=None)
 
 
-def create_and_run_job(step_args: Args) -> bool:
+def create_and_run_job(step_args: Args, keep_state: bool = False) -> bool:
     job_id = job_helper.suggest_job_id('ui')
 
-    for key in job_store.get_job_keys():
-        state_manager.sync_item(key)  # type:ignore
+    if not keep_state:
+        for key in job_store.get_job_keys():
+            state_manager.sync_item(key)  # type:ignore
 
     return job_manager.create_job(job_id) and job_manager.add_step(job_id, step_args) and job_manager.submit_job(
-        job_id) and job_runner.run_job(job_id, process_step)
+        job_id) and job_runner.run_job(job_id, process_step, keep_state)
 
 
 def stop() -> Tuple[gradio.update, gradio.update]:

@@ -24,7 +24,7 @@ def get_available_execution_provider_set() -> ExecutionProviderSet:
     available_execution_provider_set: ExecutionProviderSet = {}
 
     for execution_provider_key, execution_provider_value in execution_provider_set.items():
-        if execution_provider_value in available_execution_providers:
+        if execution_provider_value in available_execution_providers and execution_provider_key != 'tensorrt':
             available_execution_provider_set[execution_provider_key] = execution_provider_value
     return available_execution_provider_set
 
