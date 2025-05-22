@@ -1,20 +1,131 @@
-from functools import lru_cache
-from typing import Dict, List, Tuple, Optional
+import logging
 import os
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+import traceback
+from typing import Dict, List, Tuple
+from typing import Generic, Optional, TypeVar
 
 import cv2
 import numpy
+import torch
+from PIL import Image, ImageDraw
 from cv2.typing import Size
+from rich import print  # noqa: A004  Shadowing built-in 'print'
+from torchvision.transforms.functional import to_pil_image
+from ultralytics import YOLO, YOLOWorld
 
+from facefusion import state_manager
 from facefusion.filesystem import resolve_relative_path
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import DownloadSet, FaceLandmark68, FaceMaskRegion, Mask, ModelSet, Padding, \
     VisionFrame
 from facefusion.workers.base_worker import BaseWorker
-from facefusion import state_manager
-import logging
+from modules.paths_internal import models_path
+
+T = TypeVar("T", int, float)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PredictOutput(Generic[T]):
+    bboxes: list[list[T]] = field(default_factory=list)
+    masks: list[Image.Image] = field(default_factory=list)
+    confidences: list[float] = field(default_factory=list)
+    preview: Optional[Image.Image] = None
+
+
+def create_mask_from_bbox(
+        bboxes: list[list[float]], shape: tuple[int, int]
+) -> list[Image.Image]:
+    """
+    Parameters
+    ----------
+        bboxes: list[list[float]]
+            list of [x1, y1, x2, y2]
+            bounding boxes
+        shape: tuple[int, int]
+            shape of the image (width, height)
+
+    Returns
+    -------
+        masks: list[Image.Image]
+        A list of masks
+
+    """
+    masks = []
+    for bbox in bboxes:
+        mask = Image.new("L", shape, 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.rectangle(bbox, fill=255)
+        masks.append(mask)
+    return masks
+
+
+def ultralytics_predict(
+        model_path: str | Path,
+        image: Image.Image,
+        confidence: float = 0.3,
+        device: str = "",
+        classes: str = "",
+) -> PredictOutput[float]:
+    from ultralytics import YOLO
+    from modules import shared
+    fuck_stupid_pickle_shit = False
+    if not shared.cmd_opts.disable_safe_unpickle:
+        shared.cmd_opts.disable_safe_unpickle = True
+        fuck_stupid_pickle_shit = True
+
+    model = YOLO(model_path)
+    apply_classes(model, model_path, classes)
+    pred = model(image, conf=confidence, device=device)
+
+    if fuck_stupid_pickle_shit:
+        shared.cmd_opts.disable_safe_unpickle = False
+
+    bboxes = pred[0].boxes.xyxy.cpu().numpy()
+    if bboxes.size == 0:
+        return PredictOutput()
+    bboxes = bboxes.tolist()
+
+    if pred[0].masks is None:
+        masks = create_mask_from_bbox(bboxes, image.size)
+    else:
+        masks = mask_to_pil(pred[0].masks.data, image.size)
+
+    confidences = pred[0].boxes.conf.cpu().numpy().tolist()
+
+    preview = pred[0].plot()
+    preview = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
+    preview = Image.fromarray(preview)
+
+    return PredictOutput(
+        bboxes=bboxes, masks=masks, confidences=confidences, preview=preview
+    )
+
+
+def apply_classes(model: YOLO | YOLOWorld, model_path: str | Path, classes: str):
+    if not classes or "-world" not in Path(model_path).stem:
+        return
+    parsed = [c.strip() for c in classes.split(",") if c.strip()]
+    if parsed:
+        model.set_classes(parsed)
+
+
+def mask_to_pil(masks: torch.Tensor, shape: tuple[int, int]) -> list[Image.Image]:
+    """
+    Parameters
+    ----------
+    masks: torch.Tensor, dtype=torch.float32, shape=(N, H, W).
+        The device can be CUDA, but `to_pil_image` takes care of that.
+
+    shape: tuple[int, int]
+        (W, H) of the original image
+    """
+    n = masks.shape[0]
+    return [to_pil_image(masks[i], mode="L").resize(shape) for i in range(n)]
 
 
 class FaceMasker(BaseWorker):
@@ -75,7 +186,9 @@ class FaceMasker(BaseWorker):
             'lower-lip': 13
         }
 
-    default_model = "face_parser"
+    default_model = "face_occluder"
+    multi_model = True
+    preload = True
     model_key = None
     preferred_provider = 'cuda'
 
@@ -127,7 +240,8 @@ class FaceMasker(BaseWorker):
         prepare_vision_frame = numpy.expand_dims(prepare_vision_frame, axis=0)
         prepare_vision_frame = prepare_vision_frame.transpose(0, 3, 1, 2)
         region_mask = self.forward_parse_face(prepare_vision_frame)
-        region_mask = numpy.isin(region_mask.argmax(0), [self.FACE_MASK_REGIONS[region] for region in face_mask_regions])
+        region_mask = numpy.isin(region_mask.argmax(0),
+                                 [self.FACE_MASK_REGIONS[region] for region in face_mask_regions])
         region_mask = cv2.resize(region_mask.astype(numpy.float32), crop_vision_frame.shape[:2][::-1])
         region_mask = (cv2.GaussianBlur(region_mask.clip(0, 1), (0, 0), 5).clip(0.5, 1) - 0.5) * 2
         return region_mask
@@ -135,86 +249,146 @@ class FaceMasker(BaseWorker):
     def create_custom_mask(self, crop_vision_frame: VisionFrame, face_landmark_5=None) -> Optional[Mask]:
         """Creates a mask using YOLO detection models"""
         model_path = state_manager.get_item('custom_yolo_model')
-        from modules.paths_internal import models_path
+
         adetailer_path = os.path.join(models_path, "adetailer")
+        
         if model_path and not os.path.exists(model_path):
-            # combine with the full
+            # combine with the full path
             model_path = os.path.join(adetailer_path, model_path)
+        
         if not model_path or not os.path.exists(model_path):
             logger.warning(f"Custom YOLO model path is not set or does not exist: {model_path}")
             return None
-        
+
         confidence = state_manager.get_item('custom_yolo_confidence') or 0.5
         radius = state_manager.get_item('custom_yolo_radius') or 10
-        
-        # Try to import ultralytics
+
         try:
-            from ultralytics import YOLO
-        except ImportError:
-            logger.error("Ultralytics not installed. Please install it: pip install ultralytics")
-            print("Ultralytics not installed. Please install it: pip install ultralytics")
-            return None
-        
-        # Load the model
-        try:
-            model = YOLO(model_path)
-        except Exception as e:
-            logger.error(f"Error loading YOLO model: {e}")
-            print(f"Error loading YOLO model: {e}")
-            return None
-        
-        # Run inference
-        try:
-            results = model(crop_vision_frame, conf=confidence)[0]
-            
-            # Create a blank mask
+            # Convert image to numpy array if it's not already
+            if isinstance(crop_vision_frame, Image.Image):
+                img_array = numpy.array(crop_vision_frame)
+            else:
+                img_array = crop_vision_frame
+
+            # Convert BGR to RGB if needed
+            if img_array.shape[2] == 3:
+                img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+            else:
+                img_rgb = img_array
+
+            # Create PIL image for processing
+            pil_image = Image.fromarray(img_rgb)
+
+            # Get bounding boxes and masks using our custom implementation
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            result = ultralytics_predict(model_path, pil_image, confidence, device=device)
+
+            if not result.bboxes:
+                logger.info("No objects detected by YOLO model")
+                return None
+
+            # Create mask from prediction results
             mask = numpy.zeros(crop_vision_frame.shape[:2], dtype=numpy.float32)
-            
-            if results.boxes:
-                for box in results.boxes.xyxy:
-                    x1, y1, x2, y2 = box.cpu().numpy().astype(int)
-                    # Create rectangle on the mask
+
+            # Apply masks if available
+            if result.masks:
+                for m in result.masks:
+                    m_array = numpy.array(m)
+                    mask = numpy.maximum(mask, m_array / 255.0)
+
+            # Apply bounding boxes if no masks
+            elif result.bboxes:
+                for box in result.bboxes:
+                    x1, y1, x2, y2 = [int(b) for b in box]
                     cv2.rectangle(mask, (x1, y1), (x2, y2), 1.0, -1)
-            
-            if hasattr(results, 'masks') and results.masks is not None:
-                logger.info(f"Detected {len(results.masks.data)} masks.")
-                for segment in results.masks.data:
-                    segment = segment.cpu().numpy()
-                    # Add segment masks to the mask
-                    mask = numpy.maximum(mask, segment)
-            
-            # If face_landmark_5 is provided, we'll prioritize detections near the face
-            if face_landmark_5 is not None and len(mask.nonzero()[0]) > 0:
+
+            # If face_landmark_5 is provided, prioritize detections near the face
+            if face_landmark_5 is not None and mask.any():
                 # Calculate the center of the face
                 face_center = numpy.mean(face_landmark_5, axis=0)
-                
+
                 # Create a distance mask - closer to face gets higher priority
                 h, w = mask.shape
                 y, x = numpy.ogrid[:h, :w]
                 face_center_x, face_center_y = face_center
-                distance_mask = numpy.sqrt((x - face_center_x)**2 + (y - face_center_y)**2)
-                
+                distance_mask = numpy.sqrt((x - face_center_x) ** 2 + (y - face_center_y) ** 2)
+
                 # Normalize distance mask to [0, 1]
                 distance_mask = distance_mask / distance_mask.max()
-                
+
                 # Weight the mask by distance (closer = higher value)
                 mask = mask * (1 - distance_mask * 0.5)
-            
+
             # Apply Gaussian blur for smooth edges
             if radius > 0:
                 mask = cv2.GaussianBlur(mask, (0, 0), radius)
-            
+
             # Normalize mask to [0, 1]
             if mask.max() > 0:
                 mask = mask / mask.max()
-            
-            # Convert to expected format for the masker
+
             return mask
-        
+
         except Exception as e:
-            logger.error(f"Error during YOLO inference: {e}")
-            print(f"Error during YOLO inference: {e}")
+            logger.error(f"Error in YOLO mask creation: {e}")
+            print(f"Error in YOLO mask creation: {e}")
+            traceback.print_exc()
             return None
+
+    def prepare_image_for_model(self, image: Image.Image, model) -> torch.Tensor:
+        """Prepare image for the model"""
+        import torchvision.transforms as T
+
+        # Convert PIL to tensor
+        transform = T.Compose([
+            T.ToTensor(),
+        ])
+
+        img_tensor = transform(image).unsqueeze(0)
+
+        # Move to the same device as model
+        try:
+            # Check if the model has parameters
+            if hasattr(model, 'parameters'):
+                # Try to get the device from parameters
+                try:
+                    device = next(model.parameters()).device
+                    img_tensor = img_tensor.to(device)
+                except (StopIteration, RuntimeError):
+                    # Fall back to CPU if parameter iteration fails
+                    pass
+            # If model doesn't have a parameters method or it's empty
+            elif hasattr(model, 'device'):
+                # Some models have a device attribute
+                img_tensor = img_tensor.to(model.device)
+        except Exception as e:
+            logger.warning(f"Could not determine model device, using default: {e}")
+
+        return img_tensor
+
+    
+    def create_preview(self, image, bboxes, confidences):
+        """Create a preview image with bounding boxes"""
+        import cv2
+
+        # Convert PIL to cv2
+        img_cv = cv2.cvtColor(numpy.array(image), cv2.COLOR_RGB2BGR)
+
+        # Draw boxes
+        for i, box in enumerate(bboxes):
+            x1, y1, x2, y2 = [int(coord) for coord in box]
+            conf = confidences[i] if i < len(confidences) else 0
+
+            # Draw rectangle
+            cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            # Draw confidence
+            cv2.putText(img_cv, f"{conf:.2f}", (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        # Convert back to PIL
+        preview = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
+        return preview
 
     def create_mouth_mask(self, face_landmark_68: FaceLandmark68) -> Mask:
         convex_hull = cv2.convexHull(face_landmark_68[numpy.r_[3:14, 31:36]].astype(numpy.int32))

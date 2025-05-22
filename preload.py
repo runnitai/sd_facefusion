@@ -44,3 +44,16 @@ def preload(parser: argparse.ArgumentParser):
                 globals_dict[key] = value
     args.apply_args(globals_dict, False)
     state_manager.init_item("config_path", ff_ini)
+    
+    # Initialize YOLO mask state items if not already set
+    if state_manager.get_item('custom_yolo_model') is None:
+        state_manager.init_item('custom_yolo_model', None)
+    if state_manager.get_item('custom_yolo_confidence') is None:
+        state_manager.init_item('custom_yolo_confidence', 0.5)
+    if state_manager.get_item('custom_yolo_radius') is None:
+        state_manager.init_item('custom_yolo_radius', 10)
+    # Initialize mask time state items
+    if state_manager.get_item('mask_disabled_times') is None:
+        state_manager.init_item('mask_disabled_times', [0])
+    if state_manager.get_item('mask_enabled_times') is None:
+        state_manager.init_item('mask_enabled_times', [])
