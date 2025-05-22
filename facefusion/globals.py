@@ -21,7 +21,7 @@ skip_download: Optional[bool] = False
 headless: Optional[bool] = False
 log_level: Optional[LogLevel] = ['info']
 # execution
-execution_providers: List[str] = ['tensorrt', 'cuda']
+execution_providers: List[str] = ['cuda']
 execution_thread_count: Optional[int] = 22
 execution_queue_count: Optional[int] = 2
 expression_restorer_model: Optional[str] = 'live_portrait'
@@ -62,10 +62,13 @@ reference_face_position: Optional[int] = 0
 reference_face_distance: Optional[float] = 0.75
 reference_frame_number: Optional[int] = 0
 # face mask
-face_mask_types: Optional[List[FaceMaskType]] = ['region', 'occlusion']
+face_mask_types: Optional[List[FaceMaskType]] = ['box']
 face_mask_blur: Optional[float] = 0.3
 face_mask_padding: Optional[Padding] = (0, 0, 0, 0)
-face_mask_regions: Optional[List[FaceMaskRegion]] = face_mask_regions
+face_mask_regions: Optional[List[FaceMaskRegion]] = ['skin', 'left-eyebrow', 'right-eyebrow', 'left-eye', 'right-eye', 'glasses', 'nose', 'mouth', 'upper-lip', 'lower-lip']
+custom_yolo_model: Optional[str] = None
+custom_yolo_confidence: Optional[float] = 0.5
+custom_yolo_radius: Optional[int] = 10
 # frame extraction
 trim_frame_start: Optional[int] = None
 trim_frame_end: Optional[int] = None

@@ -202,7 +202,14 @@ WORDING: Dict[str, Any] = \
             'ui_workflow': 'choose the ui workflow',
             'video_memory_strategy': 'balance fast processing and low VRAM usage',
             'skip_conda': 'skip the conda environment check',
-            'processors': 'load a single or multiple processors (choices: {choices}, ...)'
+            'processors': 'load a single or multiple processors (choices: {choices}, ...)',
+            'face_mask_types': 'Specify the face mask types from the available choices: {choices}.',
+            'face_mask_blur': 'Amount of blur to apply on the face mask edges.',
+            'face_mask_padding': 'List of padding values in percentage of face size to apply on each side of the face mask.',
+            'face_mask_regions': 'Specify the face mask regions from the available choices: {choices}.',
+            'custom_yolo_model': 'Path to YOLO model for custom object detection mask.',
+            'custom_yolo_confidence': 'Confidence threshold for YOLO detection (0.0-1.0).',
+            'custom_yolo_radius': 'Blur radius for custom mask edges (pixels).'
         },
         'about': {
             'become_a_member': 'become a member',
@@ -322,7 +329,10 @@ WORDING: Dict[str, Any] = \
             'webcam_image': 'WEBCAM',
             'webcam_mode_radio': 'WEBCAM MODE',
             'webcam_resolution_dropdown': 'WEBCAM RESOLUTION',
-            'face_selector_race_dropdown': 'FACE SELECTOR RACE'
+            'face_selector_race_dropdown': 'FACE SELECTOR RACE',
+            'custom_yolo_model_dropdown': 'YOLO Detection Model',
+            'custom_yolo_confidence_slider': 'Detection Confidence',
+            'custom_yolo_radius_slider': 'Mask Radius'
         }
     }
 

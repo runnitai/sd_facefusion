@@ -335,6 +335,11 @@ class FaceEnhancer(BaseProcessor):
         if 'occlusion' in state_manager.get_item('face_mask_types'):
             occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
             crop_masks.append(occlusion_mask)
+            
+        if 'custom' in state_manager.get_item('face_mask_types'):
+            custom_mask = masker.create_custom_mask(crop_vision_frame, target_face.landmark_set.get('5/68'))
+            if custom_mask is not None:
+                crop_masks.append(custom_mask)
 
         crop_vision_frame = prepare_crop_frame(crop_vision_frame)
         crop_vision_frame = self.forward(crop_vision_frame)

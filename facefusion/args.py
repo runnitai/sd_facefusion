@@ -6,6 +6,16 @@ from facefusion.processors.core import get_processors_modules
 from facefusion.typing import Args
 from facefusion.vision import create_image_resolutions, create_video_resolutions, detect_image_resolution, \
     detect_video_fps, detect_video_resolution, pack_resolution
+from typing import Any, Callable, List, Tuple
+
+# Type for state item application functions
+ApplyStateItem = Callable[[str, Any], None]
+
+
+def unserialize_array(value: str) -> List:
+    if value is None:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
 
 
 def reduce_step_args(args: Args) -> Args:
@@ -91,6 +101,88 @@ def apply_args(args: Args, apply_state_item: bool) -> None:
         except Exception as e:
             pass
 
+    # Additional initialization for custom YOLO state items
+    if key == 'source_paths':
+        _source_paths = unserialize_array(value)
+        if apply_state_item:
+            state_manager.init_item('source_paths', _source_paths)
+    elif key == 'source_paths_2':
+        _source_paths_2 = unserialize_array(value)
+        if apply_state_item:
+            state_manager.init_item('source_paths_2', _source_paths_2)
+    elif key == 'output_path':
+        if value is not None and value != "None":
+            if apply_state_item:
+                state_manager.init_item('output_path', value)
+        else:
+            if apply_state_item:
+                state_manager.init_item('output_path', None)
+    elif key == 'target_path':
+        if value is not None and value != "None":
+            if apply_state_item:
+                state_manager.init_item('target_path', value)
+        else:
+            if apply_state_item:
+                state_manager.init_item('target_path', None)
+    elif key == 'config_path':
+        if value is not None and value != "None":
+            if apply_state_item:
+                state_manager.init_item('config_path', value)
+        else:
+            if apply_state_item:
+                state_manager.init_item('config_path', None)
+    elif key == 'jobs_path':
+        if value is not None and value != "None":
+            if apply_state_item:
+                state_manager.init_item('jobs_path', value)
+        else:
+            if apply_state_item:
+                state_manager.init_item('jobs_path', None)
+    elif key == 'face_mask_types':
+        if isinstance(value, list):
+            if apply_state_item:
+                state_manager.init_item('face_mask_types', value)
+        else:
+            if apply_state_item:
+                state_manager.init_item('face_mask_types', unserialize_array(value))
+    elif key == 'face_mask_blur':
+        if apply_state_item:
+            state_manager.init_item('face_mask_blur', value)
+    elif key == 'face_mask_padding':
+        if isinstance(value, list):
+            padding = tuple(value) if len(value) == 4 else (value[0], value[0], value[0], value[0])
+            if apply_state_item:
+                state_manager.init_item('face_mask_padding', padding)
+        else:
+            if apply_state_item:
+                value = unserialize_array(value)
+                padding = tuple(value) if len(value) == 4 else (value[0], value[0], value[0], value[0])
+                state_manager.init_item('face_mask_padding', padding)
+    elif key == 'face_mask_regions':
+        if isinstance(value, list):
+            if apply_state_item:
+                state_manager.init_item('face_mask_regions', value)
+        else:
+            if apply_state_item:
+                state_manager.init_item('face_mask_regions', unserialize_array(value))
+    elif key == 'custom_yolo_model':
+        if apply_state_item:
+            state_manager.init_item('custom_yolo_model', value)
+    elif key == 'custom_yolo_confidence':
+        if apply_state_item:
+            state_manager.init_item('custom_yolo_confidence', float(value) if value is not None else 0.5)
+    elif key == 'custom_yolo_radius':
+        if apply_state_item:
+            state_manager.init_item('custom_yolo_radius', int(value) if value is not None else 10)
+    elif key == 'reference_face_position':
+        if apply_state_item:
+            state_manager.init_item('reference_face_position', value)
+    elif key == 'reference_face_distance':
+        if apply_state_item:
+            state_manager.init_item('reference_face_distance', value)
+    elif key == 'reference_frame_number':
+        if apply_state_item:
+            state_manager.init_item('reference_frame_number', value)
 
 
 def apply_globals(globals_dict: dict, init: bool = True) -> None:
@@ -157,4 +249,33 @@ def apply_globals(globals_dict: dict, init: bool = True) -> None:
                 state_manager.set_item(key, value)
         else:
             print(f"Key {key} not found in globals_dict.")
+
+
+def apply_face_mask_args(key: str, value: Any, apply_state_item: ApplyStateItem) -> None:
+    if key == 'face_mask_types':
+        if isinstance(value, list):
+            apply_state_item('face_mask_types', value)
+        else:
+            apply_state_item('face_mask_types', unserialize_array(value))
+    if key == 'face_mask_blur':
+        apply_state_item('face_mask_blur', value)
+    if key == 'face_mask_padding':
+        if isinstance(value, list):
+            padding = tuple(value) if len(value) == 4 else (value[0], value[0], value[0], value[0])
+            apply_state_item('face_mask_padding', padding)
+        else:
+            value = unserialize_array(value)
+            padding = tuple(value) if len(value) == 4 else (value[0], value[0], value[0], value[0])
+            apply_state_item('face_mask_padding', padding)
+    if key == 'face_mask_regions':
+        if isinstance(value, list):
+            apply_state_item('face_mask_regions', value)
+        else:
+            apply_state_item('face_mask_regions', unserialize_array(value))
+    if key == 'custom_yolo_model':
+        apply_state_item('custom_yolo_model', value)
+    if key == 'custom_yolo_confidence':
+        apply_state_item('custom_yolo_confidence', float(value) if value is not None else 0.5)
+    if key == 'custom_yolo_radius':
+        apply_state_item('custom_yolo_radius', int(value) if value is not None else 10)
 

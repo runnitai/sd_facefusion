@@ -21,7 +21,7 @@ face_selector_orders: List[FaceSelectorOrder] = ['left-right', 'right-left', 'to
                                                  'large-small', 'best-worst', 'worst-best']
 face_selector_genders: List[Gender] = ['female', 'male']
 face_selector_races: List[Race] = ['white', 'black', 'latino', 'asian', 'indian', 'arabic']
-face_mask_types: List[FaceMaskType] = ['box', 'occlusion', 'region']
+face_mask_types: List[FaceMaskType] = ['box', 'occlusion', 'region', 'custom']
 face_mask_regions: List[FaceMaskRegion] = ['skin', 'left-eyebrow', 'right-eyebrow', 'left-eye', 'right-eye', 'glasses',
                                            'nose', 'mouth', 'upper-lip', 'lower-lip']
 temp_frame_formats: List[TempFrameFormat] = ['bmp', 'jpg', 'png']
@@ -50,7 +50,7 @@ execution_provider_set: ExecutionProviderSet = \
         'directml': 'DmlExecutionProvider',
         'openvino': 'OpenVINOExecutionProvider',
         'rocm': 'ROCMExecutionProvider',
-        'tensorrt': 'TensorrtExecutionProvider'
+        #'tensorrt': 'TensorrtExecutionProvider'
     }
 
 ui_workflows: List[UiWorkflow] = ['instant_runner', 'job_runner', 'job_manager']

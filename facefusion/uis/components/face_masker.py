@@ -1,5 +1,5 @@
 from typing import Optional, Tuple, List
-
+import os
 import gradio
 
 import facefusion.choices
@@ -8,6 +8,7 @@ from facefusion.common_helper import calc_int_step, calc_float_step
 from facefusion.processors.core import get_processors_modules
 from facefusion.typing import FaceMaskType, FaceMaskRegion
 from facefusion.uis.core import register_ui_component, get_ui_component, get_ui_components
+from facefusion.filesystem import resolve_relative_path
 
 FACE_MASK_TYPES_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
 FACE_MASK_REGIONS_CHECKBOX_GROUP: Optional[gradio.CheckboxGroup] = None
@@ -21,6 +22,39 @@ MASK_ENABLE_BUTTON: Optional[gradio.Button] = None
 MASK_CLEAR_BUTTON: Optional[gradio.Button] = None
 BOTTOM_MASK_POSITIONS: Optional[gradio.HTML] = None
 FACE_MASK_PADDING_GROUP: Optional[gradio.Group] = None
+CUSTOM_YOLO_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
+CUSTOM_YOLO_CONFIDENCE_SLIDER: Optional[gradio.Slider] = None
+CUSTOM_YOLO_RADIUS_SLIDER: Optional[gradio.Slider] = None
+CUSTOM_YOLO_GROUP: Optional[gradio.Group] = None
+
+
+def find_yolo_models():
+    try:
+        from modules.paths_internal import models_path
+        adetailer_path = os.path.join(models_path, "adetailer")
+        custom_path = os.path.join(models_path, "facefusion", "yolo")
+        
+        models = []
+        
+        # Check adetailer path
+        if os.path.exists(adetailer_path):
+            for file in os.listdir(adetailer_path):
+                if file.endswith('.pt'):
+                    models.append(os.path.join(adetailer_path, file))
+        
+        # Check custom path
+        if os.path.exists(custom_path):
+            for file in os.listdir(custom_path):
+                if file.endswith('.pt'):
+                    models.append(os.path.join(custom_path, file))
+        
+        return models
+    except ImportError:
+        # Fallback to assets path if not within SD webui
+        custom_path = resolve_relative_path('../.assets/models/yolo')
+        if os.path.exists(custom_path):
+            return [os.path.join(custom_path, f) for f in os.listdir(custom_path) if f.endswith('.pt')]
+        return []
 
 
 def render() -> None:
@@ -36,9 +70,14 @@ def render() -> None:
     global MASK_CLEAR_BUTTON
     global BOTTOM_MASK_POSITIONS
     global FACE_MASK_PADDING_GROUP
+    global CUSTOM_YOLO_MODEL_DROPDOWN
+    global CUSTOM_YOLO_CONFIDENCE_SLIDER
+    global CUSTOM_YOLO_RADIUS_SLIDER
+    global CUSTOM_YOLO_GROUP
 
     has_box_mask = 'box' in state_manager.get_item('face_mask_types')
     has_region_mask = 'region' in state_manager.get_item('face_mask_types')
+    has_custom_mask = 'custom' in state_manager.get_item('face_mask_types')
     non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     show_group = False
@@ -66,6 +105,31 @@ def render() -> None:
             value=state_manager.get_item('face_mask_blur'),
             visible=has_box_mask
         )
+        with gradio.Group(visible=has_custom_mask) as CUSTOM_YOLO_GROUP:
+            yolo_models = find_yolo_models()
+            model_names = [os.path.basename(m) for m in yolo_models]
+            model_dict = dict(zip(model_names, yolo_models))
+            
+            CUSTOM_YOLO_MODEL_DROPDOWN = gradio.Dropdown(
+                label="YOLO Detection Model",
+                choices=model_names,
+                value=state_manager.get_item('custom_yolo_model') if state_manager.get_item('custom_yolo_model') in model_names else (model_names[0] if model_names else None),
+                type="value"
+            )
+            CUSTOM_YOLO_CONFIDENCE_SLIDER = gradio.Slider(
+                label="Detection Confidence",
+                minimum=0.0,
+                maximum=1.0,
+                step=0.05,
+                value=state_manager.get_item('custom_yolo_confidence') if state_manager.get_item('custom_yolo_confidence') is not None else 0.5
+            )
+            CUSTOM_YOLO_RADIUS_SLIDER = gradio.Slider(
+                label="Mask Radius (pixels)",
+                minimum=0,
+                maximum=100,
+                step=1,
+                value=state_manager.get_item('custom_yolo_radius') if state_manager.get_item('custom_yolo_radius') is not None else 10
+            )
         with gradio.Row():
             MASK_DISABLE_BUTTON = gradio.Button(value="Disable Padding", variant="secondary", visible=False,
                                                 elem_classes=["maskBtn"])
@@ -119,6 +183,9 @@ def render() -> None:
     register_ui_component("mask_disable_button", MASK_DISABLE_BUTTON)
     register_ui_component("mask_enable_button", MASK_ENABLE_BUTTON)
     register_ui_component("mask_clear_button", MASK_CLEAR_BUTTON)
+    register_ui_component("custom_yolo_model_dropdown", CUSTOM_YOLO_MODEL_DROPDOWN)
+    register_ui_component("custom_yolo_confidence_slider", CUSTOM_YOLO_CONFIDENCE_SLIDER)
+    register_ui_component("custom_yolo_radius_slider", CUSTOM_YOLO_RADIUS_SLIDER)
 
 
 def listen() -> None:
@@ -126,7 +193,7 @@ def listen() -> None:
                                           outputs=[FACE_MASK_TYPES_CHECKBOX_GROUP, FACE_MASK_REGIONS_CHECKBOX_GROUP,
                                                    FACE_MASK_BLUR_SLIDER, FACE_MASK_PADDING_TOP_SLIDER,
                                                    FACE_MASK_PADDING_RIGHT_SLIDER, FACE_MASK_PADDING_BOTTOM_SLIDER,
-                                                   FACE_MASK_PADDING_LEFT_SLIDER])
+                                                   FACE_MASK_PADDING_LEFT_SLIDER, CUSTOM_YOLO_GROUP])
     FACE_MASK_REGIONS_CHECKBOX_GROUP.change(update_face_mask_regions, inputs=FACE_MASK_REGIONS_CHECKBOX_GROUP,
                                             outputs=FACE_MASK_REGIONS_CHECKBOX_GROUP)
     FACE_MASK_BLUR_SLIDER.release(update_face_mask_blur, inputs=FACE_MASK_BLUR_SLIDER)
@@ -135,6 +202,10 @@ def listen() -> None:
 
     for face_mask_padding_slider in face_mask_padding_sliders:
         face_mask_padding_slider.release(update_face_mask_padding, inputs=face_mask_padding_sliders)
+
+    CUSTOM_YOLO_MODEL_DROPDOWN.change(update_custom_yolo_model, inputs=CUSTOM_YOLO_MODEL_DROPDOWN)
+    CUSTOM_YOLO_CONFIDENCE_SLIDER.release(update_custom_yolo_confidence, inputs=CUSTOM_YOLO_CONFIDENCE_SLIDER)
+    CUSTOM_YOLO_RADIUS_SLIDER.release(update_custom_yolo_radius, inputs=CUSTOM_YOLO_RADIUS_SLIDER)
 
     preview_frame_slider = get_ui_component("preview_frame_slider")
     mask_elements = [BOTTOM_MASK_POSITIONS, MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON]
@@ -188,15 +259,22 @@ def toggle_group(processors: List[str]) -> gradio.update:
 
 
 def update_face_mask_types(face_mask_types: List[FaceMaskType]) -> Tuple[
-    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     face_mask_types = face_mask_types or facefusion.choices.face_mask_types
     state_manager.set_item('face_mask_types', face_mask_types)
     has_box_mask = 'box' in face_mask_types
     has_region_mask = 'region' in face_mask_types
-    return gradio.update(value=state_manager.get_item('face_mask_types')), gradio.update(
-        visible=has_region_mask), gradio.update(visible=has_box_mask), gradio.update(
-        visible=has_box_mask), gradio.update(visible=has_box_mask), gradio.update(visible=has_box_mask), gradio.update(
-        visible=has_box_mask)
+    has_custom_mask = 'custom' in face_mask_types
+    return (
+        gradio.update(value=state_manager.get_item('face_mask_types')),
+        gradio.update(visible=has_region_mask),
+        gradio.update(visible=has_box_mask),
+        gradio.update(visible=has_box_mask),
+        gradio.update(visible=has_box_mask),
+        gradio.update(visible=has_box_mask),
+        gradio.update(visible=has_box_mask),
+        gradio.update(visible=has_custom_mask)
+    )
 
 
 def update_face_mask_regions(face_mask_regions: List[FaceMaskRegion]) -> gradio.update:
@@ -214,6 +292,18 @@ def update_face_mask_padding(face_mask_padding_top: float, face_mask_padding_rig
     face_mask_padding = (int(face_mask_padding_top), int(face_mask_padding_right), int(face_mask_padding_bottom),
                          int(face_mask_padding_left))
     state_manager.set_item('face_mask_padding', face_mask_padding)
+
+
+def update_custom_yolo_model(custom_yolo_model: str) -> None:
+    state_manager.set_item('custom_yolo_model', custom_yolo_model)
+
+
+def update_custom_yolo_confidence(custom_yolo_confidence: float) -> None:
+    state_manager.set_item('custom_yolo_confidence', custom_yolo_confidence)
+
+
+def update_custom_yolo_radius(custom_yolo_radius: int) -> None:
+    state_manager.set_item('custom_yolo_radius', custom_yolo_radius)
 
 
 def generate_frame_html(return_value: bool = False) -> gradio.update:

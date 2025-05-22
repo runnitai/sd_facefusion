@@ -258,6 +258,11 @@ def route_job_runner() -> ErrorCode:
 
 
 def process_step(job_id: str, step_index: int, step_args: Args) -> bool:
+    # Save source paths
+    source_paths = state_manager.get_item('source_paths')
+    source_paths_2 = state_manager.get_item('source_paths_2')
+    source_frame_dict = state_manager.get_item('source_frame_dict')
+    
     clear_reference_faces()
     step_total = job_manager.count_step_total(job_id)
     step_args.update(collect_job_args())
@@ -266,6 +271,15 @@ def process_step(job_id: str, step_index: int, step_args: Args) -> bool:
     logger.info(wording.get('processing_step').format(step_current=step_index + 1, step_total=step_total), __name__)
     if common_pre_check() and processors_pre_check():
         error_code = conditional_process()
+        
+        # Restore source paths after processing
+        if source_paths:
+            state_manager.set_item('source_paths', source_paths)
+        if source_paths_2:
+            state_manager.set_item('source_paths_2', source_paths_2)
+        if source_frame_dict:
+            state_manager.set_item('source_frame_dict', source_frame_dict)
+            
         return error_code == 0
     return False
 

@@ -53,7 +53,26 @@ def in_directory(file_path: str) -> bool:
 
 
 def is_audio(audio_path: str) -> bool:
-    return is_file(audio_path) and filetype.helpers.is_audio(audio_path)
+    # First try using filetype helper
+    if is_file(audio_path):
+        # Check if it has an audio extension as a backup method
+        audio_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']
+        _, file_extension = os.path.splitext(audio_path.lower())
+        
+        # Log the file extension check
+        if file_extension in audio_extensions:
+            print(f"Audio file detected by extension: {audio_path}")
+            return True
+            
+        # Try filetype helper as the primary method
+        try:
+            is_audio_file = filetype.helpers.is_audio(audio_path)
+            return is_audio_file
+        except Exception as e:
+            print(f"Error detecting audio with filetype: {e}")
+            # Fall back to extension check if filetype helper fails
+            return file_extension in audio_extensions
+    return False
 
 
 def has_audio(audio_paths: List[str]) -> bool:

@@ -18,7 +18,8 @@ INFERENCE_POOLS: InferencePoolSet = \
     }
 
 
-def get_inference_pool(model_context: str, model_sources: DownloadSet, preferred_provider: str = "default") -> InferencePool:
+def get_inference_pool(model_context: str, model_sources: DownloadSet,
+                       preferred_provider: str = "default") -> InferencePool:
     global INFERENCE_POOLS
 
     with thread_lock():
@@ -52,8 +53,6 @@ def create_inference_pool(model_sources: DownloadSet, execution_device_id: str,
     return inference_pool
 
 
-
-
 def clear_inference_pool(model_context: str, preferred_provider: str = "default") -> None:
     global INFERENCE_POOLS
 
@@ -76,7 +75,8 @@ def get_static_model_initializer(model_path: str) -> ModelInitializer:
     return onnx.numpy_helper.to_array(model.graph.initializer[-1])
 
 
-def resolve_execution_provider_keys(model_context: str, preferred_provider: str = "default") -> List[ExecutionProviderKey]:
+def resolve_execution_provider_keys(model_context: str, preferred_provider: str = "default") -> List[
+    ExecutionProviderKey]:
     if has_execution_provider('coreml') and ('age_modifier' in model_context or 'frame_colorizer' in model_context):
         return ['cpu']
     if preferred_provider != "default" and has_execution_provider(preferred_provider):

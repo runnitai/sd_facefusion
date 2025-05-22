@@ -318,7 +318,7 @@ class FaceSwapper(BaseProcessor):
     model_key: str = 'face_swapper_model'
     priority: int = 0
     preload: bool = True
-    preferred_provider = 'tensorrt'
+    preferred_provider = 'cuda'
     src_cache = {}
 
     def register_args(self, program: ArgumentParser) -> None:
@@ -497,6 +497,11 @@ class FaceSwapper(BaseProcessor):
         if 'occlusion' in state_manager.get_item('face_mask_types'):
             occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
             crop_masks.append(occlusion_mask)
+            
+        if 'custom' in state_manager.get_item('face_mask_types'):
+            custom_mask = masker.create_custom_mask(crop_vision_frame, target_face.landmark_set.get('5/68'))
+            if custom_mask is not None:
+                crop_masks.append(custom_mask)
 
         pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
         for pixel_boost_vision_frame in pixel_boost_vision_frames:

@@ -75,9 +75,16 @@ def run_preloads(_, __):
 
 def load_facefusion():
     from facefusion import logger, globals, state_manager
+    from onnxruntime import get_available_providers
+    providers = get_available_providers()
+    # If CUDAExecutionProvider or TensorRTExecutionProviders are not available, warn the user
+    missing_providers = [provider for provider in ['CUDAExecutionProvider', 'TensorrtExecutionProvider'] if provider not in providers]
+    if missing_providers:
+        logger.warn(f"Warning: The following execution providers are not available, please force-reinstall onnxruntime-gpu: {missing_providers}.", __name__)
     globals.output_path = output_dir
     state_manager.init_item('output_path', output_dir)
     program = create_program()
+
     og_args = vars(program.parse_args())
     program.add_argument_group('processors')
     all_processors = get_processors_modules()
@@ -288,3 +295,5 @@ class FaceFusionPostProcessing(scripts_postprocessing.ScriptPostprocessing):
         result_image = process_internal(self.is_ff_enabled, pp.image, self.source_paths)
         if result_image:
             pp.image = result_image
+        else:
+            print("FaceFusion failed")

@@ -1,5 +1,6 @@
 from functools import lru_cache
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+import os
 
 import cv2
 import numpy
@@ -10,6 +11,10 @@ from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import DownloadSet, FaceLandmark68, FaceMaskRegion, Mask, ModelSet, Padding, \
     VisionFrame
 from facefusion.workers.base_worker import BaseWorker
+from facefusion import state_manager
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FaceMasker(BaseWorker):
@@ -70,10 +75,8 @@ class FaceMasker(BaseWorker):
             'lower-lip': 13
         }
 
-    default_model = 'face_occluder'
+    default_model = "face_parser"
     model_key = None
-    multi_model = True
-    preload = True
     preferred_provider = 'cuda'
 
     def collect_model_downloads(self) -> Tuple[DownloadSet, DownloadSet]:
@@ -128,6 +131,90 @@ class FaceMasker(BaseWorker):
         region_mask = cv2.resize(region_mask.astype(numpy.float32), crop_vision_frame.shape[:2][::-1])
         region_mask = (cv2.GaussianBlur(region_mask.clip(0, 1), (0, 0), 5).clip(0.5, 1) - 0.5) * 2
         return region_mask
+
+    def create_custom_mask(self, crop_vision_frame: VisionFrame, face_landmark_5=None) -> Optional[Mask]:
+        """Creates a mask using YOLO detection models"""
+        model_path = state_manager.get_item('custom_yolo_model')
+        from modules.paths_internal import models_path
+        adetailer_path = os.path.join(models_path, "adetailer")
+        if model_path and not os.path.exists(model_path):
+            # combine with the full
+            model_path = os.path.join(adetailer_path, model_path)
+        if not model_path or not os.path.exists(model_path):
+            logger.warning(f"Custom YOLO model path is not set or does not exist: {model_path}")
+            return None
+        
+        confidence = state_manager.get_item('custom_yolo_confidence') or 0.5
+        radius = state_manager.get_item('custom_yolo_radius') or 10
+        
+        # Try to import ultralytics
+        try:
+            from ultralytics import YOLO
+        except ImportError:
+            logger.error("Ultralytics not installed. Please install it: pip install ultralytics")
+            print("Ultralytics not installed. Please install it: pip install ultralytics")
+            return None
+        
+        # Load the model
+        try:
+            model = YOLO(model_path)
+        except Exception as e:
+            logger.error(f"Error loading YOLO model: {e}")
+            print(f"Error loading YOLO model: {e}")
+            return None
+        
+        # Run inference
+        try:
+            results = model(crop_vision_frame, conf=confidence)[0]
+            
+            # Create a blank mask
+            mask = numpy.zeros(crop_vision_frame.shape[:2], dtype=numpy.float32)
+            
+            if results.boxes:
+                for box in results.boxes.xyxy:
+                    x1, y1, x2, y2 = box.cpu().numpy().astype(int)
+                    # Create rectangle on the mask
+                    cv2.rectangle(mask, (x1, y1), (x2, y2), 1.0, -1)
+            
+            if hasattr(results, 'masks') and results.masks is not None:
+                logger.info(f"Detected {len(results.masks.data)} masks.")
+                for segment in results.masks.data:
+                    segment = segment.cpu().numpy()
+                    # Add segment masks to the mask
+                    mask = numpy.maximum(mask, segment)
+            
+            # If face_landmark_5 is provided, we'll prioritize detections near the face
+            if face_landmark_5 is not None and len(mask.nonzero()[0]) > 0:
+                # Calculate the center of the face
+                face_center = numpy.mean(face_landmark_5, axis=0)
+                
+                # Create a distance mask - closer to face gets higher priority
+                h, w = mask.shape
+                y, x = numpy.ogrid[:h, :w]
+                face_center_x, face_center_y = face_center
+                distance_mask = numpy.sqrt((x - face_center_x)**2 + (y - face_center_y)**2)
+                
+                # Normalize distance mask to [0, 1]
+                distance_mask = distance_mask / distance_mask.max()
+                
+                # Weight the mask by distance (closer = higher value)
+                mask = mask * (1 - distance_mask * 0.5)
+            
+            # Apply Gaussian blur for smooth edges
+            if radius > 0:
+                mask = cv2.GaussianBlur(mask, (0, 0), radius)
+            
+            # Normalize mask to [0, 1]
+            if mask.max() > 0:
+                mask = mask / mask.max()
+            
+            # Convert to expected format for the masker
+            return mask
+        
+        except Exception as e:
+            logger.error(f"Error during YOLO inference: {e}")
+            print(f"Error during YOLO inference: {e}")
+            return None
 
     def create_mouth_mask(self, face_landmark_68: FaceLandmark68) -> Mask:
         convex_hull = cv2.convexHull(face_landmark_68[numpy.r_[3:14, 31:36]].astype(numpy.int32))

@@ -145,7 +145,14 @@ def create_face_masker_program() -> ArgumentParser:
                                    default=config.get_str_list('face_masker.face_mask_regions',
                                                                ' '.join(facefusion.choices.face_mask_regions)),
                                    choices=facefusion.choices.face_mask_regions, nargs='+', metavar='FACE_MASK_REGIONS')
-    job_store.register_step_keys(['face_mask_types', 'face_mask_blur', 'face_mask_padding', 'face_mask_regions'])
+    group_face_masker.add_argument('--custom-yolo-model', help="Path to YOLO model for custom object detection mask", type=str,
+                                   default=config.get_str_value('face_masker.custom_yolo_model', None))
+    group_face_masker.add_argument('--custom-yolo-confidence', help="Confidence threshold for YOLO detection (0.0-1.0)", type=float,
+                                   default=config.get_float_value('face_masker.custom_yolo_confidence', '0.5'))
+    group_face_masker.add_argument('--custom-yolo-radius', help="Blur radius for custom mask edges (pixels)", type=int,
+                                   default=config.get_int_value('face_masker.custom_yolo_radius', '10'))
+    job_store.register_step_keys(['face_mask_types', 'face_mask_blur', 'face_mask_padding', 'face_mask_regions',
+                                 'custom_yolo_model', 'custom_yolo_confidence', 'custom_yolo_radius'])
     return program
 
 

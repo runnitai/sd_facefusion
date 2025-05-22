@@ -3,9 +3,9 @@ from typing import Optional, List, Tuple
 
 import gradio
 
-from facefusion import wording, state_manager
+from facefusion import wording, state_manager, logger
 from facefusion.common_helper import get_first
-from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths
+from facefusion.filesystem import has_audio, has_image, filter_audio_paths, filter_image_paths, is_audio
 from facefusion.processors.classes.style_changer import StyleChanger
 from facefusion.temp_helper import get_temp_directory_path
 from facefusion.uis.core import register_ui_component, get_ui_components
@@ -35,6 +35,10 @@ def render() -> None:
     has_source_image = has_image(state_manager.get_item('source_paths'))
     has_source_audio_2 = has_audio(state_manager.get_item('source_paths_2'))
     has_source_image_2 = has_image(state_manager.get_item('source_paths_2'))
+    
+    # Add debug logging
+    logger.info(f"Rendering source component with: audio={has_source_audio}, image={has_source_image}, audio2={has_source_audio_2}, image2={has_source_image_2}", __name__)
+    
     SOURCE_FILE = gradio.File(
         label=wording.get('uis.source_file'),
         file_count='multiple',
@@ -60,9 +64,17 @@ def render() -> None:
                          SOURCE_FILE.value] if SOURCE_FILE.value else None
     source_file_names_2 = [source_file_value['name'] for source_file_value in
                            SOURCE_FILE_2.value] if SOURCE_FILE_2.value else None
+    
+    # Add debug logging
+    logger.info(f"Source file names: {source_file_names}", __name__)
+    logger.info(f"Source file names 2: {source_file_names_2}", __name__)
 
     source_audio_path = get_first(filter_audio_paths(source_file_names))
     source_audio_path_2 = get_first(filter_audio_paths(source_file_names_2))
+    
+    # Add debug logging
+    logger.info(f"Source audio path: {source_audio_path}", __name__)
+    logger.info(f"Source audio path 2: {source_audio_path_2}", __name__)
 
     source_image_path = get_first(filter_image_paths(source_file_names))
     source_image_path_2 = get_first(filter_image_paths(source_file_names_2))
@@ -123,16 +135,22 @@ def clear_2() -> None:
 
 def update_1(files: List[File]) -> Tuple[gradio.Audio, gradio.update, gradio.update, gradio.update]:
     file_names = [file.name for file in files] if files else []
+    # Add debug logging
+    logger.info(f"Updating source 1 with files: {file_names}", __name__)
     return actual_update(file_names)
 
 
 def update_2(files: List[File]) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
     file_names = [file.name for file in files] if files else []
+    # Add debug logging
+    logger.info(f"Updating source 2 with files: {file_names}", __name__)
     return actual_update(file_names, True)
 
 
 def actual_clear(is_src_2: bool = False) -> None:
     state_key = 'source_paths_2' if is_src_2 else 'source_paths'
+    # Add debug logging
+    logger.info(f"Clearing {state_key}", __name__)
     state_manager.clear_item(state_key)
 
 
@@ -146,6 +164,27 @@ def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
     if not source_dict:
         print('source_dict is empty')
         source_dict = {}
+        
+    # Add debug for file names
+    logger.info(f"File names to process: {file_names}", __name__)
+    
+    # Check for audio files specifically
+    audio_files = []
+    for file in file_names:
+        if file and os.path.exists(file):
+            logger.info(f"File exists: {file}", __name__)
+            # Check for audio files by extension as a backup method
+            audio_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']
+            _, file_extension = os.path.splitext(file.lower())
+            if file_extension in audio_extensions:
+                logger.info(f"Audio file detected by extension: {file}", __name__)
+                audio_files.append(file)
+                
+            if is_audio(file):
+                logger.info(f"File is audio (detected by is_audio): {file}", __name__)
+                if file not in audio_files:
+                    audio_files.append(file)
+    
     if 'source' in target and 'style_changer' in state_manager.get_item('processors'):
         all_image_files = filter_image_paths(file_names)
         for base_file in all_image_files:
@@ -158,23 +197,47 @@ def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
             file_names[file_names.index(base_file)] = styled_file
     
     # Update state or clear it
-    has_audio_files = has_audio(file_names)
+    has_audio_files = len(audio_files) > 0
     has_image_files = has_image(file_names)
+    
+    # Add debug logging
+    logger.info(f"Has audio files: {has_audio_files}, Has image files: {has_image_files}", __name__)
+    if has_audio_files:
+        logger.info(f"Audio files: {audio_files}", __name__)
+    
     if file_names:
-        source_dict[src_idx] = file_names
-        state_manager.set_item(state_key, file_names)
-        print(f"source_dict: {source_dict} src 2 {is_src_2}")
+        # Set the audio files explicitly in the state if we found them
+        if audio_files:
+            # Make sure these paths are used first to force lip syncer to find them
+            processed_files = audio_files + [f for f in file_names if f not in audio_files]
+            source_dict[src_idx] = processed_files
+            state_manager.set_item(state_key, processed_files)
+            logger.info(f"Updated {state_key} with audio prioritized: {processed_files}", __name__)
+        else:
+            source_dict[src_idx] = file_names
+            state_manager.set_item(state_key, file_names)
+            logger.info(f"Updated {state_key} with {file_names}", __name__)
+            
+        logger.info(f"source_dict: {source_dict} src 2 {is_src_2}", __name__)
         state_manager.set_item('source_frame_dict', source_dict)
     else:
         source_dict[src_idx] = []
         state_manager.clear_item(state_key)
-        print(f"source_dict: {source_dict} src 2 {is_src_2} (empty)")
+        logger.info(f"Cleared {state_key} (no files)", __name__)
+        logger.info(f"source_dict: {source_dict} src 2 {is_src_2} (empty)", __name__)
         state_manager.set_item('source_frame_dict', source_dict)
 
     # Return UI updates
+    audio_path = get_first(audio_files) if audio_files else None
+    image_path = get_first(filter_image_paths(file_names))
+    
+    # Add debug logging for returned paths
+    logger.info(f"Returning audio path: {audio_path}", __name__)
+    logger.info(f"Returning image path: {image_path}", __name__)
+    
     return (
-        gradio.update(value=get_first(filter_audio_paths(file_names)), visible=has_audio_files),
-        gradio.update(value=get_first(filter_image_paths(file_names)), visible=has_image_files),
+        gradio.update(value=audio_path, visible=has_audio_files),
+        gradio.update(value=image_path, visible=has_image_files),
         gradio.update(visible=has_audio_files),
         gradio.update(visible=has_image_files)
     )

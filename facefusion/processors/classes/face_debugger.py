@@ -23,7 +23,8 @@ class FaceDebugger(BaseProcessor):
     Processor for debugging face-related attributes in images and videos.
     """
     MODEL_SET = {}
-    model_key = None
+    model_key = "foo"
+    default_model = "foo"
     priority = 1000
 
     def register_args(self, program: ArgumentParser) -> None:
@@ -89,6 +90,7 @@ class FaceDebugger(BaseProcessor):
                 "box": (0, 255, 0),         # green
                 "occlusion": (255, 0, 255), # magenta
                 "region": (0, 165, 255),    # orange
+                "custom": (255, 255, 0),    # cyan
             }
 
             # Warp face to a fixed size for consistent mask generation
@@ -121,6 +123,11 @@ class FaceDebugger(BaseProcessor):
                     state_manager.get_item("face_mask_regions")
                 )
                 masks.append(("region", region_mask))
+                
+            if "custom" in face_mask_types:
+                custom_mask = masker.create_custom_mask(crop_vision_frame, target_face.landmark_set.get('5/68'))
+                if custom_mask is not None:
+                    masks.append(("custom", custom_mask))
 
             # For each mask, invert transform and draw contours
             for mask_name, c_mask in masks:

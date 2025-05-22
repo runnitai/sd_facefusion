@@ -11,12 +11,37 @@ def run_job(job_id: str, process_step: ProcessStep, keep_state: bool = False) ->
     queued_job_ids = job_manager.find_job_ids('queued')
 
     if job_id in queued_job_ids:
-        if run_steps(job_id, process_step) and finalize_steps(job_id):
-            if not keep_state:
-                clean_steps(job_id)
-            return job_manager.move_job_file(job_id, 'completed')
+        # Preserve source paths before running the job
+        source_paths = None
+        source_paths_2 = None
+        source_frame_dict = None
+        
+        if keep_state:
+            from facefusion import state_manager
+            source_paths = state_manager.get_item('source_paths')
+            source_paths_2 = state_manager.get_item('source_paths_2')
+            source_frame_dict = state_manager.get_item('source_frame_dict')
+        
+        success = run_steps(job_id, process_step) and finalize_steps(job_id)
+        
+        # Restore source paths after job is complete
+        if keep_state and source_paths:
+            from facefusion import state_manager
+            state_manager.set_item('source_paths', source_paths)
+            if source_paths_2:
+                state_manager.set_item('source_paths_2', source_paths_2)
+            if source_frame_dict:
+                state_manager.set_item('source_frame_dict', source_frame_dict)
+        
         if not keep_state:
             clean_steps(job_id)
+        
+        if success:
+            return job_manager.move_job_file(job_id, 'completed')
+        
+        if not keep_state:
+            clean_steps(job_id)
+        
         job_manager.move_job_file(job_id, 'failed')
     return False
 

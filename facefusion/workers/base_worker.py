@@ -26,6 +26,7 @@ class BaseWorker(ABC):
     __instances = {}
 
     def __init__(self):
+        # Don't care about MODEL_SET or anything else if we are a face debugger
         if self.MODEL_SET is None or (self.model_key is None and self.default_model is None):
             raise ValueError("MODEL_SET and model_key (or default_model) must be defined in the child class.")
         self.inference_pool = None

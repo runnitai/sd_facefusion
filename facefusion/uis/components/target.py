@@ -78,7 +78,7 @@ def render() -> None:
     TARGET_IMAGE = gradio.Image(**target_image_options)
     TARGET_VIDEO = gradio.Video(**target_video_options)
     SYNC_VIDEO_LIP = gradio.Checkbox(
-        label="Sync Lips to Audio",
+        label="Sync Lips to Target Audio",
         value=state_manager.get_item("sync_video_lip") and is_target_video,
         visible=is_target_video and "lip_syncer" in state_manager.get_item("frame_processors"),
         elem_id='sync_video_lip'

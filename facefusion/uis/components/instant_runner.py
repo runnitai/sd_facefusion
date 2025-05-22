@@ -112,12 +112,24 @@ def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
         value=None)
 
 
-def create_and_run_job(step_args: Args, keep_state: bool = False) -> bool:
+def create_and_run_job(step_args: Args, keep_state: bool = True) -> bool:
     job_id = job_helper.suggest_job_id('ui')
 
+    # We want to keep the source paths when running a job
     if not keep_state:
+        # Preserve source paths to restore them later
+        source_paths = state_manager.get_item('source_paths')
+        source_paths_2 = state_manager.get_item('source_paths_2')
+        
         for key in job_store.get_job_keys():
-            state_manager.sync_item(key)  # type:ignore
+            if key not in ['source_paths', 'source_paths_2', 'source_frame_dict']:
+                state_manager.sync_item(key)  # type:ignore
+        
+        # Restore source paths
+        if source_paths:
+            state_manager.set_item('source_paths', source_paths)
+        if source_paths_2:
+            state_manager.set_item('source_paths_2', source_paths_2)
 
     return job_manager.create_job(job_id) and job_manager.add_step(job_id, step_args) and job_manager.submit_job(
         job_id) and job_runner.run_job(job_id, process_step, keep_state)

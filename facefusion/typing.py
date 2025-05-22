@@ -112,7 +112,8 @@ FaceDetectorModel = Literal['many', 'retinaface', 'scrfd', 'yoloface', 'yunet']
 FaceDetectorTweak = Literal['low-luminance', 'high-luminance']
 FaceRecognizerModel = Literal[
     'arcface_blendswap', 'arcface_ghost', 'arcface_inswapper', 'arcface_simswap', 'arcface_uniface']
-FaceMaskType = Literal['box', 'occlusion', 'region']
+FaceMaskType = Literal[
+    'box', 'occlusion', 'region', 'custom']
 FaceMaskRegion = Literal[
     'skin', 'left-eyebrow', 'right-eyebrow', 'left-eye', 'right-eye', 'glasses', 'nose', 'mouth', 'upper-lip', 'lower-lip']
 TempFrameFormat = Literal['jpg', 'png', 'bmp']
@@ -231,6 +232,9 @@ StateKey = Literal[
     'face_mask_blur',
     'face_mask_padding',
     'face_mask_regions',
+    'custom_yolo_model',
+    'custom_yolo_confidence',
+    'custom_yolo_radius',
     'trim_frame_start',
     'trim_frame_end',
     'temp_frame_format',
@@ -291,6 +295,9 @@ State = TypedDict('State',
                       'face_mask_blur': float,
                       'face_mask_padding': Padding,
                       'face_mask_regions': List[FaceMaskRegion],
+                      'custom_yolo_model': str,
+                      'custom_yolo_confidence': float,
+                      'custom_yolo_radius': int,
                       'trim_frame_start': int,
                       'trim_frame_end': int,
                       'temp_frame_format': TempFrameFormat,
