@@ -2,7 +2,7 @@ from typing import List, Sequence
 
 
 from facefusion.common_helper import create_float_range, create_int_range
-from facefusion.processors.typing import FaceSwapperSet, FaceDebuggerItem
+from facefusion.processors.typing import FaceSwapperSet, FaceDebuggerItem, LipSyncerModel
 
 # age_modifier_models: List[AgeModifierModel] = ['styleganex_age']
 # expression_restorer_models: List[ExpressionRestorerModel] = ['live_portrait']
@@ -32,7 +32,7 @@ frame_colorizer_sizes: List[str] = ['192x192', '256x256', '384x384', '512x512']
 #                                                    'real_esrgan_x2_fp16', 'real_esrgan_x4', 'real_esrgan_x4_fp16',
 #                                                    'real_esrgan_x8', 'real_esrgan_x8_fp16', 'real_hatgan_x4',
 #                                                    'span_kendata_x4', 'ultra_sharp_x4']
-# lip_syncer_models: List[LipSyncerModel] = ['wav2lip_96', 'wav2lip_gan_96']
+lip_syncer_models: List[LipSyncerModel] = ['musetalk_v15']
 
 age_modifier_direction_range: Sequence[int] = create_int_range(-100, 100, 1)
 expression_restorer_factor_range: Sequence[int] = create_int_range(0, 100, 1)

@@ -485,23 +485,19 @@ class FaceSwapper(BaseProcessor):
                                                                         target_face.landmark_set.get('5/68'),
                                                                         model_template, pixel_boost_size)
         temp_vision_frames = []
-        crop_masks = []
-        padding = state_manager.get_item('face_mask_padding')
-
-        if 'box' in state_manager.get_item('face_mask_types'):
-            box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1],
-                                                     state_manager.get_item('face_mask_blur'),
-                                                     padding)
-            crop_masks.append(box_mask)
-
-        if 'occlusion' in state_manager.get_item('face_mask_types'):
-            occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
-            crop_masks.append(occlusion_mask)
-            
-        if 'custom' in state_manager.get_item('face_mask_types'):
-            custom_mask = masker.create_custom_mask(crop_vision_frame, target_face.landmark_set.get('5/68'))
-            if custom_mask is not None:
-                crop_masks.append(custom_mask)
+        
+        # Use the combined mask function instead of creating individual masks
+        crop_mask = masker.create_combined_mask(
+            state_manager.get_item('face_mask_types'),
+            crop_vision_frame.shape[:2][::-1], 
+            state_manager.get_item('face_mask_blur'),
+            state_manager.get_item('face_mask_padding'),
+            state_manager.get_item('face_mask_regions'),
+            crop_vision_frame,
+            temp_vision_frame,
+            target_face.landmark_set.get('5/68'),
+            target_face
+        )
 
         pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
         for pixel_boost_vision_frame in pixel_boost_vision_frames:
@@ -511,11 +507,8 @@ class FaceSwapper(BaseProcessor):
             temp_vision_frames.append(pixel_boost_vision_frame)
         crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
 
-        if 'region' in state_manager.get_item('face_mask_types'):
-            region_mask = masker.create_region_mask(crop_vision_frame, state_manager.get_item('face_mask_regions'))
-            crop_masks.append(region_mask)
-
-        crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
+        # No need to reduce crop_masks as we're using the combined mask
+        crop_mask = crop_mask.clip(0, 1)
         temp_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
         return temp_vision_frame
 

@@ -245,6 +245,11 @@ def actual_update(file_names: List[str], is_src_2: bool = False) -> Tuple[
 
 def remote_update(files1, files2) -> Tuple[
     gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+    """Handle updates triggered by processor changes or other external events"""
+    
+    # Add debug logging
+    logger.info(f"remote_update called with files1: {files1 is not None}, files2: {files2 is not None}", __name__)
+    
     if not files1 and not files2:
         # If both file inputs are empty, clear UI elements
         actual_clear(False)
@@ -258,8 +263,51 @@ def remote_update(files1, files2) -> Tuple[
             gradio.update(visible=False),
         )
 
-    source_audio_1, source_image_1, audio_row_1, image_row_1 = actual_update([f.name for f in files1] if files1 else [])
-    source_audio_2, source_image_2, audio_row_2, image_row_2 = actual_update([f.name for f in files2] if files2 else [],
-                                                                             True)
+    # Preserve existing state by getting current source paths from state manager
+    current_source_paths = state_manager.get_item('source_paths') or []
+    current_source_paths_2 = state_manager.get_item('source_paths_2') or []
+    
+    # Add debug logging
+    logger.info(f"Current source paths from state: {current_source_paths}", __name__)
+    logger.info(f"Current source paths 2 from state: {current_source_paths_2}", __name__)
+    
+    # Use current state paths if files are still the same, otherwise update
+    file_names_1 = [f.name for f in files1] if files1 else []
+    file_names_2 = [f.name for f in files2] if files2 else []
+    
+    # Check if the files have actually changed
+    files_changed_1 = set(file_names_1) != set(current_source_paths)
+    files_changed_2 = set(file_names_2) != set(current_source_paths_2)
+    
+    logger.info(f"Files changed 1: {files_changed_1}, Files changed 2: {files_changed_2}", __name__)
+    
+    # Only update if files actually changed, otherwise just refresh UI with current state
+    if files_changed_1:
+        source_audio_1, source_image_1, audio_row_1, image_row_1 = actual_update(file_names_1)
+    else:
+        # Refresh UI with current state without changing the state
+        has_audio_1 = has_audio(current_source_paths)
+        has_image_1 = has_image(current_source_paths)
+        audio_path_1 = get_first(filter_audio_paths(current_source_paths))
+        image_path_1 = get_first(filter_image_paths(current_source_paths))
+        source_audio_1 = gradio.update(value=audio_path_1, visible=has_audio_1)
+        source_image_1 = gradio.update(value=image_path_1, visible=has_image_1)
+        audio_row_1 = gradio.update(visible=has_audio_1)
+        image_row_1 = gradio.update(visible=has_image_1)
+        logger.info(f"Preserved source 1 state - audio: {audio_path_1}, image: {image_path_1}", __name__)
+
+    if files_changed_2:
+        source_audio_2, source_image_2, audio_row_2, image_row_2 = actual_update(file_names_2, True)
+    else:
+        # Refresh UI with current state without changing the state
+        has_audio_2 = has_audio(current_source_paths_2)
+        has_image_2 = has_image(current_source_paths_2)
+        audio_path_2 = get_first(filter_audio_paths(current_source_paths_2))
+        image_path_2 = get_first(filter_image_paths(current_source_paths_2))
+        source_audio_2 = gradio.update(value=audio_path_2, visible=has_audio_2)
+        source_image_2 = gradio.update(value=image_path_2, visible=has_image_2)
+        audio_row_2 = gradio.update(visible=has_audio_2)
+        image_row_2 = gradio.update(visible=has_image_2)
+        logger.info(f"Preserved source 2 state - audio: {audio_path_2}, image: {image_path_2}", __name__)
 
     return source_audio_1, source_image_1, source_audio_2, source_image_2, audio_row_1, image_row_2

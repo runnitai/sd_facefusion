@@ -48,3 +48,45 @@ Users who seek to engage in such activities will face consequences, including be
 -------------
 
 Read the [documentation](https://docs.facefusion.io) for a deep dive.
+
+## YOLO-based Custom Masking
+
+The extension now supports custom object detection masks using YOLO models. This allows you to selectively mask regions of the image based on object detection, providing more precise control over face swapping.
+
+### Features
+
+- **Custom YOLO Model Selection**: Choose from any compatible YOLO `.pt` model file (from [Ultralytics YOLOv8](https://docs.ultralytics.com/models/yolo/), adetailer, or other sources)
+- **Detection Confidence Threshold**: Control detection precision with a configurable confidence threshold
+- **Mask Radius Control**: Adjust the blur radius of the mask edges for smoother blending
+- **Face Proximity Prioritization**: Objects detected closer to the face will be given higher priority
+- **Integration with existing mask types**: Works alongside box, occlusion, and region masks
+
+### Using Custom YOLO Masks
+
+1. Install the required dependency: `pip install ultralytics`
+2. Place YOLO model files (`.pt`) in one of these locations:
+   - For SD WebUI: `models/adetailer/` or `models/facefusion/yolo/`
+   - For standalone: `.assets/models/yolo/`
+3. In the UI, select the "custom" mask type along with any other desired mask types
+4. Choose a YOLO model from the dropdown menu
+5. Adjust confidence threshold and mask radius as needed
+
+### Command Line Options
+
+```bash
+--face-mask-types custom
+--custom-yolo-model "/path/to/your/model.pt"
+--custom-yolo-confidence 0.5
+--custom-yolo-radius 10
+```
+
+### Supported YOLO Models
+
+The feature supports various YOLO detection models, including:
+- Face detection models (face_yolov8n.pt, face_yolov8s.pt, etc.)
+- Hand detection models (hand_yolov8n.pt, hand_yolov8s.pt, etc.)
+- Person detection models (person_yolov8n-seg.pt, etc.)
+- Clothing detection models (deepfashion2_yolov8s-seg.pt)
+- Any other custom YOLO model trained for specific object detection
+
+Models can be obtained from [Bingsu/adetailer](https://huggingface.co/Bingsu/adetailer) or trained using Ultralytics.

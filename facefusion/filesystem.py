@@ -61,7 +61,7 @@ def is_audio(audio_path: str) -> bool:
         
         # Log the file extension check
         if file_extension in audio_extensions:
-            print(f"Audio file detected by extension: {audio_path}")
+            #print(f"Audio file detected by extension: {audio_path}")
             return True
             
         # Try filetype helper as the primary method
@@ -191,7 +191,8 @@ def resolve_relative_path_auto(path: str) -> str:
     for part in path_parts:
         if part != ".assets" and part != "models" and part != ".." and part != ".":
             cleaned_parts.append(part)
-
+    if "vae" in cleaned_parts:
+        return os.path.join(models_path, *cleaned_parts)
     return os.path.join(models_path, "facefusion", *cleaned_parts)
 
 

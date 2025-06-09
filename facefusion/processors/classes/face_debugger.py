@@ -82,15 +82,27 @@ class FaceDebugger(BaseProcessor):
         if "bounding-box" in face_debugger_items:
             x1, y1, x2, y2 = bounding_box
             cv2.rectangle(temp_vision_frame, (x1, y1), (x2, y2), primary_color, 2)
+            
+            # Add bounding box information
+            text = f"Face {int(target_face.score_set.get('detector', 0)*100)}%"
+            cv2.putText(
+                temp_vision_frame,
+                text,
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                primary_color,
+                1
+            )
 
         # 2) Draw face mask(s)
         if "face-mask" in face_debugger_items:
-            # Colors for each mask type
+            # Colors for each mask type - distinct colors for visualization
             mask_colors = {
                 "box": (0, 255, 0),         # green
                 "occlusion": (255, 0, 255), # magenta
                 "region": (0, 165, 255),    # orange
-                "custom": (255, 255, 0),    # cyan
+                "custom": (255, 255, 0)     # cyan
             }
 
             # Warp face to a fixed size for consistent mask generation
@@ -102,9 +114,10 @@ class FaceDebugger(BaseProcessor):
             )
             inverse_matrix = cv2.invertAffineTransform(affine_matrix)
             temp_size = temp_vision_frame.shape[:2][::-1]
-
-            # Collect masks
+            
+            # For the debugger, we'll generate each individual mask separately
             masks = []
+            
             if "box" in face_mask_types:
                 box_mask = masker.create_static_box_mask(
                     crop_vision_frame.shape[:2][::-1],
@@ -125,48 +138,165 @@ class FaceDebugger(BaseProcessor):
                 masks.append(("region", region_mask))
                 
             if "custom" in face_mask_types:
-                custom_mask = masker.create_custom_mask(crop_vision_frame, target_face.landmark_set.get('5/68'))
+                # IMPORTANT: We need to recreate the exact same mask that would be used in actual processing
+                # This means we need to use the ORIGINAL frame, not the cropped one, for detection
+                # And then apply the transformation
+                logger.debug("Creating custom mask for debugger", __name__)
+                custom_mask = masker.create_custom_mask(
+                    crop_vision_frame=crop_vision_frame,
+                    face_landmark_or_face=target_face,
+                    full_vision_frame=temp_vision_frame  # Pass the full frame for detection
+                )
                 if custom_mask is not None:
+                    # Make sure we're logging the custom mask
+                    logger.debug(f"Debug view custom mask - sum: {custom_mask.sum()}, max: {custom_mask.max()}, shape: {custom_mask.shape}", __name__)
                     masks.append(("custom", custom_mask))
-
+            
+            # Create and display legend if there are masks to show
+            if masks:
+                # Set up legend parameters
+                legend_padding = 10
+                legend_text_height = 15
+                legend_line_length = 20
+                legend_spacing = 5
+                legend_start_x = 10
+                legend_start_y = 20
+                legend_background_padding = 5
+                
+                # Calculate legend size
+                legend_height = len(masks) * (legend_text_height + legend_spacing) + legend_padding
+                max_text_width = 0
+                for mask_name, _ in masks:
+                    text_size = cv2.getTextSize(mask_name, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0][0]
+                    max_text_width = max(max_text_width, text_size)
+                legend_width = legend_start_x + legend_line_length + 10 + max_text_width + legend_padding
+                
+                # Draw semi-transparent background for legend
+                legend_overlay = temp_vision_frame.copy()
+                cv2.rectangle(
+                    legend_overlay,
+                    (0, 0),
+                    (legend_width + legend_background_padding, legend_height + legend_background_padding),
+                    (0, 0, 0),
+                    -1
+                )
+                # Apply transparency
+                alpha = 0.6
+                temp_vision_frame = cv2.addWeighted(legend_overlay, alpha, temp_vision_frame, 1 - alpha, 0)
+                
+                # Draw border around legend
+                cv2.rectangle(
+                    temp_vision_frame,
+                    (0, 0),
+                    (legend_width + legend_background_padding, legend_height + legend_background_padding),
+                    (255, 255, 255),
+                    1
+                )
+                
+                # Add "MASKS:" header
+                cv2.putText(
+                    temp_vision_frame,
+                    "MASKS:",
+                    (legend_start_x, legend_start_y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    (255, 255, 255),
+                    1
+                )
+            
             # For each mask, invert transform and draw contours
-            for mask_name, c_mask in masks:
+            for i, (mask_name, c_mask) in enumerate(masks):
+                color = mask_colors.get(mask_name, (255, 255, 255))
+                
+                # Prepare mask for contour detection
                 c_mask_255 = (c_mask * 255).astype(numpy.uint8)
+                
                 # Warp mask back to original frame size
                 inverse_mask = cv2.warpAffine(c_mask_255, inverse_matrix, temp_size)
+                
                 # Threshold to get contour
-                _, inverse_mask = cv2.threshold(inverse_mask, 100, 255, cv2.THRESH_BINARY)
-                contours, _ = cv2.findContours(inverse_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+                _, inverse_mask_thresh = cv2.threshold(inverse_mask, 100, 255, cv2.THRESH_BINARY)
+                contours, _ = cv2.findContours(inverse_mask_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-                color = mask_colors.get(mask_name, (255, 255, 255))
-                # Draw mask contour
-                cv2.drawContours(temp_vision_frame, contours, -1, color, 2)
+                # Draw mask contour with THIN lines
+                cv2.drawContours(temp_vision_frame, contours, -1, color, 1)
 
-                # Label each contour
-                for cnt in contours:
-                    x, y, w, h = cv2.boundingRect(cnt)
-                    cv2.putText(
-                        temp_vision_frame,
-                        mask_name,
-                        (x, y - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        color,
-                        1
-                    )
+                # Add to legend
+                current_y = legend_start_y + i * (legend_text_height + legend_spacing) + 10
+                # Draw color line
+                cv2.line(
+                    temp_vision_frame,
+                    (legend_start_x, current_y),
+                    (legend_start_x + legend_line_length, current_y),
+                    color,
+                    2
+                )
+                # Add text label
+                cv2.putText(
+                    temp_vision_frame,
+                    mask_name,
+                    (legend_start_x + legend_line_length + 5, current_y + 4),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    (255, 255, 255),
+                    1
+                )
 
         # 3) Draw face-landmark-5 or face-landmark-68 if desired
         if "face-landmark-5" in face_debugger_items:
             lm5 = target_face.landmark_set.get("5/68")
             if lm5 is not None:
-                for (x, y) in lm5.astype(numpy.int32):
-                    cv2.circle(temp_vision_frame, (x, y), 2, tertiary_color, -1)
+                for i, (x, y) in enumerate(lm5.astype(numpy.int32)):
+                    # Draw larger circles for better visibility
+                    cv2.circle(temp_vision_frame, (x, y), 3, tertiary_color, -1)
+                    # Add landmark index
+                    cv2.putText(
+                        temp_vision_frame,
+                        str(i),
+                        (x + 5, y + 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        tertiary_color,
+                        1
+                    )
 
         if "face-landmark-68" in face_debugger_items:
             lm68 = target_face.landmark_set.get("68")
             if lm68 is not None:
-                for (x, y) in lm68.astype(numpy.int32):
+                # Draw connections between landmarks to show face structure
+                face_outline = list(range(0, 17)) + [0]  # Face outline
+                left_eyebrow = list(range(17, 22))
+                right_eyebrow = list(range(22, 27))
+                nose_bridge = list(range(27, 31))
+                nose_tip = list(range(31, 36))
+                left_eye = list(range(36, 42)) + [36]  # Connect back to start
+                right_eye = list(range(42, 48)) + [42]  # Connect back to start
+                outer_lip = list(range(48, 60)) + [48]  # Connect back to start
+                inner_lip = list(range(60, 68)) + [60]  # Connect back to start
+                
+                feature_groups = [face_outline, left_eyebrow, right_eyebrow, nose_bridge, nose_tip, 
+                                 left_eye, right_eye, outer_lip, inner_lip]
+                
+                # Draw connections
+                for feature in feature_groups:
+                    points = lm68[feature].astype(numpy.int32)
+                    cv2.polylines(temp_vision_frame, [points], False, tertiary_color, 1)
+                
+                # Draw points
+                for i, (x, y) in enumerate(lm68.astype(numpy.int32)):
                     cv2.circle(temp_vision_frame, (x, y), 1, tertiary_color, -1)
+                    
+                    # Add landmark number for every 10th point or key points
+                    if i % 10 == 0 or i in [0, 16, 27, 30, 36, 45, 48, 54, 67]:
+                        cv2.putText(
+                            temp_vision_frame,
+                            str(i),
+                            (x + 2, y + 2),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.3,
+                            tertiary_color,
+                            1
+                        )
 
         return temp_vision_frame
 

@@ -188,19 +188,19 @@ class ExpressionRestorer(BaseProcessor):
         target_crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
             temp_vision_frame, target_face.landmark_set.get("5/68"), model_template, model_size
         )
-        box_mask = masker.create_static_box_mask(
-            target_crop_vision_frame.shape[:2][::-1], state_manager.get_item("face_mask_blur"), (0, 0, 0, 0)
+        
+        # Use the combined mask function instead of creating individual masks
+        crop_mask = masker.create_combined_mask(
+            state_manager.get_item('face_mask_types'),
+            target_crop_vision_frame.shape[:2][::-1], 
+            state_manager.get_item('face_mask_blur'),
+            state_manager.get_item('face_mask_padding'),
+            state_manager.get_item('face_mask_regions'),
+            target_crop_vision_frame,
+            temp_vision_frame,
+            target_face.landmark_set.get('5/68'),
+            target_face
         )
-        crop_masks = [box_mask]
-
-        if "occlusion" in state_manager.get_item("face_mask_types"):
-            occlusion_mask = masker.create_occlusion_mask(target_crop_vision_frame)
-            crop_masks.append(occlusion_mask)
-            
-        if 'custom' in state_manager.get_item('face_mask_types'):
-            custom_mask = masker.create_custom_mask(target_crop_vision_frame, target_face.landmark_set.get('5/68'))
-            if custom_mask is not None:
-                crop_masks.append(custom_mask)
 
         source_crop_vision_frame = self.prepare_crop_frame(source_crop_vision_frame)
         target_crop_vision_frame = self.prepare_crop_frame(target_crop_vision_frame)
@@ -208,7 +208,6 @@ class ExpressionRestorer(BaseProcessor):
             source_crop_vision_frame, target_crop_vision_frame, expression_restorer_factor
         )
         target_crop_vision_frame = normalize_crop_frame(target_crop_vision_frame)
-        crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
         temp_vision_frame = paste_back(temp_vision_frame, target_crop_vision_frame, crop_mask, affine_matrix)
         return temp_vision_frame
 

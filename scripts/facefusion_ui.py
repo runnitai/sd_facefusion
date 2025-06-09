@@ -1,18 +1,24 @@
 import importlib
 import inspect
+import logging
 import os
 import pkgutil
 import time
-from typing import List, Union
+from typing import List
 from PIL import Image
 
 import gradio as gr
+
+# Disable python_multipart.multipart logging
+logging.getLogger('python_multipart.multipart').setLevel(logging.WARNING)
+# Disable numba debug logging
+logging.getLogger('numba').setLevel(logging.WARNING)
 
 from facefusion import state_manager
 from facefusion.args import apply_args, collect_step_args
 from facefusion.core import route
 from facefusion.download import conditional_download
-from facefusion.filesystem import output_dir, get_output_path_auto
+from facefusion.filesystem import output_dir
 from facefusion.memory import tune_performance
 from facefusion.processors.core import get_processors_modules
 from facefusion.program import create_program

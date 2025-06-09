@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../facefusion-rundiffusion"
+		},
+		{
+			"path": "../../../MuseTalk"
+		}
+	],
+	"settings": {}
+}
