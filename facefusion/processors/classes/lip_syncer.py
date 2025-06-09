@@ -1,12 +1,14 @@
 import os
+import traceback
 from argparse import ArgumentParser
 from typing import List, Tuple
 
 import cv2
 import numpy
+import numpy as np
 import torch
-import traceback
-from facefusion import config, logger, process_manager, state_manager, wording
+
+from facefusion import logger, state_manager, wording
 from facefusion.download import conditional_download_sources_no_hash
 from facefusion.face_analyser import get_many_faces, get_one_face
 from facefusion.face_helper import create_bounding_box, paste_back, warp_face_by_face_landmark_5
@@ -14,18 +16,16 @@ from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import filter_audio_paths, in_directory, is_image, is_video, \
     resolve_relative_path, same_file_extension, has_audio
-from facefusion.jobs import job_store
 from facefusion.musetalk.utils.audio_processor import AudioProcessor
+from facefusion.musetalk.utils.blending import get_image_prepare_material, get_image_blending
 from facefusion.musetalk.utils.face_parsing import FaceParsing
 from facefusion.musetalk.utils.utils import load_all_model, datagen
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import LipSyncerInputs
 from facefusion.program_helper import find_argument_group
-from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Face, InferencePool, ModelSet, \
     ProcessMode, QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, restrict_video_fps, write_image
-from facefusion.musetalk.utils.blending import get_image_prepare_material, get_image_blending
 
 
 class LipSyncer(BaseProcessor):
@@ -103,6 +103,8 @@ class LipSyncer(BaseProcessor):
     _whisper_chunks_2 = None
     _current_audio_path = None
     _current_audio_path_2 = None
+    _silent_chunks = None  # Set of silent chunk indices for source 1
+    _silent_chunks_2 = None  # Set of silent chunk indices for source 2
 
     def register_args(self, program: ArgumentParser) -> None:
         group = find_argument_group(program, 'processors')
@@ -154,110 +156,180 @@ class LipSyncer(BaseProcessor):
                 logger.error(f"Traceback: {traceback.format_exc()}", __name__)
                 raise e
 
-    def _process_and_cache_audio(self, audio_path: str, fps: float):
+    def _get_whisper_chunks_with_silence_detection(self, audio_path: str, fps: float, weight_dtype, device):
+        """Get whisper chunks and detect silence during processing"""
+        try:
+            import librosa
+            import math
+            from einops import rearrange
+            
+            # Load raw audio for silence detection
+            raw_audio, sr = librosa.load(audio_path, sr=16000)
+            
+            # Get whisper features using the audio processor
+            whisper_input_features, librosa_length = self._musetalk_audio_processor.get_audio_feature(audio_path, weight_dtype=weight_dtype)
+            
+            # Process whisper features
+            audio_feature_length_per_frame = 2 * (2 + 2 + 1)  # audio_padding_length_left=2, right=2
+            whisper_feature = []
+            
+            for input_feature in whisper_input_features:
+                input_feature = input_feature.to(device).to(weight_dtype)
+                audio_feats = self._musetalk_whisper.encoder(input_feature, output_hidden_states=True).hidden_states
+                audio_feats = torch.stack(audio_feats, dim=2)
+                whisper_feature.append(audio_feats)
+
+            whisper_feature = torch.cat(whisper_feature, dim=1)
+            
+            # Trim and pad like original
+            audio_fps = 50
+            fps = int(fps)
+            whisper_idx_multiplier = audio_fps / fps
+            num_frames = math.floor((librosa_length / sr) * fps)
+            actual_length = math.floor((librosa_length / sr) * audio_fps)
+            whisper_feature = whisper_feature[:,:actual_length,...]
+
+            padding_nums = math.ceil(whisper_idx_multiplier)
+            whisper_feature = torch.cat([
+                torch.zeros_like(whisper_feature[:, :padding_nums * 2]),  # left padding
+                whisper_feature,
+                torch.zeros_like(whisper_feature[:, :padding_nums * 6])   # right padding
+            ], 1)
+
+            # Process chunks and detect silence simultaneously
+            audio_prompts = []
+            silent_chunks = set()
+            
+            for frame_index in range(num_frames):
+                # Get whisper chunk
+                audio_index = math.floor(frame_index * whisper_idx_multiplier)
+                audio_clip = whisper_feature[:, audio_index: audio_index + audio_feature_length_per_frame]
+                audio_clip = rearrange(audio_clip, 'b c h w -> b (c h) w')
+                audio_prompts.append(audio_clip)
+                
+                # Check if corresponding raw audio segment is silent
+                frame_duration = 1.0 / fps
+                start_sample = int(frame_index * frame_duration * sr)
+                end_sample = int((frame_index + 1) * frame_duration * sr)
+                
+                if start_sample < len(raw_audio):
+                    audio_segment = raw_audio[start_sample:min(end_sample, len(raw_audio))]
+                    
+                    # Use librosa.trim to detect if there's meaningful audio
+                    trimmed, _ = librosa.effects.trim(audio_segment, top_db=30)  # 30dB threshold
+                    
+                    # Consider silent if trimmed audio is very short or has low energy
+                    is_silent = (len(trimmed) < len(audio_segment) * 0.1 or 
+                               np.max(np.abs(trimmed)) < 0.01)
+                    
+                    if is_silent:
+                        silent_chunks.add(frame_index)
+                else:
+                    # Beyond audio length
+                    silent_chunks.add(frame_index)
+
+            audio_prompts = torch.cat(audio_prompts, dim=0)
+            
+            print(f"Processed {len(audio_prompts)} chunks, {len(silent_chunks)} detected as silent")
+            return audio_prompts, silent_chunks
+            
+        except Exception as e:
+            print(f"Error in whisper chunk processing with silence detection: {e}")
+            import traceback
+            traceback.print_exc()
+            return [], set()
+
+    def _process_and_cache_audio(self, audio_path: str, fps: float, audio_source: int = 1):
         """Process audio upfront and cache chunks like realtime_inference.py"""
         try:
+            # Choose the right cache variables based on audio source
+            if audio_source == 1:
+                current_path = self._current_audio_path
+                cached_chunks = self._whisper_chunks
+                cached_silent = self._silent_chunks
+            else:
+                current_path = self._current_audio_path_2
+                cached_chunks = self._whisper_chunks_2
+                cached_silent = self._silent_chunks_2
+            
             # Skip if already processed
-            if self._current_audio_path == audio_path and self._whisper_chunks is not None:
-                print(f"Using cached audio chunks for {audio_path} ({len(self._whisper_chunks)} chunks)")
-                return self._whisper_chunks
+            if current_path == audio_path and cached_chunks is not None:
+                print(f"Using cached audio chunks for source {audio_source}: {audio_path} ({len(cached_chunks)} chunks, {len(cached_silent) if cached_silent else 0} silent)")
+                return cached_chunks
                 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
             
-            print(f"Processing and caching audio: {audio_path}")
+            print(f"Processing and caching audio source {audio_source}: {audio_path}")
             
-            # Extract audio features exactly like realtime_inference.py
-            whisper_input_features, librosa_length = self._musetalk_audio_processor.get_audio_feature(audio_path, weight_dtype=weight_dtype)
-            #print(f"Audio features extracted - shape: {whisper_input_features.shape}, librosa_length: {librosa_length}")
+            # Process whisper chunks with integrated silence detection
+            whisper_chunks, silent_chunks = self._get_whisper_chunks_with_silence_detection(audio_path, fps, weight_dtype, device)
             
-            # Get whisper chunks exactly like realtime_inference.py
-            whisper_chunks = self._musetalk_audio_processor.get_whisper_chunk(
-                whisper_input_features,
-                device,
-                weight_dtype,
-                self._musetalk_whisper,
-                librosa_length,
-                fps=fps,
-                audio_padding_length_left=2,
-                audio_padding_length_right=2,
-            )
+            # Cache the results in the appropriate variables
+            if audio_source == 1:
+                self._whisper_chunks = whisper_chunks
+                self._current_audio_path = audio_path
+                self._silent_chunks = silent_chunks
+            else:
+                self._whisper_chunks_2 = whisper_chunks
+                self._current_audio_path_2 = audio_path
+                self._silent_chunks_2 = silent_chunks
             
-            # print(f"Generated whisper chunks - type: {type(whisper_chunks)}, length: {len(whisper_chunks) if hasattr(whisper_chunks, '__len__') else 'unknown'}")
-            # if len(whisper_chunks) > 0:
-            #     print(f"First chunk type: {type(whisper_chunks[0])}, shape: {whisper_chunks[0].shape if hasattr(whisper_chunks[0], 'shape') else 'no shape'}")
-            #
-            # Cache the results
-            self._whisper_chunks = whisper_chunks
-            self._current_audio_path = audio_path
-            
-            print(f"Cached {len(whisper_chunks)} audio chunks for {audio_path}")
+            print(f"Cached {len(whisper_chunks)} audio chunks for source {audio_source}: {audio_path} ({len(silent_chunks)} silent)")
             return whisper_chunks
 
         except Exception as e:
-            print(f"Audio processing failed: {e}")
+            print(f"Audio processing failed for source {audio_source}: {e}")
             traceback.print_exc()
             return []
 
-    def _has_significant_audio(self, audio_chunk: torch.Tensor, threshold: float = 0.01) -> bool:
-        """Check if audio chunk has significant audio content"""
-        if audio_chunk is None:
-            return False
-        try:
-            # Ensure we have a proper tensor and calculate variance correctly
-            if not isinstance(audio_chunk, torch.Tensor):
-                return False
-            
-            # Calculate variance and convert to scalar properly
-            audio_variance = float(torch.var(audio_chunk.float()).item())
-            return audio_variance > threshold
-        except Exception as e:
-            print(f"Error checking audio significance: {e}")
-            return False
-
-    def get_audio_chunk_for_frame(self, frame_index: int, audio_source: int = 1) -> torch.Tensor:
-        """Get the appropriate audio chunk for a specific frame index"""
+    def get_audio_chunk_for_frame(self, frame_index: int, audio_source: int = 1) -> tuple:
+        """Get the appropriate audio chunk for a specific frame index and whether it's silent"""
         try:
             # Handle negative frame indices (use 0 instead)
             if frame_index < 0:
                 frame_index = 0
                 
-            # Choose the right audio chunks
+            # Choose the right audio chunks and silent chunks
             chunks = self._whisper_chunks if audio_source == 1 else self._whisper_chunks_2
+            silent_chunks = self._silent_chunks if audio_source == 1 else self._silent_chunks_2
             
             # Properly check if chunks is None or empty without tensor boolean evaluation
             if chunks is None:
                 print(f"No audio chunks available for source {audio_source} (chunks is None)")
-                return None
+                return None, False
             
             # Check if chunks is a list/sequence and if it's empty
             try:
                 chunks_len = len(chunks)
                 if chunks_len == 0:
                     print(f"No audio chunks available for source {audio_source} (empty list)")
-                    return None
+                    return None, False
             except TypeError:
                 # If chunks doesn't support len(), it's probably not a valid chunks list
                 print(f"Invalid chunks type for source {audio_source}: {type(chunks)}")
-                return None
+                return None, False
                 
             # Use modulo to cycle through chunks like datagen does
             chunk_index = frame_index % chunks_len
             audio_chunk = chunks[chunk_index]
             
+            # Check if this chunk is silent
+            is_silent = silent_chunks is not None and chunk_index in silent_chunks
+            
             # Ensure we return a proper tensor
             if isinstance(audio_chunk, torch.Tensor):
-                print(f"Retrieved audio chunk {chunk_index} for frame {frame_index}, shape: {audio_chunk.shape}")
-                return audio_chunk
+                print(f"Retrieved audio chunk {chunk_index} for frame {frame_index} from source {audio_source}, shape: {audio_chunk.shape}, silent: {is_silent}")
+                return audio_chunk, is_silent
             else:
                 print(f"Audio chunk is not a tensor: {type(audio_chunk)}")
-                return None
+                return None, False
             
         except Exception as e:
             print(f"Error getting audio chunk for frame {frame_index}: {e}")
             import traceback
             traceback.print_exc()
-            return None
+            return None, False
 
     def pre_check(self) -> bool:
         """Download MuseTalk models if needed"""
@@ -308,31 +380,21 @@ class LipSyncer(BaseProcessor):
         source_paths = state_manager.get_item('source_paths')
         source_paths_2 = state_manager.get_item('source_paths_2')
         
+        fps = restrict_video_fps(state_manager.get_item('target_path'), state_manager.get_item('output_video_fps'))
+        
         if source_paths:
             audio_paths = filter_audio_paths(source_paths)
             if audio_paths:
-                fps = restrict_video_fps(state_manager.get_item('target_path'), state_manager.get_item('output_video_fps'))
-                self._process_and_cache_audio(audio_paths[0], fps)
+                self._process_and_cache_audio(audio_paths[0], fps, audio_source=1)
         
         if source_paths_2:
             audio_paths_2 = filter_audio_paths(source_paths_2)
             if audio_paths_2:
-                fps = restrict_video_fps(state_manager.get_item('target_path'), state_manager.get_item('output_video_fps'))
-                # Process second audio source
-                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-                
-                whisper_input_features, librosa_length = self._musetalk_audio_processor.get_audio_feature(audio_paths_2[0], weight_dtype=weight_dtype)
-                whisper_chunks_2 = self._musetalk_audio_processor.get_whisper_chunk(
-                    whisper_input_features, device, weight_dtype, self._musetalk_whisper, librosa_length,
-                    fps=fps, audio_padding_length_left=2, audio_padding_length_right=2,
-                )
-                self._whisper_chunks_2 = whisper_chunks_2
-                self._current_audio_path_2 = audio_paths_2[0]
+                self._process_and_cache_audio(audio_paths_2[0], fps, audio_source=2)
 
         return True
 
-    def sync_lip(self, target_face: Face, audio_chunk: torch.Tensor, temp_vision_frame: VisionFrame) -> VisionFrame:
+    def sync_lip(self, target_face: Face, audio_chunk: torch.Tensor, temp_vision_frame: VisionFrame, is_silent: bool = False) -> VisionFrame:
         """Main lip sync method using MuseTalk with properly processed audio chunk"""
         try:
             # Ensure MuseTalk models are initialized
@@ -346,16 +408,16 @@ class LipSyncer(BaseProcessor):
             if sync_empty_audio is None:
                 sync_empty_audio = False
             
-            # Handle empty or insignificant audio
-            if audio_chunk is None or not self._has_significant_audio(audio_chunk):
+            # Handle silent audio chunks based on raw audio analysis
+            if audio_chunk is None or is_silent:
                 if not sync_empty_audio:
                     # Return original frame without modification
-                    print("No significant audio detected and sync_empty_audio is False - returning original frame")
+                    print(f"Silent audio chunk detected and sync_empty_audio is False - returning original frame")
                     return temp_vision_frame
                 else:
                     # Use small random features for natural mouth movement
                     audio_chunk = torch.randn(1, 50, 384, device=device, dtype=weight_dtype) * 0.05
-                    print("No significant audio detected but sync_empty_audio is True - using random features")
+                    print(f"Silent audio chunk detected but sync_empty_audio is True - using random features")
             
             # Face processing - align to 512x512 as per MuseTalk requirements
             crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
@@ -486,8 +548,8 @@ class LipSyncer(BaseProcessor):
             if many_faces:
                 for i, target_face in enumerate(many_faces):
                     try:
-                        audio_chunk = self.get_audio_chunk_for_frame(frame_index, 1)
-                        target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame)
+                        audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1)
+                        target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame, is_silent)
                     except Exception as e:
                         logger.error(f"Error while syncing lip for face {i + 1} in 'many' mode: {e}", __name__)
 
@@ -495,8 +557,8 @@ class LipSyncer(BaseProcessor):
             target_face = get_one_face(many_faces)
             if target_face:
                 try:
-                    audio_chunk = self.get_audio_chunk_for_frame(frame_index, 1)
-                    target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame)
+                    audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1)
+                    target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame, is_silent)
                 except Exception as e:
                     logger.error(f"Error while syncing lip for 'one' mode: {e}", __name__)
 
@@ -511,7 +573,7 @@ class LipSyncer(BaseProcessor):
                     continue
 
                 # Get the corresponding audio chunk
-                audio_chunk = self.get_audio_chunk_for_frame(frame_index, 1 if ref_idx == 0 else 2)
+                audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1 if ref_idx == 0 else 2)
 
                 # Find similar faces
                 try:
@@ -521,7 +583,7 @@ class LipSyncer(BaseProcessor):
                     if similar_faces:
                         for sim_idx, similar_face in enumerate(similar_faces):
                             try:
-                                target_vision_frame = self.sync_lip(similar_face, audio_chunk, target_vision_frame)
+                                target_vision_frame = self.sync_lip(similar_face, audio_chunk, target_vision_frame, is_silent)
                             except Exception as e:
                                 logger.error(
                                     f"Error while syncing lip for similar face {sim_idx + 1} of reference {ref_idx + 1}: {e}",
@@ -537,8 +599,18 @@ class LipSyncer(BaseProcessor):
         # Ensure models are initialized and audio is processed
         self._initialize_musetalk()
         
-        if not self._whisper_chunks:
-            logger.error("No audio chunks available. Did you upload an audio file?", __name__)
+        # Properly check if whisper_chunks is None or empty without tensor boolean evaluation
+        if self._whisper_chunks is None:
+            logger.error("No audio chunks available (whisper_chunks is None). Did you upload an audio file?", __name__)
+            return []
+        
+        try:
+            chunks_len = len(self._whisper_chunks)
+            if chunks_len == 0:
+                logger.error("No audio chunks available (empty chunks). Did you upload an audio file?", __name__)
+                return []
+        except TypeError:
+            logger.error("Invalid whisper_chunks type. Did you upload an audio file?", __name__)
             return []
 
         # Use batch processing like realtime_inference.py
