@@ -1,13 +1,16 @@
 import re
+import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
-from typing import List, Any, Tuple, Callable
+from typing import List, Any, Tuple, Callable, Optional
 
 from facefusion import logger, state_manager, inference_manager
 from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.filesystem import resolve_relative_path
 from facefusion.typing import ModelSet, InferencePool, QueuePayload, VisionFrame, ProcessMode
 from facefusion.workers.core import clear_worker_modules
+from facefusion.processors.optimizations.batch_scheduler import get_scheduler_for_processor, BatchScheduler
+from facefusion.processors.optimizations.gpu_cv_ops import check_gpu_availability
 
 
 class BaseProcessor(ABC):
@@ -32,6 +35,12 @@ class BaseProcessor(ABC):
             raise ValueError("MODEL_SET and model_key must be defined in the child class.")
         self.inference_pool = None
         self.model_path = "../.assets/models"
+        
+        # Initialize optimization components
+        self.batch_scheduler: Optional[BatchScheduler] = None
+        self.gpu_available = check_gpu_availability()
+        self._batch_accumulator = []
+        self._last_batch_time = 0
 
     def __new__(cls, *args, **kwargs):
         if cls not in cls.__instances:
@@ -71,6 +80,15 @@ class BaseProcessor(ABC):
             self.clear_inference_pool()
         if state_manager.get_item("video_memory_strategy") == "strict":
             clear_worker_modules()
+        
+        # Log performance summary if batch scheduler is active
+        if self.batch_scheduler:
+            summary = self.batch_scheduler.get_performance_summary()
+            if summary:
+                logger.debug(f"Processor {self.display_name} performance: "
+                           f"batch_size={summary.get('current_batch_size', 'N/A')}, "
+                           f"avg_latency={summary.get('avg_latency_ms', 0):.1f}ms, "
+                           f"avg_throughput={summary.get('avg_throughput_fps', 0):.1f}fps", __name__)
 
     @abstractmethod
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -181,3 +199,76 @@ class BaseProcessor(ABC):
             all_sources[model] = model_sources
         return conditional_download_hashes(download_directory_path, all_hashes) and conditional_download_sources(
             download_directory_path, all_sources)
+    
+    def init_batch_scheduler(self, mode: str = "default") -> None:
+        """Initialize batch scheduler for optimized inference."""
+        if not self.batch_scheduler:
+            self.batch_scheduler = get_scheduler_for_processor(self.display_name, mode)
+            logger.debug(f"Initialized batch scheduler for {self.display_name} in {mode} mode", __name__)
+    
+    def process_with_adaptive_batching(self, inputs: List[Any], 
+                                     inference_func: Callable, 
+                                     mode: str = "default") -> List[Any]:
+        """
+        Process inputs with adaptive batching for optimal performance.
+        
+        Args:
+            inputs: List of input data
+            inference_func: Function to perform inference on batches
+            mode: Processing mode (default, preview, offline)
+        
+        Returns:
+            List of processed results
+        """
+        if not self.batch_scheduler:
+            self.init_batch_scheduler(mode)
+        
+        if not inputs:
+            return []
+        
+        # For single inputs, process directly
+        if len(inputs) == 1:
+            start_time = time.time()
+            results = inference_func(inputs)
+            end_time = time.time()
+            
+            latency_ms = (end_time - start_time) * 1000
+            throughput_fps = 1 / max(end_time - start_time, 0.001)
+            
+            self.batch_scheduler.record_batch_performance(
+                batch_size=1,
+                latency_ms=latency_ms,
+                throughput_fps=throughput_fps
+            )
+            
+            return results
+        
+        # For multiple inputs, use optimal batch size
+        optimal_batch_size = self.batch_scheduler.get_optimal_batch_size()
+        all_results = []
+        
+        # Process in optimal-sized batches
+        for i in range(0, len(inputs), optimal_batch_size):
+            batch = inputs[i:i + optimal_batch_size]
+            
+            start_time = time.time()
+            batch_results = inference_func(batch)
+            end_time = time.time()
+            
+            # Record performance metrics
+            latency_ms = (end_time - start_time) * 1000
+            throughput_fps = len(batch) / max(end_time - start_time, 0.001)
+            
+            self.batch_scheduler.record_batch_performance(
+                batch_size=len(batch),
+                latency_ms=latency_ms,
+                throughput_fps=throughput_fps
+            )
+            
+            all_results.extend(batch_results)
+        
+        return all_results
+    
+    def should_use_gpu_cv(self) -> bool:
+        """Check if GPU-accelerated CV operations should be used."""
+        return self.gpu_available and state_manager.get_item('execution_providers', ['CPUExecutionProvider'])[0] != 'CPUExecutionProvider'

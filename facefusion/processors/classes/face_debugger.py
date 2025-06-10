@@ -12,6 +12,7 @@ from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import in_directory, same_file_extension
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import FaceDebuggerInputs
+from facefusion.processors.optimizations.gpu_cv_ops import warp_affine_gpu_or_cpu
 from facefusion.program_helper import find_argument_group
 from facefusion.typing import ApplyStateItem, Args, Face, ProcessMode, QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, write_image
@@ -212,7 +213,7 @@ class FaceDebugger(BaseProcessor):
                 c_mask_255 = (c_mask * 255).astype(numpy.uint8)
                 
                 # Warp mask back to original frame size
-                inverse_mask = cv2.warpAffine(c_mask_255, inverse_matrix, temp_size)
+                inverse_mask = warp_affine_gpu_or_cpu(c_mask_255, inverse_matrix, temp_size)
                 
                 # Threshold to get contour
                 _, inverse_mask_thresh = cv2.threshold(inverse_mask, 100, 255, cv2.THRESH_BINARY)

@@ -15,6 +15,7 @@ from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.live_portrait import create_rotation, limit_euler_angles, limit_expression
+from facefusion.processors.optimizations.gpu_cv_ops import resize_gpu_or_cpu
 from facefusion.processors.typing import (
     FaceEditorInputs, LivePortraitExpression, LivePortraitFeatureVolume,
     LivePortraitMotionPoints, LivePortraitPitch, LivePortraitRoll,
@@ -599,7 +600,7 @@ class FaceEditor(BaseProcessor):
     def prepare_crop_frame(self, crop_vision_frame: VisionFrame) -> VisionFrame:
         model_size = self.get_model_options().get('size')
         prepare_size = (model_size[0] // 2, model_size[1] // 2)
-        crop_vision_frame = cv2.resize(crop_vision_frame, prepare_size, interpolation=cv2.INTER_AREA)
+        crop_vision_frame = resize_gpu_or_cpu(crop_vision_frame, prepare_size, interpolation=cv2.INTER_AREA)
         crop_vision_frame = crop_vision_frame[:, :, ::-1] / 255.0
         crop_vision_frame = numpy.expand_dims(crop_vision_frame.transpose(2, 0, 1), axis=0).astype(numpy.float32)
         return crop_vision_frame

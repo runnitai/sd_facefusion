@@ -14,6 +14,7 @@ from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import resolve_relative_path, is_image, is_video, in_directory, same_file_extension
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import AgeModifierInputs
+from facefusion.processors.optimizations.gpu_cv_ops import resize_gpu_or_cpu, warp_affine_gpu_or_cpu
 from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import thread_semaphore
 from facefusion.typing import Args, ApplyStateItem, ProcessMode, VisionFrame, QueuePayload, Face, Mask
@@ -45,7 +46,7 @@ def prepare_direction(direction: int) -> NDArray[Any]:
 
 def normalize_color_difference(color_difference: VisionFrame, color_difference_mask: Mask,
                                extend_vision_frame: VisionFrame) -> VisionFrame:
-    color_difference = cv2.resize(color_difference, extend_vision_frame.shape[:2][::-1], interpolation=cv2.INTER_CUBIC)
+    color_difference = resize_gpu_or_cpu(color_difference, extend_vision_frame.shape[:2][::-1], interpolation=cv2.INTER_CUBIC)
     color_difference_mask = 1 - color_difference_mask.clip(0, 0.75)
     extend_vision_frame = extend_vision_frame.astype(numpy.float32) / 255
     extend_vision_frame += color_difference * color_difference_mask
@@ -57,9 +58,9 @@ def normalize_color_difference(color_difference: VisionFrame, color_difference_m
 def compute_color_difference(extend_vision_frame_raw: VisionFrame, extend_vision_frame: VisionFrame,
                              size: tuple[int, int]) -> VisionFrame:
     extend_vision_frame_raw = extend_vision_frame_raw.astype(numpy.float32) / 255
-    extend_vision_frame_raw = cv2.resize(extend_vision_frame_raw, size, interpolation=cv2.INTER_AREA)
+    extend_vision_frame_raw = resize_gpu_or_cpu(extend_vision_frame_raw, size, interpolation=cv2.INTER_AREA)
     extend_vision_frame = extend_vision_frame.astype(numpy.float32) / 255
-    extend_vision_frame = cv2.resize(extend_vision_frame, size, interpolation=cv2.INTER_AREA)
+    extend_vision_frame = resize_gpu_or_cpu(extend_vision_frame, size, interpolation=cv2.INTER_AREA)
     color_difference = extend_vision_frame_raw - extend_vision_frame
     return color_difference
 
@@ -220,7 +221,7 @@ class AgeModifier(BaseProcessor):
         if 'occlusion' in mask_types:
             occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
             combined_matrix = merge_matrix([extend_affine_matrix, cv2.invertAffineTransform(affine_matrix)])
-            occlusion_mask = cv2.warpAffine(occlusion_mask, combined_matrix, model_size)
+            occlusion_mask = warp_affine_gpu_or_cpu(occlusion_mask, combined_matrix, model_size)
             crop_masks.append(occlusion_mask)
 
         crop_vision_frame = prepare_vision_frame(crop_vision_frame)

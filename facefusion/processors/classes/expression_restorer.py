@@ -13,6 +13,7 @@ from facefusion.filesystem import in_directory, is_image, is_video, resolve_rela
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.live_portrait import create_rotation, limit_expression
 from facefusion.processors.typing import ExpressionRestorerInputs
+from facefusion.processors.optimizations.gpu_cv_ops import resize_gpu_or_cpu
 from facefusion.processors.typing import LivePortraitExpression, LivePortraitFeatureVolume, LivePortraitMotionPoints, \
     LivePortraitPitch, LivePortraitRoll, LivePortraitScale, LivePortraitTranslation, LivePortraitYaw
 from facefusion.program_helper import find_argument_group
@@ -181,7 +182,7 @@ class ExpressionRestorer(BaseProcessor):
                 float(state_manager.get_item("expression_restorer_factor")), [0, 100], [0, 1.2]
             )
         )
-        source_vision_frame = cv2.resize(source_vision_frame, temp_vision_frame.shape[:2][::-1])
+        source_vision_frame = resize_gpu_or_cpu(source_vision_frame, temp_vision_frame.shape[:2][::-1])
         source_crop_vision_frame, _ = warp_face_by_face_landmark_5(
             source_vision_frame, target_face.landmark_set.get("5/68"), model_template, model_size
         )
@@ -276,7 +277,7 @@ class ExpressionRestorer(BaseProcessor):
     def prepare_crop_frame(self, crop_vision_frame: VisionFrame) -> VisionFrame:
         model_size = self.get_model_options().get("size")
         prepare_size = (model_size[0] // 2, model_size[1] // 2)
-        crop_vision_frame = cv2.resize(crop_vision_frame, prepare_size, interpolation=cv2.INTER_AREA)
+        crop_vision_frame = resize_gpu_or_cpu(crop_vision_frame, prepare_size, interpolation=cv2.INTER_AREA)
         crop_vision_frame = crop_vision_frame[:, :, ::-1] / 255.0
         crop_vision_frame = numpy.expand_dims(crop_vision_frame.transpose(2, 0, 1), axis=0).astype(numpy.float32)
         return crop_vision_frame

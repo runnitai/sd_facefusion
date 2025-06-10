@@ -500,11 +500,29 @@ class FaceSwapper(BaseProcessor):
         )
 
         pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
-        for pixel_boost_vision_frame in pixel_boost_vision_frames:
-            pixel_boost_vision_frame = self.prepare_crop_frame(pixel_boost_vision_frame)
-            pixel_boost_vision_frame = self.forward_swap_face(source_face, pixel_boost_vision_frame, src_idx)
-            pixel_boost_vision_frame = self.normalize_crop_frame(pixel_boost_vision_frame)
-            temp_vision_frames.append(pixel_boost_vision_frame)
+        
+        # Use adaptive batching for pixel boost frames if available and beneficial
+        if self.batch_scheduler and len(pixel_boost_vision_frames) > 1:
+            def batch_swap_inference(frames_batch):
+                results = []
+                for frame in frames_batch:
+                    prepared_frame = self.prepare_crop_frame(frame)
+                    swapped_frame = self.forward_swap_face(source_face, prepared_frame, src_idx)
+                    normalized_frame = self.normalize_crop_frame(swapped_frame)
+                    results.append(normalized_frame)
+                return results
+            
+            temp_vision_frames = self.process_with_adaptive_batching(
+                pixel_boost_vision_frames, batch_swap_inference, mode="default"
+            )
+        else:
+            # Process individually for small numbers of frames
+            for pixel_boost_vision_frame in pixel_boost_vision_frames:
+                pixel_boost_vision_frame = self.prepare_crop_frame(pixel_boost_vision_frame)
+                pixel_boost_vision_frame = self.forward_swap_face(source_face, pixel_boost_vision_frame, src_idx)
+                pixel_boost_vision_frame = self.normalize_crop_frame(pixel_boost_vision_frame)
+                temp_vision_frames.append(pixel_boost_vision_frame)
+        
         crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
 
         # No need to reduce crop_masks as we're using the combined mask

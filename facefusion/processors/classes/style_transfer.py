@@ -9,6 +9,7 @@ from facefusion.filesystem import resolve_relative_path, in_directory, is_image,
 from facefusion.jobs import job_store
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import VisionFrame
+from facefusion.processors.optimizations.async_io import AsyncFrameReader
 from facefusion.style_network import Stylization, ReshapeTool, TransformerNet
 from facefusion.typing import QueuePayload, ApplyStateItem, Args, ProcessMode
 from facefusion.vision import read_image, read_static_image, write_image
@@ -82,14 +83,43 @@ class StyleTransfer(BaseProcessor):
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
         processed_frames = []
-        for queue_payload in process_manager.manage(queue_payloads):
-            target_vision_path = queue_payload['frame_path']
-            is_preview = queue_payload.get('is_preview', False)
-            target_vision_frame = read_static_image(target_vision_path)
-            output_vision_frame = self.process_frame(
-                {'target_vision_frame': target_vision_frame, 'is_preview': is_preview})
-            write_image(target_vision_path, output_vision_frame)
-            processed_frames.append((queue_payload['frame_number'], target_vision_path))
+        
+        # Use adaptive batching if available and beneficial
+        if self.batch_scheduler and len(queue_payloads) > 2:
+            def batch_style_transfer(payloads_batch):
+                results = []
+                frames_batch = []
+                
+                # Load frames in batch
+                for payload in payloads_batch:
+                    frame = read_static_image(payload['frame_path'])
+                    frames_batch.append((payload, frame))
+                
+                # Process frames in batch
+                for payload, frame in frames_batch:
+                    output_frame = self.process_frame({
+                        'target_vision_frame': frame, 
+                        'is_preview': payload.get('is_preview', False)
+                    })
+                    write_image(payload['frame_path'], output_frame)
+                    results.append((payload['frame_number'], payload['frame_path']))
+                
+                return results
+            
+            processed_frames = self.process_with_adaptive_batching(
+                queue_payloads, batch_style_transfer, mode="default"
+            )
+        else:
+            # Process individually for small numbers of frames
+            for queue_payload in process_manager.manage(queue_payloads):
+                target_vision_path = queue_payload['frame_path']
+                is_preview = queue_payload.get('is_preview', False)
+                target_vision_frame = read_static_image(target_vision_path)
+                output_vision_frame = self.process_frame(
+                    {'target_vision_frame': target_vision_frame, 'is_preview': is_preview})
+                write_image(target_vision_path, output_vision_frame)
+                processed_frames.append((queue_payload['frame_number'], target_vision_path))
+        
         return processed_frames
 
     def process_image(self, target_path: str, output_path: str, _=None) -> None:
@@ -140,3 +170,18 @@ class StyleTransfer(BaseProcessor):
         styled_input_frame = self.frame_processor.transfer(new_input_frame)
         styled_input_frame = styled_input_frame[64:64 + H, 64:64 + W, :]
         return styled_input_frame
+    
+    def run_style_transfer_batch(self, frames: List[VisionFrame]) -> List[VisionFrame]:
+        """Batch style transfer for improved throughput."""
+        results = []
+        reshape = self.reshape_tool or ReshapeTool()
+        
+        # Process each frame but potentially optimize the reshape tool usage
+        for frame in frames:
+            H, W, C = frame.shape
+            new_input_frame = reshape.process(frame)
+            styled_input_frame = self.frame_processor.transfer(new_input_frame)
+            styled_input_frame = styled_input_frame[64:64 + H, 64:64 + W, :]
+            results.append(styled_input_frame)
+        
+        return results

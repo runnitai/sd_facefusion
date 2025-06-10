@@ -16,6 +16,7 @@ from facefusion.filesystem import is_image, is_video, resolve_relative_path
 from facefusion.jobs.job_store import register_step_keys
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import StyleChangerInputs
+from facefusion.processors.optimizations.gpu_cv_ops import resize_gpu_or_cpu, cvt_color_gpu_or_cpu, warp_affine_gpu_or_cpu
 from facefusion.typing import (
     ProcessMode, VisionFrame, QueuePayload, ModelSet,
     ApplyStateItem, Args, InferencePool
@@ -257,8 +258,8 @@ class StyleChanger(BaseProcessor):
     BOX_WIDTH = 288
     STYLE_MODEL_DIR = resolve_relative_path('../.assets/models/style')
     GLOBAL_MASK = cv2.imread(os.path.join(STYLE_MODEL_DIR, 'alpha.jpg'))
-    GLOBAL_MASK = cv2.resize(GLOBAL_MASK, (BOX_WIDTH, BOX_WIDTH), interpolation=cv2.INTER_AREA)
-    GLOBAL_MASK = cv2.cvtColor(GLOBAL_MASK, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+    GLOBAL_MASK = resize_gpu_or_cpu(GLOBAL_MASK, (BOX_WIDTH, BOX_WIDTH), interpolation=cv2.INTER_AREA)
+    GLOBAL_MASK = cvt_color_gpu_or_cpu(GLOBAL_MASK, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
     def __init__(self):
         super().__init__()
@@ -272,8 +273,8 @@ class StyleChanger(BaseProcessor):
         style_model_dir = resolve_relative_path('../.assets/models/style')
         mask_path = os.path.join(style_model_dir, 'alpha.jpg')
         mask = cv2.imread(mask_path)
-        mask = cv2.resize(mask, (288, 288), interpolation=cv2.INTER_AREA)
-        return cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+        mask = resize_gpu_or_cpu(mask, (288, 288), interpolation=cv2.INTER_AREA)
+        return cvt_color_gpu_or_cpu(mask, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
     def register_args(self, program: ArgumentParser) -> None:
         program.add_argument(

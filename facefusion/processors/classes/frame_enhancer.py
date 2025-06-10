@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from typing import List, Tuple
+import time
 
 import cv2
 import numpy
@@ -11,6 +12,7 @@ from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import FrameEnhancerInputs
+from facefusion.processors.optimizations.gpu_cv_ops import resize_gpu_or_cpu
 from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, ModelSet, ProcessMode, \
@@ -34,7 +36,8 @@ def normalize_tile_frame(vision_tile_frame: VisionFrame) -> VisionFrame:
 
 def blend_frame(temp_vision_frame: VisionFrame, merge_vision_frame: VisionFrame) -> VisionFrame:
     frame_enhancer_blend = 1 - (state_manager.get_item('frame_enhancer_blend') / 100)
-    temp_vision_frame = cv2.resize(temp_vision_frame, (merge_vision_frame.shape[1], merge_vision_frame.shape[0]))
+    # Use GPU-accelerated resize if available
+    temp_vision_frame = resize_gpu_or_cpu(temp_vision_frame, (merge_vision_frame.shape[1], merge_vision_frame.shape[0]))
     temp_vision_frame = cv2.addWeighted(temp_vision_frame, frame_enhancer_blend, merge_vision_frame,
                                         1 - frame_enhancer_blend, 0)
     return temp_vision_frame
@@ -338,10 +341,27 @@ class FrameEnhancer(BaseProcessor):
         temp_height, temp_width = temp_vision_frame.shape[:2]
         tile_vision_frames, pad_width, pad_height = create_tile_frames(temp_vision_frame, model_size)
 
-        for index, tile_vision_frame in enumerate(tile_vision_frames):
-            tile_vision_frame = prepare_tile_frame(tile_vision_frame)
-            tile_vision_frame = self.forward(tile_vision_frame)
-            tile_vision_frames[index] = normalize_tile_frame(tile_vision_frame)
+        # Prepare all tiles for processing
+        prepared_tiles = [prepare_tile_frame(tile) for tile in tile_vision_frames]
+        
+        # Use adaptive batching if available and beneficial
+        if self.batch_scheduler and len(prepared_tiles) > 1:
+            def batch_inference(tiles_batch):
+                return self.forward_batch(tiles_batch)
+            
+            processed_tiles = self.process_with_adaptive_batching(
+                prepared_tiles, batch_inference, mode="default"
+            )
+        else:
+            # Process individually for small numbers of tiles
+            processed_tiles = []
+            for tile_vision_frame in prepared_tiles:
+                processed_tile = self.forward(tile_vision_frame)
+                processed_tiles.append(processed_tile)
+        
+        # Normalize all processed tiles
+        for index, processed_tile in enumerate(processed_tiles):
+            tile_vision_frames[index] = normalize_tile_frame(processed_tile)
 
         merge_vision_frame = merge_tile_frames(
             tile_vision_frames, temp_width * model_scale, temp_height * model_scale,
@@ -358,6 +378,19 @@ class FrameEnhancer(BaseProcessor):
             tile_vision_frame = frame_enhancer.run(None, {'input': tile_vision_frame})[0]
 
         return tile_vision_frame
+    
+    def forward_batch(self, tile_vision_frames: List[VisionFrame]) -> List[VisionFrame]:
+        """Batch inference version of forward for improved throughput."""
+        frame_enhancer = self.get_inference_pool().get('frame_enhancer')
+        results = []
+        
+        with conditional_thread_semaphore():
+            for tile_vision_frame in tile_vision_frames:
+                # For now, process individually but this could be batched at the ONNX level
+                result = frame_enhancer.run(None, {'input': tile_vision_frame})[0]
+                results.append(result)
+        
+        return results
 
     def process_frame(self, inputs: FrameEnhancerInputs) -> VisionFrame:
         target_vision_frame = inputs.get('target_vision_frame')

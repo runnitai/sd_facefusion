@@ -21,6 +21,7 @@ from facefusion.musetalk.utils.face_parsing import FaceParsing
 from facefusion.musetalk.utils.utils import load_all_model
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import LipSyncerInputs
+from facefusion.processors.optimizations.gpu_cv_ops import resize_gpu_or_cpu
 from facefusion.program_helper import find_argument_group
 from facefusion.typing import ApplyStateItem, Args, Face, InferencePool, ModelSet, \
     ProcessMode, QueuePayload, VisionFrame
@@ -487,8 +488,8 @@ class LipSyncer(BaseProcessor):
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
             face_crop = crop_vision_frame[y1:y2, x1:x2]
 
-            # Resize using LANCZOS4 like original MuseTalk
-            face_crop_resized = cv2.resize(face_crop, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+            # Resize using LANCZOS4 like original MuseTalk (with GPU acceleration if available)
+            face_crop_resized = resize_gpu_or_cpu(face_crop, (256, 256), interpolation=cv2.INTER_LANCZOS4)
 
             # Process audio chunk through PE like realtime_inference.py
             # Add batch dimension if missing (PE expects [batch, seq_len, d_model])
@@ -513,8 +514,8 @@ class LipSyncer(BaseProcessor):
             result_frame = self._musetalk_vae.decode_latents(pred_latents)
             result_frame = result_frame[0]
 
-            # Resize back to original face size and blend into aligned frame
-            result_frame_resized = cv2.resize(result_frame.astype(numpy.uint8), (x2 - x1, y2 - y1))
+            # Resize back to original face size and blend into aligned frame (with GPU acceleration if available)
+            result_frame_resized = resize_gpu_or_cpu(result_frame.astype(numpy.uint8), (x2 - x1, y2 - y1))
             blended_frame = crop_vision_frame.copy()
             blended_frame[y1:y2, x1:x2] = result_frame_resized
 

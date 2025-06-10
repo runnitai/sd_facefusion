@@ -3,6 +3,7 @@ import inspect
 import os
 import pkgutil
 import traceback
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
 from typing import Any, List, Dict
@@ -14,6 +15,8 @@ from facefusion.ff_status import FFStatus
 from facefusion.mytqdm import mytqdm as tqdm
 from facefusion.processors import classes
 from facefusion.processors.base_processor import BaseProcessor
+from facefusion.processors.optimizations.async_io import get_global_io_manager, cleanup_global_io_manager, FrameData
+from facefusion.processors.optimizations.batch_scheduler import clear_all_schedulers
 from facefusion.typing import ProcessFrames, QueuePayload
 
 PROCESSORS_METHODS = \
@@ -108,10 +111,28 @@ def clear_processors_modules(processors: List[str]) -> None:
             processor.clear_inference_pool()
         except Exception as e:
             logger.error(f"Failed to clear inference pool for {processor.display_name}: {e}", __name__)
+    
+    # Clear optimization resources
+    clear_all_schedulers()
+    cleanup_global_io_manager()
+    logger.debug("Cleared processor optimization resources", __name__)
 
 
 def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFrames) -> None:
     queue_payloads = create_queue_payloads(temp_frame_paths)
+    
+    # Determine if we should use async I/O based on frame count and system resources
+    use_async_io = len(temp_frame_paths) > 50  # Only for larger workloads
+    io_manager = None
+    
+    if use_async_io:
+        try:
+            io_manager = get_global_io_manager()
+            io_manager.start()
+            logger.debug(f"Using async I/O for {len(temp_frame_paths)} frames", __name__)
+        except Exception as e:
+            logger.warning(f"Failed to initialize async I/O, falling back to sync: {e}", __name__)
+            use_async_io = False
 
     with tqdm(total=len(queue_payloads), desc=wording.get('processing'), unit='frame', ascii=' =',
               disable=state_manager.get_item('log_level') in ['warn', 'error']) as progress:
@@ -122,6 +143,7 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
                 'execution_queue_count': state_manager.get_item('execution_queue_count')
             })
         status = FFStatus()
+        processing_start_time = time.time()
 
         def update_progress(preview_image: str = None) -> None:
             progress.update()
@@ -133,9 +155,15 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
         with ThreadPoolExecutor(max_workers=state_manager.get_item('execution_thread_count')) as executor:
             futures = []
             queue: Queue[QueuePayload] = create_queue(queue_payloads)
+            
+            # Pre-load frames if using async I/O
+            if use_async_io and io_manager:
+                io_manager.reader.add_frame_paths(temp_frame_paths)
+            
             while not queue.empty():
                 future = executor.submit(process_frames, pick_queue(queue, 1))
                 futures.append(future)
+            
             for future_done in as_completed(futures):
                 try:
                     results = future_done.result()
@@ -153,6 +181,22 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
                     print("Error: ", e)
                     traceback.print_exc()
                     pass
+        
+        # Log performance statistics
+        processing_time = time.time() - processing_start_time
+        frames_per_second = len(temp_frame_paths) / max(processing_time, 0.001)
+        
+        logger.info(f"Processed {len(temp_frame_paths)} frames in {processing_time:.2f}s "
+                   f"({frames_per_second:.1f} FPS)", __name__)
+        
+        # Log async I/O statistics if used
+        if use_async_io and io_manager:
+            stats = io_manager.get_combined_stats()
+            if stats:
+                logger.debug(f"Async I/O stats - Read: {stats['reader']['frames_read']} frames, "
+                           f"Write: {stats['writer']['frames_written']} frames, "
+                           f"Efficiency: {stats['io_efficiency']['read_fps']:.1f} read FPS, "
+                           f"{stats['io_efficiency']['write_fps']:.1f} write FPS", __name__)
 
 
 def create_queue(queue_payloads: List[QueuePayload]) -> Queue[QueuePayload]:

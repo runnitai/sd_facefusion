@@ -91,9 +91,17 @@ def processors_pre_check() -> bool:
 
 def conditional_process() -> ErrorCode:
     start_time = time()
-    for processor_module in get_processors_modules(state_manager.get_item('processors')):
+    
+    # Initialize processor optimizations
+    processor_modules = get_processors_modules(state_manager.get_item('processors'))
+    processing_mode = determine_processing_mode()
+    
+    for processor_module in processor_modules:
         if not processor_module.pre_process('output'):
             return 2
+        # Initialize batch scheduler for each processor
+        processor_module.init_batch_scheduler(processing_mode)
+    
     # average_reference_faces()
     target_folder = state_manager.get_item('target_folder')
     logger.info(f"Target folder: {target_folder}", "CORE")
@@ -123,7 +131,7 @@ def conditional_process() -> ErrorCode:
                     img_proc = process_video(start_time)
                     if not img_proc:
                         failed = True
-        for processor_module in get_processors_modules(state_manager.get_item('processors')):
+        for processor_module in processor_modules:
             processor_module.post_process()
         return 0 if not failed else 1
     elif is_image(state_manager.get_item('target_path')):
@@ -318,8 +326,14 @@ def process_image(start_time: float, is_batch: bool = False, reference_faces=Non
         return 1
     # process image
     temp_file_path = get_temp_file_path(state_manager.get_item('target_path'))
+    processing_mode = determine_processing_mode()
+    
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         logger.info(wording.get('processing'), processor_module.display_name)
+        # Initialize optimization if not already done
+        if not processor_module.batch_scheduler:
+            processor_module.init_batch_scheduler(processing_mode)
+        
         processor_module.process_image(temp_file_path, temp_file_path, reference_faces)
         if not is_batch:
             processor_module.post_process()
@@ -382,9 +396,17 @@ def process_video(start_time: float) -> ErrorCode:
     # process frames
     temp_frame_paths = get_temp_frame_paths(state_manager.get_item('target_path'))
     if temp_frame_paths:
-        for processor_module in get_processors_modules(state_manager.get_item('processors')):
+        processing_mode = determine_processing_mode()
+        processor_modules = get_processors_modules(state_manager.get_item('processors'))
+        
+        for processor_module in processor_modules:
             print(f"Processing {processor_module.display_name}")
             logger.info(wording.get('processing'), processor_module.display_name)
+            
+            # Initialize optimization if not already done
+            if not processor_module.batch_scheduler:
+                processor_module.init_batch_scheduler(processing_mode)
+            
             processor_module.process_video(temp_frame_paths)
             print(f"Post processing {processor_module.display_name}")
             processor_module.post_process()
@@ -460,6 +482,20 @@ def process_video(start_time: float) -> ErrorCode:
     process_manager.end()
     return 0
 
+
+def determine_processing_mode() -> str:
+    """Determine the processing mode based on current configuration."""
+    command = state_manager.get_item('command')
+    
+    if command == 'run':
+        # UI mode - optimize for responsiveness
+        return "preview"
+    elif command in ['headless-run', 'job-run', 'job-run-all']:
+        # Batch processing - optimize for throughput
+        return "offline"
+    else:
+        # Default balanced mode
+        return "default"
 
 def is_process_stopping() -> bool:
     if process_manager.is_stopping():
