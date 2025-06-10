@@ -18,7 +18,7 @@ def render() -> None:
         label=wording.get('uis.lip_syncer_model_dropdown'),
         choices=['musetalk_v15'],  # Only MuseTalk now
         value='musetalk_v15',  # Fixed default value
-        visible=PROCESSOR_KEY in state_manager.get_item('processors')
+        visible=False
     )
 
     KEEP_AUDIO_CHECKBOX = gradio.Checkbox(
@@ -53,7 +53,7 @@ def listen() -> None:
 
 def remote_update(processors) -> tuple:
     has_lip_syncer = 'Lip Syncer' in processors
-    return gradio.update(visible=has_lip_syncer), gradio.update(visible=has_lip_syncer)
+    return gradio.update(visible=False), gradio.update(visible=has_lip_syncer)
 
 
 def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.update:

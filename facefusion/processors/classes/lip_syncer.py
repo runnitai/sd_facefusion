@@ -17,9 +17,8 @@ from facefusion.face_store import get_reference_faces
 from facefusion.filesystem import filter_audio_paths, in_directory, is_image, is_video, \
     resolve_relative_path, same_file_extension, has_audio
 from facefusion.musetalk.utils.audio_processor import AudioProcessor
-from facefusion.musetalk.utils.blending import get_image_prepare_material, get_image_blending
 from facefusion.musetalk.utils.face_parsing import FaceParsing
-from facefusion.musetalk.utils.utils import load_all_model, datagen
+from facefusion.musetalk.utils.utils import load_all_model
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import LipSyncerInputs
 from facefusion.program_helper import find_argument_group
@@ -27,6 +26,10 @@ from facefusion.typing import ApplyStateItem, Args, Face, InferencePool, ModelSe
     ProcessMode, QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, restrict_video_fps, write_image
 from facefusion.workers.classes.face_masker import FaceMasker
+from transformers import WhisperModel
+import librosa
+import math
+from einops import rearrange
 
 
 class LipSyncer(BaseProcessor):
@@ -134,7 +137,6 @@ class LipSyncer(BaseProcessor):
                 self._musetalk_audio_processor = AudioProcessor(feature_extractor_path=whisper_model_path)
 
                 # Initialize Whisper for audio feature extraction
-                from transformers import WhisperModel
                 self._musetalk_whisper = WhisperModel.from_pretrained(whisper_model_path)
                 self._musetalk_whisper.to(device)
                 self._musetalk_whisper = self._musetalk_whisper.to(dtype=weight_dtype)
@@ -161,9 +163,6 @@ class LipSyncer(BaseProcessor):
     def _get_whisper_chunks_with_silence_detection(self, audio_path: str, fps: float, weight_dtype, device):
         """Get whisper chunks and detect silence during processing"""
         try:
-            import librosa
-            import math
-            from einops import rearrange
 
             # Load raw audio for silence detection
             raw_audio, sr = librosa.load(audio_path, sr=16000)
@@ -249,11 +248,9 @@ class LipSyncer(BaseProcessor):
             if audio_source == 1:
                 current_path = self._current_audio_path
                 cached_chunks = self._whisper_chunks
-                cached_silent = self._silent_chunks
             else:
                 current_path = self._current_audio_path_2
                 cached_chunks = self._whisper_chunks_2
-                cached_silent = self._silent_chunks_2
 
             # Skip if already processed
             if current_path == audio_path and cached_chunks is not None:
@@ -261,7 +258,6 @@ class LipSyncer(BaseProcessor):
 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-
 
             # Process whisper chunks with integrated silence detection
             whisper_chunks, silent_chunks = self._get_whisper_chunks_with_silence_detection(audio_path, fps,
@@ -322,10 +318,8 @@ class LipSyncer(BaseProcessor):
 
             # Ensure we return a proper tensor
             if isinstance(audio_chunk, torch.Tensor):
-                #print(f"Retrieved audio chunk {chunk_index} for frame {frame_index} from source {audio_source}, shape: {audio_chunk.shape}, silent: {is_silent}")
                 return audio_chunk, is_silent
             else:
-                #print(f"Audio chunk is not a tensor: {type(audio_chunk)}")
                 return None, False
 
         except Exception as e:
@@ -336,7 +330,6 @@ class LipSyncer(BaseProcessor):
 
     def pre_check(self) -> bool:
         """Download MuseTalk models if needed"""
-        download_directory_path = resolve_relative_path(self.model_path)
         model_sources = self.get_model_options().get('sources', {})
 
         all_downloaded = True
@@ -397,8 +390,7 @@ class LipSyncer(BaseProcessor):
 
         return True
 
-    def sync_lip(self, target_face: Face, audio_chunk: torch.Tensor, temp_vision_frame: VisionFrame,
-                 is_silent: bool = False) -> VisionFrame:
+    def sync_lip(self, target_face: Face, audio_chunk: torch.Tensor, temp_vision_frame: VisionFrame) -> VisionFrame:
         """Main lip sync method using MuseTalk with properly processed audio chunk"""
         try:
             # Ensure MuseTalk models are initialized
@@ -407,46 +399,43 @@ class LipSyncer(BaseProcessor):
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-            # Handle silent audio chunks based on raw audio analysis
             if audio_chunk is None:
                 audio_chunk = torch.randn(1, 50, 384, device=device, dtype=weight_dtype) * 0.05
 
-                        # Face processing - use consistent warped approach for masker compatibility
-            # First get the standard aligned crop
             crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
                                                                             target_face.landmark_set.get('5/68'),
                                                                             'ffhq_512', (512, 512))
-            
+
             # Calculate MuseTalk-style bounding box on the aligned frame
             face_landmark_68_transformed = cv2.transform(target_face.landmark_set.get('68').reshape(1, -1, 2),
-                                                       affine_matrix).reshape(-1, 2)
-            
+                                                         affine_matrix).reshape(-1, 2)
+
             # Use MuseTalk methodology on transformed landmarks
             half_face_coord = face_landmark_68_transformed[29]  # nose tip area
             half_face_dist = numpy.max(face_landmark_68_transformed[:, 1]) - half_face_coord[1]
             min_upper_bond = 0
             upper_bond = max(min_upper_bond, half_face_coord[1] - half_face_dist)
-            
+
             # Create bounding box from transformed landmarks
             x1 = int(numpy.min(face_landmark_68_transformed[:, 0]))
             y1 = int(upper_bond)
             x2 = int(numpy.max(face_landmark_68_transformed[:, 0]))
             y2 = int(numpy.max(face_landmark_68_transformed[:, 1]))
-            
+
             # Add extra margin for v1.5 like original MuseTalk
             extra_margin = 10
             y2 = min(y2 + extra_margin, crop_vision_frame.shape[0])
-            
+
             # Ensure valid bounding box
             if y2 - y1 <= 0 or x2 - x1 <= 0 or x1 < 0:
                 # Use full crop as fallback
                 bounding_box = create_bounding_box(face_landmark_68_transformed)
                 x1, y1, x2, y2 = bounding_box
                 y2 = min(y2 + extra_margin, crop_vision_frame.shape[0])
-                
+
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
             face_crop = crop_vision_frame[y1:y2, x1:x2]
-                
+
             # Resize using LANCZOS4 like original MuseTalk
             face_crop_resized = cv2.resize(face_crop, (256, 256), interpolation=cv2.INTER_LANCZOS4)
 
@@ -473,27 +462,27 @@ class LipSyncer(BaseProcessor):
             result_frame = self._musetalk_vae.decode_latents(pred_latents)
             result_frame = result_frame[0]
 
-                        # Resize back to original face size and blend into aligned frame
+            # Resize back to original face size and blend into aligned frame
             result_frame_resized = cv2.resize(result_frame.astype(numpy.uint8), (x2 - x1, y2 - y1))
             blended_frame = crop_vision_frame.copy()
             blended_frame[y1:y2, x1:x2] = result_frame_resized
 
             # Create proper mask using the same system as face_swapper
             masker = FaceMasker()
-            
+
             # Ensure we have good defaults for lip syncing if settings are not configured
             face_mask_blur = state_manager.get_item('face_mask_blur') or 0.3
             face_mask_padding = state_manager.get_item('face_mask_padding') or (0, 0, 0, 0)
-            face_mask_types = ['occlusion', 'region']
+            face_mask_types = ['region']
             face_mask_regions = state_manager.get_item('face_mask_regions') or ['mouth']
-            
+
             # For lip syncing, we want more aggressive blur around mouth area
             # Increase blur amount for better feathering
             enhanced_blur = max(face_mask_blur, 0.4)  # Ensure minimum blur for smooth edges
-            
+
             crop_mask = masker.create_combined_mask(
                 face_mask_types,
-                blended_frame.shape[:2][::-1], 
+                blended_frame.shape[:2][::-1],
                 enhanced_blur,
                 face_mask_padding,
                 face_mask_regions,
@@ -502,14 +491,14 @@ class LipSyncer(BaseProcessor):
                 target_face.landmark_set.get('5/68'),
                 target_face
             )
-            
-            # Apply additional gaussian blur to soften edges even more
-            if crop_mask.any():
-                blur_kernel_size = max(3, int(blended_frame.shape[0] * 0.02))  # 2% of frame height
-                if blur_kernel_size % 2 == 0:  # Ensure odd kernel size
-                    blur_kernel_size += 1
-                crop_mask = cv2.GaussianBlur(crop_mask, (blur_kernel_size, blur_kernel_size), 0)
-            
+
+            # # Apply additional gaussian blur to soften edges even more
+            # if crop_mask.any():
+            #     blur_kernel_size = max(3, int(blended_frame.shape[0] * 0.02))  # 2% of frame height
+            #     if blur_kernel_size % 2 == 0:  # Ensure odd kernel size
+            #         blur_kernel_size += 1
+            #     crop_mask = cv2.GaussianBlur(crop_mask, (blur_kernel_size, blur_kernel_size), 0)
+
             crop_mask = crop_mask.clip(0, 1)
 
             # Paste back to original frame with proper masking
@@ -570,7 +559,7 @@ class LipSyncer(BaseProcessor):
                 for i, target_face in enumerate(many_faces):
                     try:
                         audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1)
-                        target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame, is_silent)
+                        target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame)
                     except Exception as e:
                         logger.error(f"Error while syncing lip for face {i + 1} in 'many' mode: {e}", __name__)
 
@@ -579,7 +568,7 @@ class LipSyncer(BaseProcessor):
             if target_face:
                 try:
                     audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1)
-                    target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame, is_silent)
+                    target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame)
                 except Exception as e:
                     logger.error(f"Error while syncing lip for 'one' mode: {e}", __name__)
 
@@ -604,8 +593,7 @@ class LipSyncer(BaseProcessor):
                     if similar_faces:
                         for sim_idx, similar_face in enumerate(similar_faces):
                             try:
-                                target_vision_frame = self.sync_lip(similar_face, audio_chunk, target_vision_frame,
-                                                                    is_silent)
+                                target_vision_frame = self.sync_lip(similar_face, audio_chunk, target_vision_frame)
                             except Exception as e:
                                 logger.error(
                                     f"Error while syncing lip for similar face {sim_idx + 1} of reference {ref_idx + 1}: {e}",

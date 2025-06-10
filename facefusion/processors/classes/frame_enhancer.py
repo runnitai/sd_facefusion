@@ -305,7 +305,7 @@ class FrameEnhancer(BaseProcessor):
         if group_processors:
             group_processors.add_argument('--frame-enhancer-model', help=wording.get('help.frame_enhancer_model'),
                                           default=config.get_str_value('processors.frame_enhancer_model',
-                                                                       'span_kendata_x4'),
+                                                                       'real_esrgan_x2_fp16'),
                                           choices=self.list_models())
             group_processors.add_argument('--frame-enhancer-blend', help=wording.get('help.frame_enhancer_blend'),
                                           type=int,

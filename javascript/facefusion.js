@@ -1,4 +1,37 @@
-// Simplified JavaScript - removed hacky status polling since we now use Gradio's built-in progress
+// Minimal status checking for preview image updates
+let statusCheckInterval = null;
+
+function start_status_check() {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+    }
+    statusCheckInterval = setInterval(check_status, 1000);
+}
+
+function stop_status_check() {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = null;
+    }
+}
+
+function check_status() {
+    let status_element = gradioApp().getElementById("statusDiv");
+    if (!status_element) {
+        return;
+    }
+    
+    let started = status_element.dataset.started === 'true';
+    if (started) {
+        let btn = gradioApp().getElementById("ff3_check_status");
+        if (btn) {
+            btn.click();
+        }
+    } else {
+        stop_status_check();
+    }
+}
+
 function get_selected_row() {
     console.log("Incoming arguments:", arguments);
     let selected = document.querySelector(".selectRow.selected");
