@@ -24,6 +24,9 @@ def run_job(job_id: str, process_step: ProcessStep, keep_state: bool = False) ->
         
         success = run_steps(job_id, process_step) and finalize_steps(job_id)
         
+        # Always clean up temporary step files after finalization
+        clean_steps(job_id)
+        
         # Restore source paths after job is complete
         if keep_state and source_paths:
             from facefusion import state_manager
@@ -33,14 +36,8 @@ def run_job(job_id: str, process_step: ProcessStep, keep_state: bool = False) ->
             if source_frame_dict:
                 state_manager.set_item('source_frame_dict', source_frame_dict)
         
-        if not keep_state:
-            clean_steps(job_id)
-        
         if success:
             return job_manager.move_job_file(job_id, 'completed')
-        
-        if not keep_state:
-            clean_steps(job_id)
         
         job_manager.move_job_file(job_id, 'failed')
     return False

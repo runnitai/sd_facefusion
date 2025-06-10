@@ -1,6 +1,6 @@
 import os
 from time import sleep
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Generator
 
 import gradio
 
@@ -57,11 +57,11 @@ def listen() -> None:
     ui_workflow_dropdown = get_ui_component('ui_workflow_dropdown')
 
     if output_image and output_video:
-        INSTANT_RUNNER_START_BUTTON.click(start, _js='start_status', outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON])
-        INSTANT_RUNNER_START_BUTTON.click(run, outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON,
+        INSTANT_RUNNER_START_BUTTON.click(start, outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON])
+        INSTANT_RUNNER_START_BUTTON.click(run_with_progress, outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON,
                                                         output_image, output_video])
-        INSTANT_RUNNER_STOP_BUTTON.click(stop, _js='stop_status', outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON])
-        INSTANT_RUNNER_CLEAR_BUTTON.click(clear, _js='stop_status', outputs=[output_image, output_video])
+        INSTANT_RUNNER_STOP_BUTTON.click(stop, outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON])
+        INSTANT_RUNNER_CLEAR_BUTTON.click(clear, outputs=[output_image, output_video])
     if ui_workflow_dropdown:
         ui_workflow_dropdown.change(remote_update, inputs=ui_workflow_dropdown, outputs=INSTANT_RUNNER_WRAPPER)
 
@@ -78,7 +78,100 @@ def start() -> Tuple[gradio.update, gradio.update]:
     return gradio.update(visible=False), gradio.update(visible=True)
 
 
+def run_with_progress(progress=gradio.Progress()) -> Generator[Tuple[gradio.update, gradio.update, gradio.update, gradio.update], None, None]:
+    """Run the job with proper Gradio progress updates using yield"""
+    status = FFStatus()
+    truncated_target_base_name = ""
+    target_path = state_manager.get_item('target_path')
+    
+    if target_path is not None and target_path != "":
+        target_file = os.path.basename(target_path)
+        if len(target_file) > 50:
+            truncated_target_base_name = f"{target_file[:20]}...{target_file[-20:]}"
+        else:
+            truncated_target_base_name = target_file
+
+        status.start(f"Processing target file: {truncated_target_base_name}")
+
+    step_args = collect_step_args()
+    output_path = get_output_path_auto()
+    step_args['output_path'] = output_path
+    
+    if is_directory(step_args.get('output_path')):
+        step_args['output_path'] = suggest_output_path(output_path,
+                                                       state_manager.get_item('target_path'))
+    
+    if job_manager.init_jobs(state_manager.get_item('jobs_path')):
+        # Initialize progress
+        progress(0, desc="Starting job...")
+        yield gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None), gradio.update(value=None)
+        
+        # Create and run job with progress updates
+        job_id = job_helper.suggest_job_id('ui')
+        
+        if job_manager.create_job(job_id) and job_manager.add_step(job_id, step_args) and job_manager.submit_job(job_id):
+            # Run job with progress monitoring
+            total_steps = status.job_total
+            current_step = 0
+            
+            # Start the job in a separate thread-like manner
+            success = True
+            try:
+                steps = job_manager.get_steps(job_id)
+                if steps:
+                    for index, step in enumerate(steps):
+                        current_step = index + 1
+                        progress_value = current_step / max(total_steps, 1)
+                        progress(progress_value, desc=f"Processing step {current_step}/{total_steps}")
+                        
+                        # Yield intermediate progress
+                        yield gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None), gradio.update(value=None)
+                        
+                        # Run the actual step
+                        if not job_runner.run_step(job_id, index, step, process_step):
+                            success = False
+                            break
+                    
+                    if success:
+                        progress(0.9, desc="Finalizing output...")
+                        yield gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None), gradio.update(value=None)
+                        
+                        success = job_runner.finalize_steps(job_id)
+                        
+                        # Clean up temporary files
+                        job_runner.clean_steps(job_id)
+                        
+                        if success:
+                            job_manager.move_job_file(job_id, 'completed')
+                        else:
+                            job_manager.move_job_file(job_id, 'failed')
+                            
+            except Exception as e:
+                print(f"Error during job execution: {e}")
+                success = False
+                job_manager.move_job_file(job_id, 'failed')
+        
+        state_manager.set_item('output_path', output_path)
+        status.finish(f"Finished processing target file: {truncated_target_base_name}")
+        
+        # Final progress update
+        progress(1.0, desc="Complete!")
+        
+    # Return final results
+    if is_image(step_args.get('output_path')):
+        yield gradio.update(visible=True), gradio.update(visible=False), gradio.update(
+            value=step_args.get('output_path'), visible=True), gradio.update(value=None, visible=False)
+    elif is_video(step_args.get('output_path')):
+        yield gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None,
+                                                                                        visible=False), gradio.update(
+            value=step_args.get('output_path'), visible=True)
+    else:
+        yield gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None), gradio.update(
+            value=None)
+
+
 def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
+    """Legacy run function - kept for compatibility"""
     status = FFStatus()
     truncated_target_base_name = ""
     target_path = state_manager.get_item('target_path')

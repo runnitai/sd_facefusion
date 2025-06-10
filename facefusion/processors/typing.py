@@ -74,7 +74,8 @@ LipSyncerInputs = TypedDict('LipSyncerInputs',
                                 'reference_faces': Dict[int, FaceSet],
                                 'source_audio_frame': AudioFrame,
                                 'source_audio_frame_2': AudioFrame,
-                                'target_vision_frame': VisionFrame
+                                'target_vision_frame': VisionFrame,
+                                'frame_index': int,
                             })
 ProcessorStateKey = Literal[
     'age_modifier_model',

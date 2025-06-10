@@ -245,20 +245,15 @@ class FaceMasker(BaseWorker):
         need_region = 'region' in face_mask_types_list
         need_custom = 'custom' in face_mask_types_list
         
-        logger.debug(f"[{context}] Need masks - box: {need_box}, occlusion: {need_occlusion}, region: {need_region}, custom: {need_custom}")
 
         # Create each required mask type without blurring yet - we'll blur at the end
         # This helps prevent one mask from being overridden by another
         if need_box:
             # For box mask, we use zero blur for creation, will apply blur at the end
             masks['box'] = self.create_static_box_mask(crop_size, 0, face_mask_padding)
-            if masks['box'] is not None and masks['box'].any():
-                logger.debug(f"[{context}] Created box mask: sum={masks['box'].sum()}, max={masks['box'].max()}")
 
         if need_occlusion:
             masks['occlusion'] = self.create_occlusion_mask(crop_vision_frame)
-            if masks['occlusion'] is not None and masks['occlusion'].any():
-                logger.debug(f"[{context}] Created occlusion mask: sum={masks['occlusion'].sum()}, max={masks['occlusion'].max()}")
 
         if need_region and face_mask_regions:
             # Ensure we're passing a list
@@ -268,8 +263,6 @@ class FaceMasker(BaseWorker):
                 regions_list = face_mask_regions
 
             masks['region'] = self.create_region_mask(crop_vision_frame, regions_list)
-            if masks['region'] is not None and masks['region'].any():
-                logger.debug(f"[{context}] Created region mask: sum={masks['region'].sum()}, max={masks['region'].max()}")
 
         if need_custom:
             # Pass both the crop frame and the full frame to the custom mask function
@@ -281,35 +274,22 @@ class FaceMasker(BaseWorker):
             
             if custom_mask is not None and custom_mask.any():
                 masks['custom'] = custom_mask
-                logger.debug(f"[{context}] Created custom mask: sum={custom_mask.sum()}, max={custom_mask.max()}")
-            else:
-                logger.debug(f"[{context}] Custom mask is None or empty - check YOLO model configuration")
 
         # Combine all masks - each mask contributes separately to the final mask
         for mask_name, mask in masks.items():
             if mask is not None and mask.any():
                 # Use maximum value at each pixel position
                 combined_mask = numpy.maximum(combined_mask, mask)
-                logger.debug(f"[{context}] After adding {mask_name}: combined mask sum={combined_mask.sum()}, max={combined_mask.max()}")
 
         # Apply final blur to smooth edges if needed
         if combined_mask.any() and face_mask_blur > 0:
             blur_amount = int(crop_size[0] * 0.5 * face_mask_blur)
             if blur_amount > 0:
                 combined_mask = cv2.GaussianBlur(combined_mask, (0, 0), blur_amount * 0.25)
-                logger.debug(f"[{context}] Applied blur: amount={blur_amount}, final mask sum={combined_mask.sum()}, max={combined_mask.max()}")
 
         # Ensure mask values are in valid range
         combined_mask = combined_mask.clip(0, 1)
 
-        # Save a debug image if we're in the debugger context
-        if is_debug and combined_mask.any():
-            try:
-                debug_mask_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_combined_mask.png")
-                cv2.imwrite(debug_mask_path, (combined_mask * 255).astype(numpy.uint8))
-                logger.debug(f"[{context}] Saved combined mask to {debug_mask_path}")
-            except Exception as e:
-                logger.error(f"Error saving debug mask: {e}")
 
         # Cache the result if we have a valid cache key
         if cache_key is not None:
@@ -324,7 +304,6 @@ class FaceMasker(BaseWorker):
 
             # Add to cache
             self._combined_mask_cache[cache_key] = combined_mask
-            logger.debug(f"[{context}] Cached combined mask")
 
         return combined_mask
 

@@ -236,6 +236,7 @@ def listen() -> None:
 def clear_and_update_preview_image(frame_number: int = 0) -> gradio.update:
     global CURRENT_PREVIEW_FRAME_NUMBER
     CURRENT_PREVIEW_FRAME_NUMBER = -1
+    # Only clear face-related caches, NOT source files
     clear_reference_faces()
     clear_static_faces()
     preview, _, _ = update_preview_image(frame_number)

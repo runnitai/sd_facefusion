@@ -12,14 +12,12 @@ from facefusion.uis.core import register_ui_component, get_ui_component
 OUTPUT_IMAGE: Optional[gradio.Image] = None
 OUTPUT_VIDEO: Optional[gradio.Video] = None
 OUTPUT_STATUS: Optional[gradio.HTML] = None
-CHECK_STATUS_BUTTON: Optional[gradio.Button] = None
 
 
 def render() -> None:
     global OUTPUT_IMAGE
     global OUTPUT_VIDEO
     global OUTPUT_STATUS
-    global CHECK_STATUS_BUTTON
 
     out_dir = get_output_path_auto()
     state_manager.init_item('output_path', out_dir)
@@ -31,28 +29,16 @@ def render() -> None:
     OUTPUT_VIDEO = gradio.Video(
         label=wording.get('uis.output_image_or_video')
     )
-    CHECK_STATUS_BUTTON = gradio.Button(
-        value=wording.get('uis.check_status_button'),
-        variant='primary',
-        size='sm',
-        visible=False,
-    )
 
 
 def listen() -> None:
     register_ui_component('output_image', OUTPUT_IMAGE)
     register_ui_component('output_video', OUTPUT_VIDEO)
     register_ui_component('output_status', OUTPUT_STATUS)
-    register_ui_component('check_status', CHECK_STATUS_BUTTON)
-
-    output_image = get_ui_component('output_image')
-    output_video = get_ui_component('output_video')
-    preview_image = get_ui_component('preview_image')
-    CHECK_STATUS_BUTTON.click(update_status, inputs=[],
-                              outputs=[OUTPUT_STATUS, output_image, preview_image, output_video], show_progress=False)
 
 
 def update_status():
+    """Update status display - now simplified since we use Gradio's built-in progress"""
     status = FFStatus()
     out_video = gradio.update()
     out_image = gradio.update()
@@ -64,34 +50,20 @@ def update_status():
 
 
 def format_status():
-    # Get status and progress
+    """Format status display - simplified since progress is now handled by Gradio"""
     status = FFStatus()
-    if status.started and status.job_total > 0:
-        progress = status.job_current / status.job_total
-        progress = min(progress, 1)
-    else:
-        progress = 0
-
+    
     status_string = status.status if status.status is not None else ""
-    hidden_div = f"<div style='display:none' id='statusDiv' data-started={'true' if status.started else 'false'}></div>"
-    status_string = f"{hidden_div}{status_string}"
-    if 0 < progress < 1:
-        time_left = calc_time_left(progress, threshold=60, label="ETA: ", force_display=True)
-        progress_percentage = f"{time_left} - {int(progress * 100)}%"
-        progress_bar = f"""
-            <div class='progressDiv'>
-                <div class='progress' style="overflow:visible;width:{progress * 100}%;white-space:nowrap;">
-                    {"&nbsp;" * 2 + progress_percentage if progress > 0.01 else ""}
-                </div>
-            </div>
-            """
-        overlay = f"{status_string}{progress_bar}"
+    
+    # Simple status display without the hacky progress bar
+    if status.started:
+        return f"<div class='status-active'>{status_string}</div>"
     else:
-        overlay = status_string
-    return overlay
+        return f"<div class='status-idle'>{status_string}</div>"
 
 
 def calc_time_left(progress, threshold, label, force_display):
+    """Legacy function - kept for compatibility but simplified"""
     status = FFStatus()
     if progress == 0:
         return ""

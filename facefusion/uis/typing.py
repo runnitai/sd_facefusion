@@ -56,7 +56,7 @@ ComponentName = Literal \
     'frame_enhancer_model_dropdown',
     'job_list_job_status_checkbox_group',
     'lip_syncer_model_dropdown',
-    'lip_sync_empty_audio_checkbox',
+    'lip_sync_keep_audio_checkbox',
     'output_image',
     'output_video',
     'output_video_fps_slider',

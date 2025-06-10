@@ -417,7 +417,11 @@ def process_video(start_time: float) -> ErrorCode:
         move_temp_file(state_manager.get_item('target_path'), state_manager.get_item('output_path'))
     else:
         source_audio_path = get_first(filter_audio_paths(state_manager.get_item('source_paths')))
-        if source_audio_path:
+        # If lip_syncer is enabled, we need to check if lip_sync_keep_audio is set
+        has_lip_syncer = 'Lip Syncer' in state_manager.get_item('processors')
+        skip_source_audio = has_lip_syncer and state_manager.get_item('lip_sync_keep_audio')
+
+        if source_audio_path and not skip_source_audio:
             print(f"Replacing audio")
             if replace_audio(state_manager.get_item('target_path'), source_audio_path,
                              state_manager.get_item('output_path')):
