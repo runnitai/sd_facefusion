@@ -480,17 +480,36 @@ class LipSyncer(BaseProcessor):
 
             # Create proper mask using the same system as face_swapper
             masker = FaceMasker()
+            
+            # Ensure we have good defaults for lip syncing if settings are not configured
+            face_mask_blur = state_manager.get_item('face_mask_blur') or 0.3
+            face_mask_padding = state_manager.get_item('face_mask_padding') or (0, 0, 0, 0)
+            face_mask_types = ['occlusion', 'region']
+            face_mask_regions = state_manager.get_item('face_mask_regions') or ['mouth']
+            
+            # For lip syncing, we want more aggressive blur around mouth area
+            # Increase blur amount for better feathering
+            enhanced_blur = max(face_mask_blur, 0.4)  # Ensure minimum blur for smooth edges
+            
             crop_mask = masker.create_combined_mask(
-                state_manager.get_item('face_mask_types'),
+                face_mask_types,
                 blended_frame.shape[:2][::-1], 
-                state_manager.get_item('face_mask_blur'),
-                state_manager.get_item('face_mask_padding'),
-                state_manager.get_item('face_mask_regions'),
+                enhanced_blur,
+                face_mask_padding,
+                face_mask_regions,
                 blended_frame,
                 temp_vision_frame,
                 target_face.landmark_set.get('5/68'),
                 target_face
             )
+            
+            # Apply additional gaussian blur to soften edges even more
+            if crop_mask.any():
+                blur_kernel_size = max(3, int(blended_frame.shape[0] * 0.02))  # 2% of frame height
+                if blur_kernel_size % 2 == 0:  # Ensure odd kernel size
+                    blur_kernel_size += 1
+                crop_mask = cv2.GaussianBlur(crop_mask, (blur_kernel_size, blur_kernel_size), 0)
+            
             crop_mask = crop_mask.clip(0, 1)
 
             # Paste back to original frame with proper masking
