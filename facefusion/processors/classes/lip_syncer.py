@@ -319,10 +319,10 @@ class LipSyncer(BaseProcessor):
             
             # Ensure we return a proper tensor
             if isinstance(audio_chunk, torch.Tensor):
-                print(f"Retrieved audio chunk {chunk_index} for frame {frame_index} from source {audio_source}, shape: {audio_chunk.shape}, silent: {is_silent}")
+                #print(f"Retrieved audio chunk {chunk_index} for frame {frame_index} from source {audio_source}, shape: {audio_chunk.shape}, silent: {is_silent}")
                 return audio_chunk, is_silent
             else:
-                print(f"Audio chunk is not a tensor: {type(audio_chunk)}")
+                #print(f"Audio chunk is not a tensor: {type(audio_chunk)}")
                 return None, False
             
         except Exception as e:
@@ -594,7 +594,7 @@ class LipSyncer(BaseProcessor):
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-        """Process frames using the cached audio chunks like realtime_inference.py"""
+        """Process frames using the cached audio chunks - simple frame-by-frame processing"""
         
         # Ensure models are initialized and audio is processed
         self._initialize_musetalk()
@@ -613,100 +613,35 @@ class LipSyncer(BaseProcessor):
             logger.error("Invalid whisper_chunks type. Did you upload an audio file?", __name__)
             return []
 
-        # Use batch processing like realtime_inference.py
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-        batch_size = 8  # Original MuseTalk batch size
-        
-        # Pre-process all frames to get latents (like original MuseTalk)
-        input_latent_list = []
-        coord_list = []
-        frame_list = []
+        # Simple frame-by-frame processing - much more memory efficient
+        output_frames = []
         
         for queue_payload in queue_payloads:
             target_vision_path = queue_payload['frame_path']
-            target_vision_frame = read_image(target_vision_path)
+            frame_number = queue_payload['frame_number']
             
-            # Detect faces and get coordinates
-            many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
-            if many_faces:
-                target_face = many_faces[0]  # Use first face for now
+            try:
+                # Read the frame
+                target_vision_frame = read_image(target_vision_path)
                 
-                # Face processing like MuseTalk
-                crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(target_vision_frame,
-                                                                                target_face.landmark_set.get('5/68'),
-                                                                                'ffhq_512', (512, 512))
-                face_landmark_68 = cv2.transform(target_face.landmark_set.get('68').reshape(1, -1, 2),
-                                                 affine_matrix).reshape(-1, 2)
-                bounding_box = create_bounding_box(face_landmark_68)
+                # Get reference faces if needed
+                reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
                 
-                x1, y1, x2, y2 = bounding_box
-                extra_margin = 10
-                y2 = min(y2 + extra_margin, crop_vision_frame.shape[0])
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                # Process the frame using the same logic as preview
+                result_frame = self.process_frame({
+                    'reference_faces': reference_faces,
+                    'frame_index': frame_number,  # Use frame number for audio chunk selection
+                    'target_vision_frame': target_vision_frame
+                })
                 
-                face_crop = crop_vision_frame[y1:y2, x1:x2]
-                face_crop_resized = cv2.resize(face_crop, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+                # Write the processed frame back
+                write_image(target_vision_path, result_frame)
+                output_frames.append((frame_number, target_vision_path))
                 
-                # Get latents like original MuseTalk
-                latents = self._musetalk_vae.get_latents_for_unet(face_crop_resized)
-                input_latent_list.append(latents)
-                coord_list.append([x1, y1, x2, y2])
-                frame_list.append(crop_vision_frame)
-            else:
-                # No face detected, use dummy values
-                input_latent_list.append(None)
-                coord_list.append(None)
-                frame_list.append(target_vision_frame)
-
-        # Batch processing exactly like realtime_inference.py
-        gen = datagen(
-            whisper_chunks=self._whisper_chunks,
-            vae_encode_latents=input_latent_list,
-            batch_size=batch_size,
-            delay_frame=0,
-            device=device,
-        )
-        
-        res_frame_list = []
-        for i, (whisper_batch, latent_batch) in enumerate(gen):
-            if latent_batch is None:
-                continue
-                
-            audio_feature_batch = self._musetalk_pe(whisper_batch.to(device))
-            latent_batch = latent_batch.to(dtype=weight_dtype)
-            
-            timesteps = torch.tensor([0], device=device, dtype=weight_dtype)
-            
-            with torch.no_grad():
-                pred_latents = self._musetalk_unet.model(latent_batch, timesteps, encoder_hidden_states=audio_feature_batch).sample
-                recon = self._musetalk_vae.decode_latents(pred_latents)
-                
-            for res_frame in recon:
-                res_frame_list.append(res_frame)
-
-        # Apply results back to frames
-        output_frames = []
-        for idx, queue_payload in enumerate(queue_payloads):
-            target_vision_path = queue_payload['frame_path']
-            
-            if idx < len(res_frame_list) and coord_list[idx] is not None:
-                res_frame = res_frame_list[idx]
-                coord = coord_list[idx]
-                ori_frame = frame_list[idx]
-                
-                x1, y1, x2, y2 = coord
-                res_frame_resized = cv2.resize(res_frame.astype(numpy.uint8), (x2-x1, y2-y1))
-                
-                # Simple blending for now
-                ori_frame[y1:y2, x1:x2] = res_frame_resized
-                result_frame = ori_frame
-            else:
-                # No processing needed or failed
-                result_frame = read_image(target_vision_path)
-            
-            write_image(target_vision_path, result_frame)
-            output_frames.append((queue_payload['frame_number'], target_vision_path))
+            except Exception as e:
+                logger.error(f"Error processing frame {frame_number}: {e}", __name__)
+                # On error, just add the original frame
+                output_frames.append((frame_number, target_vision_path))
 
         return output_frames
 
