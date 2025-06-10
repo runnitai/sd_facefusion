@@ -14,6 +14,7 @@ from facefusion.temp_helper import clear_temp_directory
 from facefusion.typing import Args, UiWorkflow
 from facefusion.uis.core import get_ui_component, register_ui_component
 from facefusion.uis.ui_helper import suggest_output_path
+from facefusion.uis.components.output import format_status
 
 INSTANT_RUNNER_WRAPPER: Optional[gradio.Row] = None
 INSTANT_RUNNER_START_BUTTON: Optional[gradio.Button] = None
@@ -54,14 +55,15 @@ def render() -> None:
 def listen() -> None:
     output_image = get_ui_component('output_image')
     output_video = get_ui_component('output_video')
+    output_status = get_ui_component('output_status')
     ui_workflow_dropdown = get_ui_component('ui_workflow_dropdown')
 
-    if output_image and output_video:
-        INSTANT_RUNNER_START_BUTTON.click(start, _js='start_status_check', outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON])
+    if output_image and output_video and output_status:
+        INSTANT_RUNNER_START_BUTTON.click(start, _js='start_status', outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON, output_status])
         INSTANT_RUNNER_START_BUTTON.click(run, outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON,
-                                                        output_image, output_video])
-        INSTANT_RUNNER_STOP_BUTTON.click(stop, _js='stop_status_check', outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON])
-        INSTANT_RUNNER_CLEAR_BUTTON.click(clear, _js='stop_status_check', outputs=[output_image, output_video])
+                                                        output_image, output_video, output_status])
+        INSTANT_RUNNER_STOP_BUTTON.click(stop, _js='stop_status', outputs=[INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON, output_status])
+        INSTANT_RUNNER_CLEAR_BUTTON.click(clear, _js='stop_status', outputs=[output_image, output_video, output_status])
     if ui_workflow_dropdown:
         ui_workflow_dropdown.change(remote_update, inputs=ui_workflow_dropdown, outputs=INSTANT_RUNNER_WRAPPER)
 
@@ -72,10 +74,13 @@ def remote_update(ui_workflow: UiWorkflow) -> gradio.update:
     return gradio.update(visible=is_instant_runner)
 
 
-def start() -> Tuple[gradio.update, gradio.update]:
+def start() -> Tuple[gradio.update, gradio.update, gradio.update]:
     while not process_manager.is_processing():
         sleep(0.5)
-    return gradio.update(visible=False), gradio.update(visible=True)
+    # Update status to show job has started
+    status = FFStatus()
+    status.start("Job started")
+    return gradio.update(visible=False), gradio.update(visible=True), gradio.update(visible=True, value=format_status())
 
 
 def run_with_progress(progress=gradio.Progress()) -> Generator[Tuple[gradio.update, gradio.update, gradio.update, gradio.update], None, None]:
@@ -90,7 +95,7 @@ def run_with_progress(progress=gradio.Progress()) -> Generator[Tuple[gradio.upda
     yield result
 
 
-def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
+def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
     """Legacy run function - kept for compatibility"""
     status = FFStatus()
     truncated_target_base_name = ""
@@ -114,15 +119,18 @@ def run() -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update]:
         create_and_run_job(step_args)
         state_manager.set_item('output_path', output_path)
         status.finish(f"Finished processing target file: {truncated_target_base_name}")
+    
+    status_update = gradio.update(visible=True, value=format_status())
+    
     if is_image(step_args.get('output_path')):
         return gradio.update(visible=True), gradio.update(visible=False), gradio.update(
-            value=step_args.get('output_path'), visible=True), gradio.update(value=None, visible=False)
+            value=step_args.get('output_path'), visible=True), gradio.update(value=None, visible=False), status_update
     if is_video(step_args.get('output_path')):
         return gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None,
                                                                                         visible=False), gradio.update(
-            value=step_args.get('output_path'), visible=True)
+            value=step_args.get('output_path'), visible=True), status_update
     return gradio.update(visible=True), gradio.update(visible=False), gradio.update(value=None), gradio.update(
-        value=None)
+        value=None), status_update
 
 
 def create_and_run_job(step_args: Args, keep_state: bool = True) -> bool:
@@ -148,18 +156,18 @@ def create_and_run_job(step_args: Args, keep_state: bool = True) -> bool:
         job_id) and job_runner.run_job(job_id, process_step, keep_state)
 
 
-def stop() -> Tuple[gradio.update, gradio.update]:
+def stop() -> Tuple[gradio.update, gradio.update, gradio.update]:
     process_manager.stop()
     status = FFStatus()
     status.finish(f"Stopped processing target file: {state_manager.get_item('target_path')}")
-    return gradio.update(visible=True), gradio.update(visible=False)
+    return gradio.update(visible=True), gradio.update(visible=False), gradio.update(visible=True, value=format_status())
 
 
-def clear() -> Tuple[gradio.update, gradio.update]:
+def clear() -> Tuple[gradio.update, gradio.update, gradio.update]:
     while process_manager.is_processing():
         sleep(0.5)
     if state_manager.get_item('target_path'):
         clear_temp_directory(state_manager.get_item('target_path'))
     status = FFStatus()
     status.finish(f"Cleared target file: {state_manager.get_item('target_path')}")
-    return gradio.update(value=None), gradio.update(value=None)
+    return gradio.update(value=None), gradio.update(value=None), gradio.update(visible=True, value=format_status())

@@ -8,11 +8,21 @@ function start_status_check() {
     statusCheckInterval = setInterval(check_status, 1000);
 }
 
+// Alias for compatibility
+function start_status() {
+    start_status_check();
+}
+
 function stop_status_check() {
     if (statusCheckInterval) {
         clearInterval(statusCheckInterval);
         statusCheckInterval = null;
     }
+}
+
+// Alias for compatibility
+function stop_status() {
+    stop_status_check();
 }
 
 function check_status() {

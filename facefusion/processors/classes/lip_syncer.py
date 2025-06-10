@@ -109,6 +109,15 @@ class LipSyncer(BaseProcessor):
     _current_audio_path_2 = None
     _silent_chunks = None  # Set of silent chunk indices for source 1
     _silent_chunks_2 = None  # Set of silent chunk indices for source 2
+    _silent_template = None  # Template silent chunk for source 1
+    _silent_template_2 = None  # Template silent chunk for source 2
+    masker = None
+    face_mask_padding = (0, 0, 0, 0)  # Default padding for face mask
+    face_mask_types = ['region']  # Default mask type
+    face_mask_regions = ['mouth']  # Default regions for lip sync
+    enhanced_blur = 0.4  # Default blur for lip sync mask
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
     def register_args(self, program: ArgumentParser) -> None:
         group = find_argument_group(program, 'processors')
@@ -123,14 +132,11 @@ class LipSyncer(BaseProcessor):
         """Initialize MuseTalk components following original project structure"""
         if self._musetalk_vae is None:
             try:
-                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
                 # Load MuseTalk models using the original workflow
-                self._musetalk_vae, self._musetalk_unet, self._musetalk_pe = load_all_model(device=device)
+                self._musetalk_vae, self._musetalk_unet, self._musetalk_pe = load_all_model(device=self.device)
 
                 # Ensure proper dtype
-                weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-                self._musetalk_unet.model = self._musetalk_unet.model.to(dtype=weight_dtype)
+                self._musetalk_unet.model = self._musetalk_unet.model.to(dtype=self.weight_dtype)
 
                 # Initialize audio processor exactly like original MuseTalk
                 whisper_model_path = resolve_relative_path('../.assets/models/musetalk_v15/whisper-tiny')
@@ -138,8 +144,8 @@ class LipSyncer(BaseProcessor):
 
                 # Initialize Whisper for audio feature extraction
                 self._musetalk_whisper = WhisperModel.from_pretrained(whisper_model_path)
-                self._musetalk_whisper.to(device)
-                self._musetalk_whisper = self._musetalk_whisper.to(dtype=weight_dtype)
+                self._musetalk_whisper.to(self.device)
+                self._musetalk_whisper = self._musetalk_whisper.to(dtype=self.weight_dtype)
 
                 # Initialize face parsing
                 try:
@@ -201,6 +207,7 @@ class LipSyncer(BaseProcessor):
             # Process chunks and detect silence simultaneously
             audio_prompts = []
             silent_chunks = set()
+            silent_template = None  # Store the first silent chunk as template
 
             for frame_index in range(num_frames):
                 # Get whisper chunk
@@ -226,20 +233,35 @@ class LipSyncer(BaseProcessor):
 
                     if is_silent:
                         silent_chunks.add(frame_index)
+                        # Store the first silent chunk as template
+                        if silent_template is None:
+                            silent_template = audio_clip.clone()
                 else:
                     # Beyond audio length
                     silent_chunks.add(frame_index)
+                    # Store the first silent chunk as template
+                    if silent_template is None:
+                        silent_template = audio_clip.clone()
+
+            # If no silent chunks found, create a minimal silent template
+            if silent_template is None and len(silent_chunks) == 0:
+                # Create a minimal noise template for truly silent audio
+                if len(audio_prompts) > 0:
+                    silent_template = torch.randn_like(audio_prompts[0]) * 0.01  # Very low amplitude noise
+                    print(f"Created minimal silent template for completely silent audio")
 
             audio_prompts = torch.cat(audio_prompts, dim=0)
 
             print(f"Processed {len(audio_prompts)} chunks, {len(silent_chunks)} detected as silent")
-            return audio_prompts, silent_chunks
+            if silent_template is not None:
+                print(f"Silent template captured and ready for use")
+            return audio_prompts, silent_chunks, silent_template
 
         except Exception as e:
             print(f"Error in whisper chunk processing with silence detection: {e}")
             import traceback
             traceback.print_exc()
-            return [], set()
+            return [], set(), None
 
     def _process_and_cache_audio(self, audio_path: str, fps: float, audio_source: int = 1):
         """Process audio upfront and cache chunks like realtime_inference.py"""
@@ -256,25 +278,27 @@ class LipSyncer(BaseProcessor):
             if current_path == audio_path and cached_chunks is not None:
                 return cached_chunks
 
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-
             # Process whisper chunks with integrated silence detection
-            whisper_chunks, silent_chunks = self._get_whisper_chunks_with_silence_detection(audio_path, fps,
-                                                                                            weight_dtype, device)
+            whisper_chunks, silent_chunks, silent_template = self._get_whisper_chunks_with_silence_detection(audio_path,
+                                                                                                             fps,
+                                                                                                             self.weight_dtype,
+                                                                                                             self.device)
 
             # Cache the results in the appropriate variables
             if audio_source == 1:
                 self._whisper_chunks = whisper_chunks
                 self._current_audio_path = audio_path
                 self._silent_chunks = silent_chunks
+                self._silent_template = silent_template
             else:
                 self._whisper_chunks_2 = whisper_chunks
                 self._current_audio_path_2 = audio_path
                 self._silent_chunks_2 = silent_chunks
+                self._silent_template_2 = silent_template
 
+            template_status = "with silent template" if silent_template is not None else "no silent template"
             print(
-                f"Cached {len(whisper_chunks)} audio chunks for source {audio_source}: {audio_path} ({len(silent_chunks)} silent)")
+                f"Cached {len(whisper_chunks)} audio chunks for source {audio_source}: {audio_path} ({len(silent_chunks)} silent, {template_status})")
             return whisper_chunks
 
         except Exception as e:
@@ -292,6 +316,7 @@ class LipSyncer(BaseProcessor):
             # Choose the right audio chunks and silent chunks
             chunks = self._whisper_chunks if audio_source == 1 else self._whisper_chunks_2
             silent_chunks = self._silent_chunks if audio_source == 1 else self._silent_chunks_2
+            silent_template = self._silent_template if audio_source == 1 else self._silent_template_2
 
             # Properly check if chunks is None or empty without tensor boolean evaluation
             if chunks is None:
@@ -311,16 +336,22 @@ class LipSyncer(BaseProcessor):
 
             # Use modulo to cycle through chunks like datagen does
             chunk_index = frame_index % chunks_len
-            audio_chunk = chunks[chunk_index]
 
             # Check if this chunk is silent
             is_silent = silent_chunks is not None and chunk_index in silent_chunks
 
-            # Ensure we return a proper tensor
-            if isinstance(audio_chunk, torch.Tensor):
-                return audio_chunk, is_silent
+            # If silent and we have a silent template, use the template instead
+            if is_silent and silent_template is not None:
+                #print(f"Using silent template for frame {frame_index} (source {audio_source})")
+                return silent_template, is_silent
             else:
-                return None, False
+                # Use the actual audio chunk
+                audio_chunk = chunks[chunk_index]
+                # Ensure we return a proper tensor
+                if isinstance(audio_chunk, torch.Tensor):
+                    return audio_chunk, is_silent
+                else:
+                    return None, False
 
         except Exception as e:
             print(f"Error getting audio chunk for frame {frame_index}: {e}")
@@ -351,6 +382,19 @@ class LipSyncer(BaseProcessor):
                 logger.error(f"✗ Failed to download {model_key}", __name__)
                 all_downloaded = False
 
+        # Create proper mask using the same system as face_swapper
+        self.masker = FaceMasker()
+
+        # Ensure we have good defaults for lip syncing if settings are not configured
+        face_mask_blur = state_manager.get_item('face_mask_blur') or 0.3
+        self.face_mask_padding = state_manager.get_item('face_mask_padding') or (0, 0, 0, 0)
+        self.face_mask_types = ['region' 'occlusion']
+        self.face_mask_regions = state_manager.get_item('face_mask_regions') or ['mouth']
+
+        # For lip syncing, we want more aggressive blur around mouth area
+        # Increase blur amount for better feathering
+        self.enhanced_blur = max(face_mask_blur, 0.4)  # Ensure minimum blur for smooth edges
+
         return all_downloaded
 
     def pre_process(self, mode: ProcessMode) -> bool:
@@ -368,6 +412,19 @@ class LipSyncer(BaseProcessor):
                 [state_manager.get_item('target_path'), state_manager.get_item('output_path')]):
             logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
             return False
+        # Create proper mask using the same system as face_swapper
+        if not self.masker:
+            self.masker = FaceMasker()
+
+        # Ensure we have good defaults for lip syncing if settings are not configured
+        face_mask_blur = state_manager.get_item('face_mask_blur') or 0.3
+        self.face_mask_padding = state_manager.get_item('face_mask_padding') or (0, 0, 0, 0)
+        self.face_mask_types = ['region']
+        self.face_mask_regions = state_manager.get_item('face_mask_regions') or ['mouth']
+
+        # For lip syncing, we want more aggressive blur around mouth area
+        # Increase blur amount for better feathering
+        self.enhanced_blur = max(face_mask_blur, 0.4)  # Ensure minimum blur for smooth edges
 
         # Initialize MuseTalk and process audio upfront
         self._initialize_musetalk()
@@ -393,14 +450,8 @@ class LipSyncer(BaseProcessor):
     def sync_lip(self, target_face: Face, audio_chunk: torch.Tensor, temp_vision_frame: VisionFrame) -> VisionFrame:
         """Main lip sync method using MuseTalk with properly processed audio chunk"""
         try:
-            # Ensure MuseTalk models are initialized
-            self._initialize_musetalk()
-
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-
             if audio_chunk is None:
-                audio_chunk = torch.randn(1, 50, 384, device=device, dtype=weight_dtype) * 0.05
+                audio_chunk = torch.randn(1, 50, 384, device=self.device, dtype=self.weight_dtype) * 0.05
 
             crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
                                                                             target_face.landmark_set.get('5/68'),
@@ -444,14 +495,14 @@ class LipSyncer(BaseProcessor):
             if audio_chunk.dim() == 2:
                 audio_chunk = audio_chunk.unsqueeze(0)  # Add batch dimension: [50, 384] -> [1, 50, 384]
 
-            audio_features = self._musetalk_pe(audio_chunk.to(device))
+            audio_features = self._musetalk_pe(audio_chunk.to(self.device))
 
             # MuseTalk inference - single step latent space inpainting
             latents = self._musetalk_vae.get_latents_for_unet(face_crop_resized)
-            latents = latents.to(dtype=weight_dtype, device=device)
-            audio_features = audio_features.to(dtype=weight_dtype, device=device)
+            latents = latents.to(dtype=self.weight_dtype, device=self.device)
+            audio_features = audio_features.to(dtype=self.weight_dtype, device=self.device)
 
-            timesteps = torch.tensor([0], device=device, dtype=weight_dtype)
+            timesteps = torch.tensor([0], device=self.device, dtype=self.weight_dtype)
 
             # Single-step UNet inference (NOT diffusion - this is key!)
             with torch.no_grad():
@@ -467,25 +518,12 @@ class LipSyncer(BaseProcessor):
             blended_frame = crop_vision_frame.copy()
             blended_frame[y1:y2, x1:x2] = result_frame_resized
 
-            # Create proper mask using the same system as face_swapper
-            masker = FaceMasker()
-
-            # Ensure we have good defaults for lip syncing if settings are not configured
-            face_mask_blur = state_manager.get_item('face_mask_blur') or 0.3
-            face_mask_padding = state_manager.get_item('face_mask_padding') or (0, 0, 0, 0)
-            face_mask_types = ['region']
-            face_mask_regions = state_manager.get_item('face_mask_regions') or ['mouth']
-
-            # For lip syncing, we want more aggressive blur around mouth area
-            # Increase blur amount for better feathering
-            enhanced_blur = max(face_mask_blur, 0.4)  # Ensure minimum blur for smooth edges
-
-            crop_mask = masker.create_combined_mask(
-                face_mask_types,
+            crop_mask = self.masker.create_combined_mask(
+                self.face_mask_types,
                 blended_frame.shape[:2][::-1],
-                enhanced_blur,
-                face_mask_padding,
-                face_mask_regions,
+                self.enhanced_blur,
+                self.face_mask_padding,
+                self.face_mask_regions,
                 blended_frame,
                 temp_vision_frame,
                 target_face.landmark_set.get('5/68'),
@@ -577,17 +615,25 @@ class LipSyncer(BaseProcessor):
                 logger.warn("No reference faces available for 'reference' mode", __name__)
                 return target_vision_frame
 
-            # Process each valid reference face
-            for ref_idx, ref_face in reference_faces.items():
-                if ref_face is None:
+            # Process each source's reference faces
+            # reference_faces is Dict[int, List[Face]] where key = source_index, value = list of faces
+            for source_index, ref_faces in reference_faces.items():
+                if reference_faces is None or len(reference_faces) == 0:
                     continue
 
-                # Get the corresponding audio chunk
-                audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1 if ref_idx == 0 else 2)
+                # Map source index to audio source (source_index 0 → audio_source 1, etc.)
+                if isinstance(source_index, str):
+                    try:
+                        source_index = int(source_index)
+                    except ValueError:
+                        logger.error(f"Invalid source index {source_index}, skipping", __name__)
+                        continue
+                audio_source = source_index + 1
+                audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, audio_source)
 
                 # Find similar faces
                 try:
-                    similar_faces = find_similar_faces(many_faces, ref_face,
+                    similar_faces = find_similar_faces(many_faces, ref_faces,
                                                        state_manager.get_item('reference_face_distance'))
 
                     if similar_faces:
@@ -596,10 +642,10 @@ class LipSyncer(BaseProcessor):
                                 target_vision_frame = self.sync_lip(similar_face, audio_chunk, target_vision_frame)
                             except Exception as e:
                                 logger.error(
-                                    f"Error while syncing lip for similar face {sim_idx + 1} of reference {ref_idx + 1}: {e}",
+                                    f"Error while syncing lip for similar face {sim_idx + 1} of reference source {source_index + 1}: {e}",
                                     __name__)
                 except Exception as e:
-                    logger.error(f"Error finding similar faces for reference {ref_idx + 1}: {e}", __name__)
+                    logger.error(f"Error finding similar faces for reference source {source_index + 1}: {e}", __name__)
 
         return target_vision_frame
 
