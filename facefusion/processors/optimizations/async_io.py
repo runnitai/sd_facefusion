@@ -5,15 +5,15 @@ Provides producer/consumer patterns for frame reading/writing with configurable 
 
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from queue import Queue, Empty, Full
-from typing import List, Optional, Callable, Any, Dict, Tuple, Union
-from pathlib import Path
 import time
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
+from queue import Queue, Empty, Full
+from typing import List, Optional, Any, Dict
 
 from facefusion import logger
 from facefusion.vision import read_image, write_image
+
 
 @dataclass
 class FrameData:
@@ -24,10 +24,11 @@ class FrameData:
     metadata: Dict[str, Any] = None
     timestamp: float = 0.0
 
+
 class AsyncFrameReader:
     """Asynchronous frame reader with configurable concurrency."""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  max_queue_size: int = 16,
                  num_workers: int = 4,
                  use_processes: bool = False):
@@ -42,7 +43,7 @@ class AsyncFrameReader:
         self.max_queue_size = max_queue_size
         self.num_workers = num_workers
         self.use_processes = use_processes
-        
+
         self.input_queue: Queue[str] = Queue(maxsize=max_queue_size)
         self.output_queue: Queue[FrameData] = Queue(maxsize=max_queue_size)
         self.executor = None
@@ -54,46 +55,46 @@ class AsyncFrameReader:
             'start_time': 0,
             'total_read_time': 0
         }
-        
+
         logger.debug(f"Initialized AsyncFrameReader: queue_size={max_queue_size}, "
-                    f"workers={num_workers}, processes={use_processes}", __name__)
-    
+                     f"workers={num_workers}, processes={use_processes}", __name__)
+
     def start(self) -> None:
         """Start the async frame reader."""
         if self.is_running:
             return
-        
+
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
         self.executor = executor_class(max_workers=self.num_workers)
         self.is_running = True
         self.stats['start_time'] = time.time()
-        
+
         logger.debug("AsyncFrameReader started", __name__)
-    
+
     def stop(self) -> None:
         """Stop the async frame reader and cleanup resources."""
         if not self.is_running:
             return
-        
+
         self.is_running = False
-        
+
         # Cancel pending futures
         for future in self.futures:
             future.cancel()
-        
+
         # Shutdown executor
         if self.executor:
             self.executor.shutdown(wait=True)
             self.executor = None
-        
+
         # Clear queues
         self._clear_queue(self.input_queue)
         self._clear_queue(self.output_queue)
-        
+
         self.futures.clear()
-        
+
         logger.debug("AsyncFrameReader stopped", __name__)
-    
+
     def _clear_queue(self, queue: Queue) -> None:
         """Clear all items from a queue."""
         while True:
@@ -101,14 +102,14 @@ class AsyncFrameReader:
                 queue.get_nowait()
             except Empty:
                 break
-    
+
     def _read_frame_worker(self, frame_path: str, frame_number: int) -> FrameData:
         """Worker function to read a single frame."""
         read_start = time.time()
         try:
             frame_data = read_image(frame_path)
             read_time = time.time() - read_start
-            
+
             return FrameData(
                 frame_number=frame_number,
                 frame_path=frame_path,
@@ -126,37 +127,38 @@ class AsyncFrameReader:
                 metadata={'error': str(e)},
                 timestamp=time.time()
             )
-    
+
     def add_frame_paths(self, frame_paths: List[str]) -> None:
         """Add frame paths to the reading queue."""
         if not self.is_running:
             self.start()
-        
+
         # Submit reading tasks
         for frame_number, frame_path in enumerate(frame_paths):
             if not self.is_running:
                 break
-                
+
             future = self.executor.submit(self._read_frame_worker, frame_path, frame_number)
             self.futures.append(future)
-        
+
         # Start monitoring completed futures
         self._monitor_futures()
-    
+
     def _monitor_futures(self) -> None:
         """Monitor completed futures and add results to output queue."""
+
         def monitor():
             for future in as_completed(self.futures):
                 if not self.is_running:
                     break
-                
+
                 try:
                     frame_data = future.result()
                     if frame_data.frame_data is not None:
                         self.stats['frames_read'] += 1
                         if frame_data.metadata and 'read_time' in frame_data.metadata:
                             self.stats['total_read_time'] += frame_data.metadata['read_time']
-                    
+
                     # Add to output queue (block if queue is full)
                     while self.is_running:
                         try:
@@ -164,28 +166,28 @@ class AsyncFrameReader:
                             break
                         except Full:
                             continue
-                            
+
                 except Exception as e:
                     logger.error(f"Error processing future result: {e}", __name__)
                     self.stats['read_errors'] += 1
-        
+
         # Run monitoring in a separate thread
         monitor_thread = threading.Thread(target=monitor, daemon=True)
         monitor_thread.start()
-    
+
     def get_frame(self, timeout: Optional[float] = None) -> Optional[FrameData]:
         """Get the next available frame."""
         try:
             return self.output_queue.get(timeout=timeout)
         except Empty:
             return None
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get reading statistics."""
         elapsed_time = time.time() - self.stats['start_time'] if self.is_running else 0
-        avg_read_time = (self.stats['total_read_time'] / self.stats['frames_read'] 
-                        if self.stats['frames_read'] > 0 else 0)
-        
+        avg_read_time = (self.stats['total_read_time'] / self.stats['frames_read']
+                         if self.stats['frames_read'] > 0 else 0)
+
         return {
             'frames_read': self.stats['frames_read'],
             'read_errors': self.stats['read_errors'],
@@ -195,10 +197,11 @@ class AsyncFrameReader:
             'is_running': self.is_running
         }
 
+
 class AsyncFrameWriter:
     """Asynchronous frame writer with configurable concurrency."""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  max_queue_size: int = 16,
                  num_workers: int = 2,
                  use_processes: bool = False):
@@ -213,7 +216,7 @@ class AsyncFrameWriter:
         self.max_queue_size = max_queue_size
         self.num_workers = num_workers
         self.use_processes = use_processes
-        
+
         self.write_queue: Queue[FrameData] = Queue(maxsize=max_queue_size)
         self.executor = None
         self.futures = []
@@ -224,50 +227,50 @@ class AsyncFrameWriter:
             'start_time': 0,
             'total_write_time': 0
         }
-        
+
         logger.debug(f"Initialized AsyncFrameWriter: queue_size={max_queue_size}, "
-                    f"workers={num_workers}, processes={use_processes}", __name__)
-    
+                     f"workers={num_workers}, processes={use_processes}", __name__)
+
     def start(self) -> None:
         """Start the async frame writer."""
         if self.is_running:
             return
-        
+
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
         self.executor = executor_class(max_workers=self.num_workers)
         self.is_running = True
         self.stats['start_time'] = time.time()
-        
+
         # Start writer worker
         self._start_writer_worker()
-        
+
         logger.debug("AsyncFrameWriter started", __name__)
-    
+
     def stop(self) -> None:
         """Stop the async frame writer and cleanup resources."""
         if not self.is_running:
             return
-        
+
         self.is_running = False
-        
+
         # Wait for pending writes to complete
         for future in self.futures:
             try:
                 future.result(timeout=5.0)  # Wait up to 5 seconds per write
             except:
                 pass
-        
+
         # Shutdown executor
         if self.executor:
             self.executor.shutdown(wait=True)
             self.executor = None
-        
+
         # Clear queues
         self._clear_queue(self.write_queue)
         self.futures.clear()
-        
+
         logger.debug("AsyncFrameWriter stopped", __name__)
-    
+
     def _clear_queue(self, queue: Queue) -> None:
         """Clear all items from a queue."""
         while True:
@@ -275,32 +278,33 @@ class AsyncFrameWriter:
                 queue.get_nowait()
             except Empty:
                 break
-    
+
     def _write_frame_worker(self, frame_data: FrameData, output_path: str) -> bool:
         """Worker function to write a single frame."""
         write_start = time.time()
         try:
             success = write_image(output_path, frame_data.frame_data)
             write_time = time.time() - write_start
-            
+
             if success:
                 self.stats['frames_written'] += 1
                 self.stats['total_write_time'] += write_time
                 logger.debug(f"Wrote frame {frame_data.frame_number} to {output_path} "
-                           f"in {write_time*1000:.1f}ms", __name__)
+                             f"in {write_time * 1000:.1f}ms", __name__)
             else:
                 logger.error(f"Failed to write frame {frame_data.frame_number} to {output_path}", __name__)
                 self.stats['write_errors'] += 1
-            
+
             return success
-            
+
         except Exception as e:
             logger.error(f"Error writing frame {frame_data.frame_number} to {output_path}: {e}", __name__)
             self.stats['write_errors'] += 1
             return False
-    
+
     def _start_writer_worker(self) -> None:
         """Start the writer worker thread."""
+
         def writer_worker():
             while self.is_running:
                 try:
@@ -308,7 +312,7 @@ class AsyncFrameWriter:
                     frame_data = self.write_queue.get(timeout=0.1)
                     if frame_data is None:
                         continue
-                    
+
                     # Determine output path
                     if frame_data.metadata and 'output_path' in frame_data.metadata:
                         output_path = frame_data.metadata['output_path']
@@ -317,43 +321,43 @@ class AsyncFrameWriter:
                         base_dir = os.path.dirname(frame_data.frame_path)
                         filename = f"frame_{frame_data.frame_number:06d}.png"
                         output_path = os.path.join(base_dir, filename)
-                    
+
                     # Submit write task
                     future = self.executor.submit(self._write_frame_worker, frame_data, output_path)
                     self.futures.append(future)
-                    
+
                 except Empty:
                     continue
                 except Exception as e:
                     logger.error(f"Error in writer worker: {e}", __name__)
-        
+
         writer_thread = threading.Thread(target=writer_worker, daemon=True)
         writer_thread.start()
-    
-    def add_frame(self, frame_data: FrameData, output_path: Optional[str] = None, 
+
+    def add_frame(self, frame_data: FrameData, output_path: Optional[str] = None,
                   timeout: Optional[float] = None) -> bool:
         """Add a frame to the writing queue."""
         if not self.is_running:
             self.start()
-        
+
         if output_path:
             if not frame_data.metadata:
                 frame_data.metadata = {}
             frame_data.metadata['output_path'] = output_path
-        
+
         try:
             self.write_queue.put(frame_data, timeout=timeout)
             return True
         except Full:
-            logger.warning("Write queue is full, frame write may be delayed", __name__)
+            logger.warn("Write queue is full, frame write may be delayed", __name__)
             return False
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get writing statistics."""
         elapsed_time = time.time() - self.stats['start_time'] if self.is_running else 0
-        avg_write_time = (self.stats['total_write_time'] / self.stats['frames_written'] 
-                         if self.stats['frames_written'] > 0 else 0)
-        
+        avg_write_time = (self.stats['total_write_time'] / self.stats['frames_written']
+                          if self.stats['frames_written'] > 0 else 0)
+
         return {
             'frames_written': self.stats['frames_written'],
             'write_errors': self.stats['write_errors'],
@@ -363,10 +367,11 @@ class AsyncFrameWriter:
             'is_running': self.is_running
         }
 
+
 class AsyncIOManager:
     """Manager for coordinated async I/O operations."""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  read_queue_size: int = 16,
                  write_queue_size: int = 16,
                  read_workers: int = 4,
@@ -374,38 +379,40 @@ class AsyncIOManager:
         """Initialize async I/O manager."""
         self.reader = AsyncFrameReader(read_queue_size, read_workers)
         self.writer = AsyncFrameWriter(write_queue_size, write_workers)
-        
+
     def start(self) -> None:
         """Start both reader and writer."""
         self.reader.start()
         self.writer.start()
         logger.debug("AsyncIOManager started", __name__)
-    
+
     def stop(self) -> None:
         """Stop both reader and writer."""
         self.reader.stop()
         self.writer.stop()
         logger.debug("AsyncIOManager stopped", __name__)
-    
+
     def get_combined_stats(self) -> Dict[str, Any]:
         """Get combined statistics from reader and writer."""
         reader_stats = self.reader.get_stats()
         writer_stats = self.writer.get_stats()
-        
+
         return {
             'reader': reader_stats,
             'writer': writer_stats,
             'io_efficiency': {
                 'read_fps': reader_stats['frames_read'] / max(reader_stats['elapsed_time'], 0.001),
                 'write_fps': writer_stats['frames_written'] / max(writer_stats['elapsed_time'], 0.001),
-                'error_rate': ((reader_stats['read_errors'] + writer_stats['write_errors']) / 
-                              max(reader_stats['frames_read'] + writer_stats['frames_written'], 1))
+                'error_rate': ((reader_stats['read_errors'] + writer_stats['write_errors']) /
+                               max(reader_stats['frames_read'] + writer_stats['frames_written'], 1))
             }
         }
+
 
 # Global async I/O manager instance
 _global_io_manager: Optional[AsyncIOManager] = None
 _io_manager_lock = threading.Lock()
+
 
 def get_global_io_manager() -> AsyncIOManager:
     """Get or create the global async I/O manager."""
@@ -415,7 +422,7 @@ def get_global_io_manager() -> AsyncIOManager:
             # Configure based on system resources
             read_workers = min(8, (os.cpu_count() or 4) // 2)
             write_workers = min(4, (os.cpu_count() or 4) // 4)
-            
+
             _global_io_manager = AsyncIOManager(
                 read_queue_size=32,
                 write_queue_size=16,
@@ -424,10 +431,11 @@ def get_global_io_manager() -> AsyncIOManager:
             )
         return _global_io_manager
 
+
 def cleanup_global_io_manager() -> None:
     """Cleanup the global async I/O manager."""
     global _global_io_manager
     with _io_manager_lock:
         if _global_io_manager:
             _global_io_manager.stop()
-            _global_io_manager = None 
+            _global_io_manager = None

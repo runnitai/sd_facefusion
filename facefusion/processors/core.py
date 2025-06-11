@@ -18,6 +18,7 @@ from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.optimizations.async_io import get_global_io_manager, cleanup_global_io_manager, FrameData
 from facefusion.processors.optimizations.batch_scheduler import clear_all_schedulers
 from facefusion.typing import ProcessFrames, QueuePayload
+from facefusion.inference_manager import get_multi_gpu_stats, MultiGPUInferenceWrapper
 
 PROCESSORS_METHODS = \
     [
@@ -121,6 +122,13 @@ def clear_processors_modules(processors: List[str]) -> None:
 def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFrames) -> None:
     queue_payloads = create_queue_payloads(temp_frame_paths)
     
+    # Check for multi-GPU optimization
+    multi_gpu_stats = get_multi_gpu_stats()
+    
+    if multi_gpu_stats['device_map']:
+        logger.info(f"Multi-GPU processing active across {len(multi_gpu_stats['memory_usage'])} GPUs", __name__)
+        logger.debug(f"GPU device mapping: {multi_gpu_stats['device_map']}", __name__)
+    
     # Determine if we should use async I/O based on frame count and system resources
     use_async_io = len(temp_frame_paths) > 50  # Only for larger workloads
     io_manager = None
@@ -136,11 +144,23 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
 
     with tqdm(total=len(queue_payloads), desc=wording.get('processing'), unit='frame', ascii=' =',
               disable=state_manager.get_item('log_level') in ['warn', 'error']) as progress:
+        
+        # Initialize optimization tracking
+        optimization_stats = {
+            'multi_gpu_active': bool(multi_gpu_stats['device_map']),
+            'gpu_count': len(multi_gpu_stats['memory_usage']),
+            'async_io_active': use_async_io,
+            'batch_processing': 0,
+            'single_processing': 0
+        }
+        
         progress.set_postfix(
             {
                 'execution_providers': state_manager.get_item('execution_providers'),
                 'execution_thread_count': state_manager.get_item('execution_thread_count'),
-                'execution_queue_count': state_manager.get_item('execution_queue_count')
+                'execution_queue_count': state_manager.get_item('execution_queue_count'),
+                'multi_gpu': f"{optimization_stats['gpu_count']}x" if optimization_stats['multi_gpu_active'] else 'off',
+                'async_io': 'on' if optimization_stats['async_io_active'] else 'off'
             })
         status = FFStatus()
         processing_start_time = time.time()
@@ -186,17 +206,24 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
         processing_time = time.time() - processing_start_time
         frames_per_second = len(temp_frame_paths) / max(processing_time, 0.001)
         
+        # Enhanced performance logging with optimization details
         logger.info(f"Processed {len(temp_frame_paths)} frames in {processing_time:.2f}s "
                    f"({frames_per_second:.1f} FPS)", __name__)
+        
+        if optimization_stats['multi_gpu_active']:
+            logger.info(f"Multi-GPU: {optimization_stats['gpu_count']} GPUs active", __name__)
+        
+        if optimization_stats['async_io_active']:
+            logger.info(f"Async I/O: Active for {len(temp_frame_paths)} frames", __name__)
         
         # Log async I/O statistics if used
         if use_async_io and io_manager:
             stats = io_manager.get_combined_stats()
             if stats:
-                logger.debug(f"Async I/O stats - Read: {stats['reader']['frames_read']} frames, "
-                           f"Write: {stats['writer']['frames_written']} frames, "
-                           f"Efficiency: {stats['io_efficiency']['read_fps']:.1f} read FPS, "
-                           f"{stats['io_efficiency']['write_fps']:.1f} write FPS", __name__)
+                logger.info(f"I/O Performance - Read: {stats['reader']['frames_read']} frames "
+                           f"({stats['io_efficiency']['read_fps']:.1f} FPS), "
+                           f"Write: {stats['writer']['frames_written']} frames "
+                           f"({stats['io_efficiency']['write_fps']:.1f} FPS)", __name__)
 
 
 def create_queue(queue_payloads: List[QueuePayload]) -> Queue[QueuePayload]:

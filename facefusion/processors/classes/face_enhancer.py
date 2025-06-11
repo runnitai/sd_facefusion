@@ -21,7 +21,6 @@ from facefusion.typing import ApplyStateItem, Args, Face, ModelSet, ProcessMode,
     QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, write_image
 from facefusion.workers.classes.face_masker import FaceMasker
-from facefusion.workers.core import clear_worker_modules
 
 
 def prepare_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:

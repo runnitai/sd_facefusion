@@ -3,8 +3,6 @@ import shutil
 import sys
 from time import time
 
-import numpy
-
 from facefusion import logger, process_manager, state_manager, wording
 from facefusion.args import apply_args, collect_job_args, reduce_step_args
 from facefusion.common_helper import get_first
@@ -19,12 +17,14 @@ from facefusion.processors.core import get_processors_modules
 from facefusion.statistics import conditional_log_statistics
 from facefusion.temp_helper import clear_temp_directory, create_temp_directory, get_temp_file_path, \
     get_temp_frame_paths, move_temp_file
-from facefusion.typing import Args, ErrorCode, Face
+from facefusion.typing import Args, ErrorCode
 from facefusion.uis.ui_helper import suggest_output_path
 from facefusion.vision import pack_resolution, restrict_image_resolution, \
-    restrict_video_fps, restrict_video_resolution, unpack_resolution, detect_image_resolution, create_image_resolutions
+    restrict_video_fps, restrict_video_resolution, unpack_resolution, detect_image_resolution
 from facefusion.workers.classes.content_analyser import ContentAnalyser
 from facefusion.workers.core import get_worker_modules
+from facefusion.inference_manager import get_multi_gpu_stats, detect_available_gpus, get_gpu_memory_usage
+from facefusion.execution import has_execution_provider
 
 
 def route(args: Args) -> None:
@@ -62,6 +62,8 @@ def route(args: Args) -> None:
             hard_exit(1)
         error_code = route_job_runner()
         hard_exit(error_code)
+        return None
+    return None
 
 
 def pre_check() -> bool:
@@ -91,17 +93,20 @@ def processors_pre_check() -> bool:
 
 def conditional_process() -> ErrorCode:
     start_time = time()
-    
+
+    # Enable performance optimizations
+    enable_optimizations()
+
     # Initialize processor optimizations
     processor_modules = get_processors_modules(state_manager.get_item('processors'))
     processing_mode = determine_processing_mode()
-    
+
     for processor_module in processor_modules:
         if not processor_module.pre_process('output'):
             return 2
         # Initialize batch scheduler for each processor
         processor_module.init_batch_scheduler(processing_mode)
-    
+
     # average_reference_faces()
     target_folder = state_manager.get_item('target_folder')
     logger.info(f"Target folder: {target_folder}", "CORE")
@@ -270,7 +275,7 @@ def process_step(job_id: str, step_index: int, step_args: Args) -> bool:
     source_paths = state_manager.get_item('source_paths')
     source_paths_2 = state_manager.get_item('source_paths_2')
     source_frame_dict = state_manager.get_item('source_frame_dict')
-    
+
     clear_reference_faces()
     step_total = job_manager.count_step_total(job_id)
     step_args.update(collect_job_args())
@@ -279,7 +284,7 @@ def process_step(job_id: str, step_index: int, step_args: Args) -> bool:
     logger.info(wording.get('processing_step').format(step_current=step_index + 1, step_total=step_total), __name__)
     if common_pre_check() and processors_pre_check():
         error_code = conditional_process()
-        
+
         # Restore source paths after processing
         if source_paths:
             state_manager.set_item('source_paths', source_paths)
@@ -287,7 +292,7 @@ def process_step(job_id: str, step_index: int, step_args: Args) -> bool:
             state_manager.set_item('source_paths_2', source_paths_2)
         if source_frame_dict:
             state_manager.set_item('source_frame_dict', source_frame_dict)
-            
+
         return error_code == 0
     return False
 
@@ -327,14 +332,14 @@ def process_image(start_time: float, is_batch: bool = False, reference_faces=Non
     # process image
     temp_file_path = get_temp_file_path(state_manager.get_item('target_path'))
     processing_mode = determine_processing_mode()
-    
+
     for processor_module in get_processors_modules(state_manager.get_item('processors')):
         logger.info(wording.get('processing'), processor_module.display_name)
         # Initialize optimization if not already done
         if not processor_module.batch_scheduler:
             processor_module.init_batch_scheduler(processing_mode)
-        
-        processor_module.process_image(temp_file_path, temp_file_path, reference_faces)
+
+        processor_module.process_image(temp_file_path, temp_file_path)
         if not is_batch:
             processor_module.post_process()
     if is_process_stopping():
@@ -398,15 +403,23 @@ def process_video(start_time: float) -> ErrorCode:
     if temp_frame_paths:
         processing_mode = determine_processing_mode()
         processor_modules = get_processors_modules(state_manager.get_item('processors'))
-        
+
+        # Log optimization status
+        multi_gpu_stats = get_multi_gpu_stats()
+        if multi_gpu_stats['device_map']:
+            logger.info(f"Video processing with {len(multi_gpu_stats['memory_usage'])} GPU parallel acceleration",
+                        __name__)
+        else:
+            logger.info(f"Video processing in single GPU mode", __name__)
+
         for processor_module in processor_modules:
             print(f"Processing {processor_module.display_name}")
             logger.info(wording.get('processing'), processor_module.display_name)
-            
+
             # Initialize optimization if not already done
             if not processor_module.batch_scheduler:
                 processor_module.init_batch_scheduler(processing_mode)
-            
+
             processor_module.process_video(temp_frame_paths)
             print(f"Post processing {processor_module.display_name}")
             processor_module.post_process()
@@ -486,7 +499,7 @@ def process_video(start_time: float) -> ErrorCode:
 def determine_processing_mode() -> str:
     """Determine the processing mode based on current configuration."""
     command = state_manager.get_item('command')
-    
+
     if command == 'run':
         # UI mode - optimize for responsiveness
         return "preview"
@@ -496,6 +509,34 @@ def determine_processing_mode() -> str:
     else:
         # Default balanced mode
         return "default"
+
+
+def enable_optimizations() -> None:
+    """Enable performance optimizations."""
+    # Enable multi-GPU processing by default if CUDA is available
+    enable_multi_gpu = state_manager.get_item('enable_multi_gpu')
+    if not enable_multi_gpu:
+        state_manager.set_item('enable_multi_gpu', True)
+        logger.info("Multi-GPU processing enabled for better performance", __name__)
+    
+    # Diagnostic GPU information
+    if has_execution_provider('cuda'):
+        available_gpus = detect_available_gpus()
+        memory_usage = get_gpu_memory_usage()
+        
+        logger.info(f"GPU Diagnostics: {len(available_gpus)} GPUs available: {available_gpus}", __name__)
+        
+        if memory_usage:
+            for gpu_id, usage in memory_usage.items():
+                logger.debug(f"  GPU {gpu_id}: {usage:.1f}% memory used", __name__)
+        
+        if len(available_gpus) <= 1:
+            logger.info("Multi-GPU speedups require 2+ GPUs. Single GPU optimizations active.", __name__)
+        else:
+            logger.info(f"Multi-GPU parallel processing available across {len(available_gpus)} GPUs", __name__)
+    else:
+        logger.warn("CUDA not available - falling back to CPU processing", __name__)
+
 
 def is_process_stopping() -> bool:
     if process_manager.is_stopping():

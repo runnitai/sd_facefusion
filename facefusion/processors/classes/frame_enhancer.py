@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
 from typing import List, Tuple
-import time
 
 import cv2
 import numpy
@@ -11,14 +10,13 @@ from facefusion.filesystem import in_directory, is_image, is_video, resolve_rela
 from facefusion.jobs import job_store
 from facefusion.processors import choices as processors_choices
 from facefusion.processors.base_processor import BaseProcessor
-from facefusion.processors.typing import FrameEnhancerInputs
 from facefusion.processors.optimizations.gpu_cv_ops import resize_gpu_or_cpu
+from facefusion.processors.typing import FrameEnhancerInputs
 from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame
 from facefusion.vision import create_tile_frames, merge_tile_frames, read_image, read_static_image, write_image
-from facefusion.workers.core import clear_worker_modules
 
 
 def prepare_tile_frame(vision_tile_frame: VisionFrame) -> VisionFrame:
@@ -344,20 +342,37 @@ class FrameEnhancer(BaseProcessor):
         # Prepare all tiles for processing
         prepared_tiles = [prepare_tile_frame(tile) for tile in tile_vision_frames]
         
-        # Use adaptive batching if available and beneficial
-        if self.batch_scheduler and len(prepared_tiles) > 1:
+        # Check if we have multi-GPU wrapper for parallel processing
+        frame_enhancer = self.get_inference_pool().get('frame_enhancer')
+        from facefusion.inference_manager import MultiGPUInferenceWrapper
+        
+        if isinstance(frame_enhancer, MultiGPUInferenceWrapper) and len(prepared_tiles) > 1:
+            # Use true multi-GPU parallel processing
+            logger.debug(f"Using multi-GPU parallel processing for {len(prepared_tiles)} enhancement tiles", __name__)
+            processed_tiles = self.forward_batch(prepared_tiles)
+            # Track metrics
+            self.optimization_stats['multi_gpu_batches'] += 1
+            self.optimization_stats['total_batch_size'] += len(prepared_tiles)
+        elif self.batch_scheduler and len(prepared_tiles) > 1:
+            # Use adaptive batching for single GPU
             def batch_inference(tiles_batch):
                 return self.forward_batch(tiles_batch)
             
             processed_tiles = self.process_with_adaptive_batching(
                 prepared_tiles, batch_inference, mode="default"
             )
+            # Track metrics
+            self.optimization_stats['adaptive_batches'] += 1
+            self.optimization_stats['total_batch_size'] += len(prepared_tiles)
         else:
             # Process individually for small numbers of tiles
             processed_tiles = []
             for tile_vision_frame in prepared_tiles:
                 processed_tile = self.forward(tile_vision_frame)
                 processed_tiles.append(processed_tile)
+                # Track metrics
+                self.optimization_stats['single_operations'] += 1
+                self.optimization_stats['total_batch_size'] += 1
         
         # Normalize all processed tiles
         for index, processed_tile in enumerate(processed_tiles):
@@ -374,23 +389,39 @@ class FrameEnhancer(BaseProcessor):
     def forward(self, tile_vision_frame: VisionFrame) -> VisionFrame:
         frame_enhancer = self.get_inference_pool().get('frame_enhancer')
 
-        with conditional_thread_semaphore():
+        # Check if we have multi-GPU wrapper for parallel processing
+        from facefusion.inference_manager import MultiGPUInferenceWrapper
+        if isinstance(frame_enhancer, MultiGPUInferenceWrapper):
+            # Use regular run method for individual tiles - still benefits from round-robin load distribution
             tile_vision_frame = frame_enhancer.run(None, {'input': tile_vision_frame})[0]
+        else:
+            # Original single GPU path
+            with conditional_thread_semaphore():
+                tile_vision_frame = frame_enhancer.run(None, {'input': tile_vision_frame})[0]
 
         return tile_vision_frame
     
     def forward_batch(self, tile_vision_frames: List[VisionFrame]) -> List[VisionFrame]:
         """Batch inference version of forward for improved throughput."""
         frame_enhancer = self.get_inference_pool().get('frame_enhancer')
-        results = []
         
-        with conditional_thread_semaphore():
-            for tile_vision_frame in tile_vision_frames:
-                # For now, process individually but this could be batched at the ONNX level
-                result = frame_enhancer.run(None, {'input': tile_vision_frame})[0]
-                results.append(result)
-        
-        return results
+        # Check if we have multi-GPU wrapper for parallel processing
+        from facefusion.inference_manager import MultiGPUInferenceWrapper
+        if isinstance(frame_enhancer, MultiGPUInferenceWrapper) and len(tile_vision_frames) > 1:
+            # Prepare all inputs for batch processing
+            batch_inputs = [{'input': tile_frame} for tile_frame in tile_vision_frames]
+            
+            # Process batch in parallel across GPUs
+            batch_results = frame_enhancer.run_batch_parallel(None, batch_inputs)
+            return [result[0] for result in batch_results]
+        else:
+            # Fallback to single processing
+            results = []
+            with conditional_thread_semaphore():
+                for tile_vision_frame in tile_vision_frames:
+                    result = frame_enhancer.run(None, {'input': tile_vision_frame})[0]
+                    results.append(result)
+            return results
 
     def process_frame(self, inputs: FrameEnhancerInputs) -> VisionFrame:
         target_vision_frame = inputs.get('target_vision_frame')

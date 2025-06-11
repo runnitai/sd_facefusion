@@ -174,11 +174,11 @@ def update_source_faces(file_paths: List[str]) -> None:
 def process_internal(is_ff_enabled, image, source_paths=None):
     if not is_ff_enabled:
         print("FaceFusion is disabled")
-        return
+        return None
 
     if not source_paths or not any(source_paths):
         print("No source faces selected")
-        return
+        return None
 
     print("FaceFusion is enabled")
     temp_dir = TEMP_DIRECTORY_PATH

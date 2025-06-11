@@ -9,10 +9,9 @@ from facefusion.filesystem import resolve_relative_path, in_directory, is_image,
 from facefusion.jobs import job_store
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import VisionFrame
-from facefusion.processors.optimizations.async_io import AsyncFrameReader
 from facefusion.style_network import Stylization, ReshapeTool, TransformerNet
 from facefusion.typing import QueuePayload, ApplyStateItem, Args, ProcessMode
-from facefusion.vision import read_image, read_static_image, write_image
+from facefusion.vision import read_static_image, write_image
 
 
 class StyleTransfer(BaseProcessor):

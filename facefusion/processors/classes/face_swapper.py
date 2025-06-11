@@ -501,8 +501,21 @@ class FaceSwapper(BaseProcessor):
 
         pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
         
-        # Use adaptive batching for pixel boost frames if available and beneficial
-        if self.batch_scheduler and len(pixel_boost_vision_frames) > 1:
+        # Use multi-GPU batch processing for pixel boost frames when available
+        face_swapper = self.get_inference_pool().get('face_swapper')
+        from facefusion.inference_manager import MultiGPUInferenceWrapper
+        
+        if isinstance(face_swapper, MultiGPUInferenceWrapper) and len(pixel_boost_vision_frames) > 1:
+            # Use true multi-GPU parallel processing
+            logger.debug(f"Using multi-GPU parallel processing for {len(pixel_boost_vision_frames)} pixel boost frames", __name__)
+            prepared_frames = [self.prepare_crop_frame(frame) for frame in pixel_boost_vision_frames]
+            swapped_frames = self.forward_swap_face_batch(source_face, prepared_frames, src_idx)
+            temp_vision_frames = [self.normalize_crop_frame(frame) for frame in swapped_frames]
+            # Track metrics
+            self.optimization_stats['multi_gpu_batches'] += 1
+            self.optimization_stats['total_batch_size'] += len(pixel_boost_vision_frames)
+        elif self.batch_scheduler and len(pixel_boost_vision_frames) > 1:
+            # Use adaptive batching for single GPU
             def batch_swap_inference(frames_batch):
                 results = []
                 for frame in frames_batch:
@@ -515,6 +528,9 @@ class FaceSwapper(BaseProcessor):
             temp_vision_frames = self.process_with_adaptive_batching(
                 pixel_boost_vision_frames, batch_swap_inference, mode="default"
             )
+            # Track metrics
+            self.optimization_stats['adaptive_batches'] += 1
+            self.optimization_stats['total_batch_size'] += len(pixel_boost_vision_frames)
         else:
             # Process individually for small numbers of frames
             for pixel_boost_vision_frame in pixel_boost_vision_frames:
@@ -522,6 +538,9 @@ class FaceSwapper(BaseProcessor):
                 pixel_boost_vision_frame = self.forward_swap_face(source_face, pixel_boost_vision_frame, src_idx)
                 pixel_boost_vision_frame = self.normalize_crop_frame(pixel_boost_vision_frame)
                 temp_vision_frames.append(pixel_boost_vision_frame)
+                # Track metrics
+                self.optimization_stats['single_operations'] += 1
+                self.optimization_stats['total_batch_size'] += 1
         
         crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
 
@@ -532,21 +551,75 @@ class FaceSwapper(BaseProcessor):
 
     def forward_swap_face(self, source_face: Face, crop_vision_frame: VisionFrame, src_idx: int) -> VisionFrame:
         face_swapper = self.get_inference_pool().get('face_swapper')
-        model_type = self.get_model_options().get('type')
-        face_swapper_inputs = {}
+        
+        # Check if we have multi-GPU wrapper for parallel processing
+        from facefusion.inference_manager import MultiGPUInferenceWrapper
+        if isinstance(face_swapper, MultiGPUInferenceWrapper):
+            # Use regular run method for individual frames - still benefits from round-robin load distribution
+            model_type = self.get_model_options().get('type')
+            face_swapper_inputs = {}
 
-        for face_swapper_input in face_swapper.get_inputs():
-            if face_swapper_input.name == 'source':
-                if model_type == 'blendswap' or model_type == 'uniface':
-                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_frame(source_face, src_idx)
-                else:
-                    face_swapper_inputs[face_swapper_input.name] = self.prepare_source_embedding(source_face, src_idx)
-            if face_swapper_input.name == 'target':
-                face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
+            for face_swapper_input in face_swapper.get_inputs():
+                if face_swapper_input.name == 'source':
+                    if model_type == 'blendswap' or model_type == 'uniface':
+                        face_swapper_inputs[face_swapper_input.name] = self.prepare_source_frame(source_face, src_idx)
+                    else:
+                        face_swapper_inputs[face_swapper_input.name] = self.prepare_source_embedding(source_face, src_idx)
+                if face_swapper_input.name == 'target':
+                    face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
 
-        with conditional_thread_semaphore():
             crop_vision_frame = face_swapper.run(None, face_swapper_inputs)[0][0]
+        else:
+            # Original single GPU path
+            model_type = self.get_model_options().get('type')
+            face_swapper_inputs = {}
+
+            for face_swapper_input in face_swapper.get_inputs():
+                if face_swapper_input.name == 'source':
+                    if model_type == 'blendswap' or model_type == 'uniface':
+                        face_swapper_inputs[face_swapper_input.name] = self.prepare_source_frame(source_face, src_idx)
+                    else:
+                        face_swapper_inputs[face_swapper_input.name] = self.prepare_source_embedding(source_face, src_idx)
+                if face_swapper_input.name == 'target':
+                    face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
+
+            with conditional_thread_semaphore():
+                crop_vision_frame = face_swapper.run(None, face_swapper_inputs)[0][0]
         return crop_vision_frame
+
+    def forward_swap_face_batch(self, source_face: Face, crop_vision_frames: List[VisionFrame], src_idx: int) -> List[VisionFrame]:
+        """Process multiple frames in parallel across GPUs for true speedup."""
+        face_swapper = self.get_inference_pool().get('face_swapper')
+        
+        # Check if we have multi-GPU wrapper for parallel processing
+        from facefusion.inference_manager import MultiGPUInferenceWrapper
+        if isinstance(face_swapper, MultiGPUInferenceWrapper) and len(crop_vision_frames) > 1:
+            # Prepare all inputs for batch processing
+            model_type = self.get_model_options().get('type')
+            batch_inputs = []
+            
+            for crop_vision_frame in crop_vision_frames:
+                face_swapper_inputs = {}
+                for face_swapper_input in face_swapper.get_inputs():
+                    if face_swapper_input.name == 'source':
+                        if model_type == 'blendswap' or model_type == 'uniface':
+                            face_swapper_inputs[face_swapper_input.name] = self.prepare_source_frame(source_face, src_idx)
+                        else:
+                            face_swapper_inputs[face_swapper_input.name] = self.prepare_source_embedding(source_face, src_idx)
+                    if face_swapper_input.name == 'target':
+                        face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
+                batch_inputs.append(face_swapper_inputs)
+            
+            # Process batch in parallel across GPUs
+            batch_results = face_swapper.run_batch_parallel(None, batch_inputs)
+            return [result[0][0] for result in batch_results]
+        else:
+            # Fallback to single processing
+            results = []
+            for crop_vision_frame in crop_vision_frames:
+                result = self.forward_swap_face(source_face, crop_vision_frame, src_idx)
+                results.append(result)
+            return results
 
     def prepare_source_frame(self, source_face: Face, src_idx: int) -> VisionFrame:
         if src_idx in self.src_cache:

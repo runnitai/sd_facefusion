@@ -410,6 +410,7 @@ def update_face_selector_mode(face_selector_mode: FaceSelectorMode) -> Tuple[gra
         return gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=False)
     if face_selector_mode == 'reference':
         return gradio.update(visible=True), gradio.update(visible=True), gradio.update(visible=True), gradio.update(visible=True)
+    return None
 
 
 def update_face_selector_order(face_analyser_order: FaceSelectorOrder) -> gradio.Gallery:

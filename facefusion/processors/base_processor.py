@@ -7,10 +7,8 @@ from typing import List, Any, Tuple, Callable, Optional
 from facefusion import logger, state_manager, inference_manager
 from facefusion.download import conditional_download_hashes, conditional_download_sources
 from facefusion.filesystem import resolve_relative_path
-from facefusion.typing import ModelSet, InferencePool, QueuePayload, VisionFrame, ProcessMode
-from facefusion.workers.core import clear_worker_modules
 from facefusion.processors.optimizations.batch_scheduler import get_scheduler_for_processor, BatchScheduler
-from facefusion.processors.optimizations.gpu_cv_ops import check_gpu_availability
+from facefusion.typing import ModelSet, InferencePool, QueuePayload, VisionFrame, ProcessMode
 
 
 class BaseProcessor(ABC):
@@ -38,9 +36,17 @@ class BaseProcessor(ABC):
         
         # Initialize optimization components
         self.batch_scheduler: Optional[BatchScheduler] = None
-        self.gpu_available = check_gpu_availability()
+        self.gpu_available = True  # Simplified GPU detection - will be properly detected when inference pool is created
         self._batch_accumulator = []
         self._last_batch_time = 0
+        self.optimization_stats = {
+            'multi_gpu_batches': 0,
+            'adaptive_batches': 0, 
+            'single_operations': 0,
+            'gpu_cv_operations': 0,
+            'total_batch_size': 0,
+            'processing_mode': 'default'
+        }
 
     def __new__(cls, *args, **kwargs):
         if cls not in cls.__instances:
@@ -76,19 +82,39 @@ class BaseProcessor(ABC):
         pass
 
     def post_process(self) -> None:
-        if state_manager.get_item("video_memory_strategy") in ["strict", "moderate"]:
-            self.clear_inference_pool()
-        if state_manager.get_item("video_memory_strategy") == "strict":
-            clear_worker_modules()
-        
-        # Log performance summary if batch scheduler is active
+        """Post-process cleanup and performance logging."""
+        # Log optimization statistics
+        if any(self.optimization_stats.values()):
+            total_ops = (self.optimization_stats['multi_gpu_batches'] + 
+                        self.optimization_stats['adaptive_batches'] + 
+                        self.optimization_stats['single_operations'])
+            
+            if total_ops > 0:
+                avg_batch_size = self.optimization_stats['total_batch_size'] / max(total_ops, 1)
+                logger.info(f"{self.display_name} Performance Summary:", __name__)
+                
+                if self.optimization_stats['multi_gpu_batches'] > 0:
+                    multi_gpu_pct = (self.optimization_stats['multi_gpu_batches'] / total_ops) * 100
+                    logger.info(f"  Multi-GPU batches: {self.optimization_stats['multi_gpu_batches']} ({multi_gpu_pct:.1f}%)", __name__)
+                
+                if self.optimization_stats['adaptive_batches'] > 0:
+                    adaptive_pct = (self.optimization_stats['adaptive_batches'] / total_ops) * 100
+                    logger.info(f"  Adaptive batches: {self.optimization_stats['adaptive_batches']} ({adaptive_pct:.1f}%)", __name__)
+                
+                if self.optimization_stats['single_operations'] > 0:
+                    single_pct = (self.optimization_stats['single_operations'] / total_ops) * 100
+                    logger.info(f"  Single operations: {self.optimization_stats['single_operations']} ({single_pct:.1f}%)", __name__)
+                
+                logger.info(f"  Average batch size: {avg_batch_size:.1f}", __name__)
+                
+                if self.optimization_stats['gpu_cv_operations'] > 0:
+                    logger.info(f"  GPU CV operations: {self.optimization_stats['gpu_cv_operations']}", __name__)
+                
+        # Cleanup resources
         if self.batch_scheduler:
-            summary = self.batch_scheduler.get_performance_summary()
-            if summary:
-                logger.debug(f"Processor {self.display_name} performance: "
-                           f"batch_size={summary.get('current_batch_size', 'N/A')}, "
-                           f"avg_latency={summary.get('avg_latency_ms', 0):.1f}ms, "
-                           f"avg_throughput={summary.get('avg_throughput_fps', 0):.1f}fps", __name__)
+            self.batch_scheduler.get_performance_summary()
+        
+        logger.debug(f"Post-processing completed for {self.display_name}", __name__)
 
     @abstractmethod
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -96,7 +122,7 @@ class BaseProcessor(ABC):
         pass
 
     @abstractmethod
-    def process_image(self, target_path: str, output_path: str) -> None:
+    def process_image(self, target_path: str, output_path: str, reference_faces=None) -> None:
         """Process a single image."""
         pass
 
@@ -271,4 +297,4 @@ class BaseProcessor(ABC):
     
     def should_use_gpu_cv(self) -> bool:
         """Check if GPU-accelerated CV operations should be used."""
-        return self.gpu_available and state_manager.get_item('execution_providers', ['CPUExecutionProvider'])[0] != 'CPUExecutionProvider'
+        return self.gpu_available and state_manager.get_item('execution_providers')[0] != 'CPUExecutionProvider'
