@@ -37,8 +37,7 @@ def listen() -> None:
                                          outputs=LIP_SYNCER_MODEL_DROPDOWN)
 
     if KEEP_AUDIO_CHECKBOX:
-        KEEP_AUDIO_CHECKBOX.change(lambda x: state_manager.set_item('lip_sync_keep_audio', x),
-                                   inputs=KEEP_AUDIO_CHECKBOX, outputs=None)
+        KEEP_AUDIO_CHECKBOX.change(toggle_keep_audio, inputs=KEEP_AUDIO_CHECKBOX, outputs=None)
 
     # Safely handle processor checkbox group
     try:
@@ -62,3 +61,7 @@ def update_lip_syncer_model(lip_syncer_model: LipSyncerModel) -> gradio.update:
         return gradio.update(value=lip_syncer_model)
     except:
         return gradio.update()
+    
+def toggle_keep_audio(keep_audio: bool):
+    state_manager.set_item('lip_sync_keep_audio', keep_audio)
+

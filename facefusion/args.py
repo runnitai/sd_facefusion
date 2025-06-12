@@ -1,12 +1,12 @@
 from facefusion import state_manager
-from facefusion.filesystem import is_image, is_video, list_directory
+from facefusion.filesystem import is_image, is_video
 from facefusion.jobs import job_store
 from facefusion.normalizer import normalize_fps, normalize_padding
 from facefusion.processors.core import get_processors_modules
 from facefusion.typing import Args
 from facefusion.vision import create_image_resolutions, create_video_resolutions, detect_image_resolution, \
     detect_video_fps, detect_video_resolution, pack_resolution
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List
 
 # Type for state item application functions
 ApplyStateItem = Callable[[str, Any], None]

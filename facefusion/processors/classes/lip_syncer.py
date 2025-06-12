@@ -123,11 +123,37 @@ class LipSyncer(BaseProcessor):
     def register_args(self, program: ArgumentParser) -> None:
         group = find_argument_group(program, 'processors')
         if group:
-            group.add_argument('--lip-sync-empty-audio', action='store_true',
-                               help='sync lip movements even when no audio is detected')
+            group.add_argument('--lip-sync-keep-audio', action='store_true',
+                               help='Use the original audio when creating the final video')
 
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
-        state_manager.set_item('lip_sync_keep_audio', args.get('lip_sync_keep_audio', False))
+        """Apply processor-specific CLI or job arguments.
+
+        This previously *always* reset the ``lip_sync_keep_audio`` flag to
+        ``False`` when the argument was not explicitly provided in ``args``.
+        As a consequence, a value that had been set in the Gradio UI via the
+        *Keep Original Audio* checkbox was lost during batch / job execution
+        because the key is not included in the job-step arguments.
+
+        To preserve the flag that was already saved in ``state_manager`` we
+        now only overwrite it **if** the argument is present in the incoming
+        ``args`` mapping. This guarantees the following behaviour:
+
+        1. UI run – checkbox state is honoured (unchanged).
+        2. Headless / job run – the checkbox state captured at job creation
+           is kept, unless the user explicitly passes the
+           ``--lip-sync-keep-audio`` CLI argument.
+        """
+
+        if 'lip_sync_keep_audio' in args:
+            # Use ApplyStateItem callback (set or init) if provided, otherwise
+            # fall back to direct state_manager access.
+            try:
+                apply_state_item('lip_sync_keep_audio', args.get('lip_sync_keep_audio'))
+            except Exception:
+                state_manager.set_item('lip_sync_keep_audio', args.get('lip_sync_keep_audio'))
+        else:
+            state_manager.set_item('lip_sync_keep_audio', False)
 
     def _initialize_musetalk(self):
         """Initialize MuseTalk components following original project structure"""

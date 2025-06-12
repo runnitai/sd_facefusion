@@ -1,10 +1,10 @@
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
+import av
 import cv2
 import numpy
 from cv2.typing import Size
-
 from facefusion.choices import image_template_sizes, video_template_sizes
 from facefusion.common_helper import is_windows
 from facefusion.filesystem import is_image, is_video, sanitize_path_for_windows
@@ -72,32 +72,48 @@ def create_image_resolutions(resolution: Resolution) -> List[str]:
     return resolutions
 
 
-def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[VisionFrame]:
-    if is_video(video_path):
-        if is_windows():
-            video_path = sanitize_path_for_windows(video_path)
-        video_capture = cv2.VideoCapture(video_path)
-        if video_capture.isOpened():
-            frame_total = video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
-            video_capture.set(cv2.CAP_PROP_POS_FRAMES, min(frame_total, frame_number - 1))
-            has_vision_frame, vision_frame = video_capture.read()
-            video_capture.release()
-            if has_vision_frame:
-                return vision_frame
-    return None
-
-
 def count_video_frame_total(video_path: str) -> int:
-    if is_video(video_path):
-        if is_windows():
-            video_path = sanitize_path_for_windows(video_path)
-        video_capture = cv2.VideoCapture(video_path)
-        if video_capture.isOpened():
-            video_frame_total = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
-            video_capture.release()
-            return video_frame_total
-    return 0
+    if not is_video(video_path):
+        return 0
+    if is_windows():
+        video_path = sanitize_path_for_windows(video_path)
 
+    container = av.open(video_path)
+    stream = container.streams.video[0]
+
+    # 1) try the built-in frame count
+    total = int(stream.frames) if stream.frames is not None else 0
+
+    # 2) fallback: convert raw duration to seconds via time_base, then * avg rate
+    if total <= 0 and stream.duration is not None and stream.time_base is not None and stream.average_rate is not None:
+        seconds = float(stream.duration * stream.time_base)
+        total = int(seconds * float(stream.average_rate))
+
+    print(f"Detected video frame total: {total}")
+    return total
+
+
+def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[VisionFrame]:
+    if not is_video(video_path):
+        return None
+    if is_windows():
+        video_path = sanitize_path_for_windows(video_path)
+
+    container = av.open(video_path)
+    stream = container.streams.video[0]
+
+    # compute your target PTS
+    fps = float(stream.average_rate) if stream.average_rate else 30.0
+    tb  = float(stream.time_base)     if stream.time_base     else 1.0 / fps
+    target_pts = int((frame_number / fps) / tb)
+
+    # seek and then decode *only* that video stream
+    container.seek(target_pts, any_frame=False, stream=stream)
+    for frame in container.decode(video=0):
+        # decode(video=0) yields only VideoFrame, so IDE knows .to_ndarray exists
+        return frame.to_ndarray(format="bgr24")
+
+    return None
 
 def detect_video_fps(video_path: str) -> Optional[float]:
     if is_video(video_path):
