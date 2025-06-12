@@ -90,6 +90,7 @@ def count_video_frame_total(video_path: str) -> int:
         total = int(seconds * float(stream.average_rate))
 
     print(f"Detected video frame total: {total}")
+    container.close()
     return total
 
 
@@ -104,16 +105,19 @@ def get_video_frame(video_path: str, frame_number: int = 0) -> Optional[VisionFr
 
     # compute your target PTS
     fps = float(stream.average_rate) if stream.average_rate else 30.0
-    tb  = float(stream.time_base)     if stream.time_base     else 1.0 / fps
+    tb = float(stream.time_base) if stream.time_base else 1.0 / fps
     target_pts = int((frame_number / fps) / tb)
 
     # seek and then decode *only* that video stream
     container.seek(target_pts, any_frame=False, stream=stream)
+    decoded = None
     for frame in container.decode(video=0):
         # decode(video=0) yields only VideoFrame, so IDE knows .to_ndarray exists
-        return frame.to_ndarray(format="bgr24")
+        decoded = frame.to_ndarray(format="bgr24")
+        break
+    container.close()
+    return decoded
 
-    return None
 
 def detect_video_fps(video_path: str) -> Optional[float]:
     if is_video(video_path):
