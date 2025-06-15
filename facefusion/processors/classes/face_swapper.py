@@ -552,11 +552,13 @@ class FaceSwapper(BaseProcessor):
     def forward_swap_face(self, source_face: Face, crop_vision_frame: VisionFrame, src_idx: int) -> VisionFrame:
         face_swapper = self.get_inference_pool().get('face_swapper')
         
+        # Cache model_type to avoid redundant lookups
+        model_type = self.get_model_options().get('type')
+        
         # Check if we have multi-GPU wrapper for parallel processing
         from facefusion.inference_manager import MultiGPUInferenceWrapper
         if isinstance(face_swapper, MultiGPUInferenceWrapper):
             # Use regular run method for individual frames - still benefits from round-robin load distribution
-            model_type = self.get_model_options().get('type')
             face_swapper_inputs = {}
 
             for face_swapper_input in face_swapper.get_inputs():
