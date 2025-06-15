@@ -88,26 +88,27 @@ class MultiGPUInferenceWrapper:
                 
                 # Submit chunk processing to thread pool
                 future = executor.submit(self._process_chunk, model_instance, output_names, chunk, run_options)
-                future_to_gpu[future] = gpu_id
+                future_to_chunk[future] = i  # Map future to chunk index
             
-            # Collect results in order
-            chunk_results = []
-            for future in concurrent.futures.as_completed(future_to_gpu):
-                gpu_id = future_to_gpu[future]
+            # Collect results with indices
+            indexed_results = []
+            for future in concurrent.futures.as_completed(future_to_chunk):
+                chunk_index = future_to_chunk[future]
                 try:
                     chunk_result = future.result()
-                    chunk_results.append(chunk_result)
+                    indexed_results.append((chunk_index, chunk_result))
                 except Exception as e:
-                    logger.error(f"GPU {gpu_id} processing failed: {e}", __name__)
+                    logger.error(f"Chunk {chunk_index} processing failed: {e}", __name__)
                     # Fallback: process on main thread
                     chunk_result = self._process_chunk(
                         self.model_instances[self.available_gpus[0]], 
-                        output_names, chunks[0], run_options
+                        output_names, chunks[chunk_index], run_options
                     )
-                    chunk_results.append(chunk_result)
+                    indexed_results.append((chunk_index, chunk_result))
         
-        # Flatten results back to original order
-        for chunk_result in chunk_results:
+        # Sort results by chunk index and flatten
+        indexed_results.sort(key=lambda x: x[0])  # Sort by chunk index
+        for _, chunk_result in indexed_results:
             results.extend(chunk_result)
         
         return results
