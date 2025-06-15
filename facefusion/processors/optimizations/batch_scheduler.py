@@ -18,6 +18,7 @@ class BatchMetrics:
     latency_ms: float
     throughput_fps: float
     memory_usage_mb: Optional[float] = None
+    gpu_utilization: Optional[Dict[str, float]] = None
     timestamp: float = 0.0
 
 
@@ -59,7 +60,8 @@ class BatchScheduler:
                      f"range=[{min_batch_size}, {max_batch_size}]", __name__)
 
     def record_batch_performance(self, batch_size: int, latency_ms: float,
-                                 throughput_fps: float, memory_usage_mb: Optional[float] = None) -> None:
+                                 throughput_fps: float, memory_usage_mb: Optional[float] = None,
+                                 gpu_utilization: Optional[Dict[str, float]] = None) -> None:
         """Record performance metrics for a batch."""
         with self.lock:
             metrics = BatchMetrics(
@@ -67,6 +69,7 @@ class BatchScheduler:
                 latency_ms=latency_ms,
                 throughput_fps=throughput_fps,
                 memory_usage_mb=memory_usage_mb,
+                gpu_utilization=gpu_utilization,
                 timestamp=time.time()
             )
 
@@ -169,12 +172,25 @@ def get_scheduler_for_processor(processor_name: str, mode: str = "default") -> B
     with _scheduler_lock:
         key = f"{processor_name}_{mode}"
         if key not in _scheduler_instances:
+            # Check if multi-GPU is available to adjust batch sizes
+            try:
+                from facefusion.inference_manager import get_multi_gpu_stats
+                multi_gpu_stats = get_multi_gpu_stats()
+                gpu_count = len(multi_gpu_stats.get('memory_usage', {}))
+                is_multi_gpu = gpu_count > 1
+            except:
+                gpu_count = 1
+                is_multi_gpu = False
+            
+            # Adjust batch sizes based on available GPUs
+            gpu_multiplier = max(1, gpu_count) if is_multi_gpu else 1
+            
             if mode == "preview" or mode == "interactive":
                 # Low latency for real-time processing
                 scheduler = BatchScheduler(
                     target_latency_ms=33.0,  # ~30 FPS
                     min_batch_size=1,
-                    max_batch_size=4,
+                    max_batch_size=min(4 * gpu_multiplier, 16),  # Scale with GPU count
                     adjustment_factor=0.15
                 )
             elif mode == "offline" or mode == "batch":
@@ -182,7 +198,7 @@ def get_scheduler_for_processor(processor_name: str, mode: str = "default") -> B
                 scheduler = BatchScheduler(
                     target_latency_ms=100.0,  # Higher latency acceptable
                     min_batch_size=1,
-                    max_batch_size=16,
+                    max_batch_size=min(16 * gpu_multiplier, 64),  # Scale with GPU count
                     adjustment_factor=0.1
                 )
             else:
@@ -190,12 +206,13 @@ def get_scheduler_for_processor(processor_name: str, mode: str = "default") -> B
                 scheduler = BatchScheduler(
                     target_latency_ms=50.0,
                     min_batch_size=1,
-                    max_batch_size=8,
+                    max_batch_size=min(8 * gpu_multiplier, 32),  # Scale with GPU count
                     adjustment_factor=0.12
                 )
 
             _scheduler_instances[key] = scheduler
-            logger.debug(f"Created BatchScheduler for {processor_name} in {mode} mode", __name__)
+            logger.debug(f"Created BatchScheduler for {processor_name} in {mode} mode "
+                        f"(GPUs: {gpu_count}, max_batch: {scheduler.max_batch_size})", __name__)
         return _scheduler_instances[key]
 
 

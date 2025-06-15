@@ -90,6 +90,7 @@ style_transfer_model: Optional[str] = 'style_transfer'
 style_transfer_source: Optional[str] = None
 # frame processors
 processors: List[str] = ["Face Swapper"]
+current_processor: Optional[str] = None  # Track current processor for cache system
 # uis
 ui_layouts: List[str] = ["default"]
 

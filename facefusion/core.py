@@ -370,6 +370,22 @@ def process_image(start_time: float, is_batch: bool = False, reference_faces=Non
 
 
 def process_video(start_time: float) -> ErrorCode:
+    # Check if video face indexing is enabled and available
+    target_path = state_manager.get_item('target_path')
+    use_face_cache = state_manager.get_item('video_face_cache_enabled', True)
+    
+    if use_face_cache and target_path:
+        try:
+            from facefusion.video_face_index import VIDEO_FACE_INDEX
+            is_indexed, metadata = VIDEO_FACE_INDEX.is_video_indexed(target_path)
+            
+            if is_indexed:
+                logger.info(f"Using cached face data: {metadata['indexed_frames']} frames indexed", __name__)
+            else:
+                logger.info("Video not indexed. Consider running face indexing for improved performance.", __name__)
+        except ImportError:
+            logger.debug("Video face index not available", __name__)
+    
     analyser = ContentAnalyser()
     if analyser.analyse_video(state_manager.get_item('target_path'), state_manager.get_item('trim_frame_start'),
                               state_manager.get_item('trim_frame_end')):
@@ -416,6 +432,9 @@ def process_video(start_time: float) -> ErrorCode:
             print(f"Processing {processor_module.display_name}")
             logger.info(wording.get('processing'), processor_module.display_name)
 
+            # Set current processor context for cache system
+            state_manager.set_item('current_processor', processor_module.context_name.lower())
+
             # Initialize optimization if not already done
             if not processor_module.batch_scheduler:
                 processor_module.init_batch_scheduler(processing_mode)
@@ -424,6 +443,9 @@ def process_video(start_time: float) -> ErrorCode:
             print(f"Post processing {processor_module.display_name}")
             processor_module.post_process()
             print(f"Post processing {processor_module.display_name} done in {time() - start_time} seconds")
+            
+            # Clear processor context after processing
+            state_manager.set_item('current_processor', None)
         if is_process_stopping():
             return 4
     else:

@@ -198,6 +198,8 @@ def apply_globals(globals_dict: dict, init: bool = True) -> None:
         # face selector
         'face_selector_mode', 'face_selector_order', 'face_selector_age_start',
         'face_selector_age_end', 'face_selector_gender', 'face_selector_race',
+        # face cache
+        'video_face_cache_enabled', 'cache_unmatched_faces', 'auto_match_faces',
         'reference_face_position', 'reference_face_distance', 'reference_frame_number',
         # face masker
         'face_mask_types', 'face_mask_blur', 'face_mask_padding', 'face_mask_regions',
@@ -208,7 +210,7 @@ def apply_globals(globals_dict: dict, init: bool = True) -> None:
         'output_video_encoder', 'output_video_preset', 'output_video_quality',
         'output_video_resolution', 'output_video_fps', 'skip_audio',
         # processors
-        'processors',
+        'processors', 'current_processor',
         # uis
         'open_browser', 'ui_layouts', 'ui_workflow',
         # execution

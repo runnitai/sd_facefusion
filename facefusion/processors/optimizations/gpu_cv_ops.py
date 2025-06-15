@@ -5,24 +5,38 @@ This module provides GPU-accelerated versions of common CV operations.
 
 import cv2
 import numpy as np
+import threading
 from typing import Optional, Tuple, Union
 from facefusion import logger
 
 # Global state to track GPU availability
 _gpu_available = None
 
+# Thread safety: Disable CUDA in worker threads to prevent context issues
+def _is_safe_for_cuda() -> bool:
+    """Check if current thread is safe for CUDA operations."""
+    thread_name = threading.current_thread().name
+    # Disable CUDA in ThreadPoolExecutor and ProcessPoolExecutor workers
+    if 'ThreadPoolExecutor' in thread_name or 'ProcessPoolExecutor' in thread_name:
+        return False
+    # Also check for common worker thread patterns
+    if 'worker' in thread_name.lower() or 'pool' in thread_name.lower():
+        return False
+    return True
+
 
 def check_gpu_availability() -> bool:
     """Check if CUDA-enabled OpenCV operations are available."""
     global _gpu_available
+    
+    # Always use CPU in worker threads to prevent CUDA context issues
+    if not _is_safe_for_cuda():
+        return False
+    
     if _gpu_available is None:
         try:
             device_count = cv2.cuda.getCudaEnabledDeviceCount()
-            _gpu_available = device_count > 0
-            if _gpu_available:
-                logger.debug(f"Found {device_count} CUDA-enabled devices for OpenCV operations", __name__)
-            else:
-                logger.debug("No CUDA-enabled devices found, falling back to CPU", __name__)
+            _gpu_available = device_count > 0            
         except Exception as e:
             logger.debug(f"CUDA OpenCV not available: {e}", __name__)
             _gpu_available = False

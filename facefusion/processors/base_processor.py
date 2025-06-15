@@ -11,6 +11,18 @@ from facefusion.processors.optimizations.batch_scheduler import get_scheduler_fo
 from facefusion.typing import ModelSet, InferencePool, QueuePayload, VisionFrame, ProcessMode
 
 
+def should_use_face_cache() -> bool:
+    """Global function to determine if face cache should be used based on current processor"""
+    try:
+        from facefusion.face_store import should_ignore_cache_for_processor
+        current_processor = state_manager.get_item('current_processor')
+        if current_processor:
+            return not should_ignore_cache_for_processor(current_processor)
+        return True  # Default to using cache if no specific processor context
+    except ImportError:
+        return True
+
+
 class BaseProcessor(ABC):
     """
     Abstract Base Processor for FaceFusion.
@@ -80,6 +92,25 @@ class BaseProcessor(ABC):
     def process_frame(self, inputs: dict) -> VisionFrame:
         """Process a single frame with specific inputs."""
         pass
+
+    def should_use_cache(self) -> bool:
+        """Determine if this processor should use cached results"""
+        from facefusion.face_store import should_ignore_cache_for_processor
+        return not should_ignore_cache_for_processor(self.context_name.lower())
+
+    def get_cached_result(self, vision_frame: VisionFrame):
+        """Get cached result for this processor if available"""
+        if not self.should_use_cache():
+            return None
+        
+        from facefusion.face_store import get_processor_faces
+        return get_processor_faces(vision_frame, self.context_name.lower())
+
+    def cache_result(self, vision_frame: VisionFrame, result):
+        """Cache result for this processor"""
+        if self.should_use_cache():
+            from facefusion.face_store import set_processor_faces
+            set_processor_faces(vision_frame, self.context_name.lower(), result)
 
     def post_process(self) -> None:
         """Post-process cleanup and performance logging."""

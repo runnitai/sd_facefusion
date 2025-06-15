@@ -253,7 +253,10 @@ def get_optimal_device_for_model(model_context: str) -> str:
     """Get the optimal device for a model using load balancing."""
     with MULTI_GPU_LOCK:
         if model_context not in GPU_DEVICE_MAP:
-            return state_manager.get_item('execution_device_id', '0')
+            try:
+                return state_manager.get_item('execution_device_id')
+            except:
+                return '0'
         
         available_devices = GPU_DEVICE_MAP[model_context]
         if len(available_devices) == 1:
@@ -283,7 +286,10 @@ def create_multi_gpu_inference_pool(model_sources: DownloadSet, execution_provid
     
     if len(available_gpus) <= 1:
         # Fall back to single GPU behavior
-        execution_device_id = state_manager.get_item('execution_device_id', '0')
+        try:
+            execution_device_id = state_manager.get_item('execution_device_id')
+        except:
+            execution_device_id = '0'
         return create_inference_pool(model_sources, execution_device_id, execution_provider_keys)
     
     # For each model, create instances on all available GPUs
@@ -304,9 +310,12 @@ def create_multi_gpu_inference_pool(model_sources: DownloadSet, execution_provid
             logger.info(f"Created multi-GPU pool for {model_name} across {len(model_instances)} GPUs", __name__)
         else:
             # Fallback to single GPU if multi-GPU failed
-            default_device = state_manager.get_item('execution_device_id', '0')
+            try:
+                default_device = state_manager.get_item('execution_device_id')
+            except:
+                default_device = '0'
             inference_pool[model_name] = create_inference_session(model_path, default_device, execution_provider_keys)
-            logger.warning(f"Fell back to single GPU for {model_name}", __name__)
+            logger.warn(f"Fell back to single GPU for {model_name}", __name__)
     
     return inference_pool
 
@@ -348,7 +357,7 @@ def rebalance_gpu_load() -> None:
     overloaded_gpus = [gpu for gpu, usage in memory_usage.items() if usage > 90]
     
     if overloaded_gpus:
-        logger.warning(f"Detected overloaded GPUs: {overloaded_gpus}", __name__)
+        logger.warn(f"Detected overloaded GPUs: {overloaded_gpus}", __name__)
         # Future enhancement: implement model migration between GPUs
         
     # Log current GPU distribution for monitoring

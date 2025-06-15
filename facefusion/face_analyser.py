@@ -1,4 +1,5 @@
 from typing import List, Optional
+import threading
 
 import numpy
 
@@ -8,6 +9,7 @@ from facefusion.face_helper import apply_nms, convert_to_face_landmark_5, estima
 from facefusion.face_store import get_static_faces, set_static_faces
 from facefusion.typing import BoundingBox, Face, FaceLandmark5, FaceLandmarkSet, FaceScoreSet, Score, VisionFrame
 from facefusion.vision import read_static_images
+from facefusion.filesystem import is_video
 from facefusion.workers.classes.face_classifier import FaceClassifier
 from facefusion.workers.classes.face_detector import FaceDetector
 from facefusion.workers.classes.face_landmarker import FaceLandmarker
@@ -23,6 +25,10 @@ landmarker = FaceLandmarker()
 detector = FaceDetector()
 recognizer = FaceRecognizer()
 classifier = FaceClassifier()
+
+# Thread-safe cache with lock
+vision_frame_cache = {}
+_cache_lock = threading.Lock()
 
 
 def create_faces(vision_frame: VisionFrame, bounding_boxes: List[BoundingBox], face_scores: List[Score],
@@ -108,10 +114,6 @@ def get_average_face(faces: List[Face]) -> Optional[Face]:
     return None
 
 
-# Define a global cache dictionary
-vision_frame_cache = {}
-
-
 def get_frame_hash(vision_frame: VisionFrame) -> int:
     """
     Compute a unique hash for the VisionFrame using its contents.
@@ -127,16 +129,56 @@ def get_many_faces(vision_frames: List[VisionFrame]) -> List[Face]:
         if numpy.any(vision_frame):  # Ensure the frame is not empty
             # Compute hash for the current vision frame
             frame_hash = get_frame_hash(vision_frame)
-            # Check if faces for this frame are already cached
-            if frame_hash in vision_frame_cache:
-                many_faces.extend(vision_frame_cache[frame_hash])
-                continue
+            
+            # Check if faces for this frame are already cached in memory
+            with _cache_lock:
+                if frame_hash in vision_frame_cache:
+                    many_faces.extend(vision_frame_cache[frame_hash])
+                    continue
 
-            # Process the frame to detect faces
+            # Try to get from video index cache if available
+            cached_faces = None
+            try:
+                from facefusion.video_face_index import VIDEO_FACE_INDEX
+                target_path = state_manager.get_item('target_path')
+                
+                if target_path and is_video(target_path):
+                    # Set current video path for context
+                    VIDEO_FACE_INDEX.current_video_path = target_path
+                    
+                    # Try to get frame number from processing context
+                    current_frame_number = getattr(get_many_faces, '_current_frame_number', None)
+                    
+                    if current_frame_number is not None:
+                        # Check if this video is indexed and get cached faces
+                        is_indexed, metadata = VIDEO_FACE_INDEX.is_video_indexed(target_path)
+                        if is_indexed:
+                            cached_faces = VIDEO_FACE_INDEX.get_cached_faces(target_path, current_frame_number)
+                            
+                            if cached_faces:
+                                # Check if we should use cache based on processor type
+                                from facefusion.processors.base_processor import should_use_face_cache
+                                if should_use_face_cache():
+                                    # Filter out ignored faces
+                                    filtered_faces = VIDEO_FACE_INDEX.filter_ignored_faces(target_path, current_frame_number, cached_faces)
+                                    many_faces.extend(filtered_faces)
+                                    # Also cache in memory for faster subsequent access
+                                    with _cache_lock:
+                                        vision_frame_cache[frame_hash] = filtered_faces
+                                    continue
+                                else:
+                                    # Processor wants to bypass cache, continue with normal detection
+                                    pass
+            except (ImportError, Exception) as e:
+                # If video cache system is not available or fails, continue with normal detection
+                pass
+
+            # Process the frame to detect faces (normal path)
             static_faces = get_static_faces(vision_frame)
             if static_faces:
                 many_faces.extend(static_faces)
-                vision_frame_cache[frame_hash] = static_faces  # Cache the result
+                with _cache_lock:
+                    vision_frame_cache[frame_hash] = static_faces  # Cache the result
             else:
                 all_bounding_boxes = []
                 all_face_scores = []
@@ -158,9 +200,21 @@ def get_many_faces(vision_frames: List[VisionFrame]) -> List[Face]:
                     if faces:
                         many_faces.extend(faces)
                         set_static_faces(vision_frame, faces)
-                        vision_frame_cache[frame_hash] = faces  # Cache the result
+                        with _cache_lock:
+                            vision_frame_cache[frame_hash] = faces  # Cache the result
 
     return many_faces
+
+
+def set_current_frame_number(frame_number: int):
+    """Set the current frame number for video face cache context"""
+    get_many_faces._current_frame_number = frame_number
+
+
+def clear_current_frame_number():
+    """Clear the current frame number context"""
+    if hasattr(get_many_faces, '_current_frame_number'):
+        delattr(get_many_faces, '_current_frame_number')
 
 
 def get_average_faces():

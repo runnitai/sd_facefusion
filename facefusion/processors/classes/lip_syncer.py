@@ -11,6 +11,7 @@ import torch
 from facefusion import logger, state_manager, wording
 from facefusion.download import conditional_download_sources_no_hash
 from facefusion.face_analyser import get_many_faces, get_one_face
+from facefusion.ffmpeg import ensure_wav_audio
 from facefusion.face_helper import create_bounding_box, paste_back, warp_face_by_face_landmark_5
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
@@ -112,6 +113,10 @@ class LipSyncer(BaseProcessor):
     _silent_chunks_2 = None  # Set of silent chunk indices for source 2
     _silent_template = None  # Template silent chunk for source 1
     _silent_template_2 = None  # Template silent chunk for source 2
+    _pause_chunks = None  # Set of pause chunk indices for source 1
+    _pause_chunks_2 = None  # Set of pause chunk indices for source 2
+    _pause_template = None  # Template pause chunk for source 1
+    _pause_template_2 = None  # Template pause chunk for source 2
     masker = None
     face_mask_padding = (0, 0, 0, 0)  # Default padding for face mask
     face_mask_types = ['region']  # Default mask type
@@ -194,11 +199,22 @@ class LipSyncer(BaseProcessor):
                 raise e
 
     def _get_whisper_chunks_with_silence_detection(self, audio_path: str, fps: float, weight_dtype, device):
-        """Get whisper chunks and detect silence during processing"""
+        """Get whisper chunks with smart silence detection - handles pauses vs true silence"""
         try:
-
-            # Load raw audio for silence detection
+            # Load raw audio for silence detection - ensure consistent 16kHz sampling
             raw_audio, sr = librosa.load(audio_path, sr=16000)
+            
+            # Calculate precise timing parameters
+            audio_fps = 50.0  # MuseTalk internal audio fps
+            video_fps = float(fps)
+            
+            # Calculate exact frame timing for perfect sync
+            frame_duration_seconds = 1.0 / video_fps
+            samples_per_video_frame = int(16000 * frame_duration_seconds)
+            
+            # Get total duration from raw audio
+            total_duration_seconds = len(raw_audio) / 16000.0
+            total_video_frames = int(total_duration_seconds * video_fps)
 
             # Get whisper features using the audio processor
             whisper_input_features, librosa_length = self._musetalk_audio_processor.get_audio_feature(audio_path,
@@ -216,14 +232,12 @@ class LipSyncer(BaseProcessor):
 
             whisper_feature = torch.cat(whisper_feature, dim=1)
 
-            # Trim and pad like original
-            audio_fps = 50
-            fps = int(fps)
-            whisper_idx_multiplier = audio_fps / fps
-            num_frames = math.floor((librosa_length / sr) * fps)
-            actual_length = math.floor((librosa_length / sr) * audio_fps)
-            whisper_feature = whisper_feature[:, :actual_length, ...]
+            # Calculate precise whisper frame indexing
+            whisper_idx_multiplier = audio_fps / video_fps
+            actual_audio_length = math.floor((librosa_length / 16000.0) * audio_fps)
+            whisper_feature = whisper_feature[:, :actual_audio_length, ...]
 
+            # Add padding with precise calculations
             padding_nums = math.ceil(whisper_idx_multiplier)
             whisper_feature = torch.cat([
                 torch.zeros_like(whisper_feature[:, :padding_nums * 2]),  # left padding
@@ -231,68 +245,140 @@ class LipSyncer(BaseProcessor):
                 torch.zeros_like(whisper_feature[:, :padding_nums * 6])  # right padding
             ], 1)
 
-            # Process chunks and detect silence simultaneously
-            audio_prompts = []
-            silent_chunks = set()
-            silent_template = None  # Store the first silent chunk as template
+            # Smart silence detection parameters
+            pause_buffer_frames = max(2, int(video_fps * 0.15))  # 150ms buffer for short pauses
+            true_silence_frames = max(5, int(video_fps * 0.5))   # 500ms for true silence
+            
+            # Thresholds for different silence types
+            pause_rms_threshold = 0.015    # Higher threshold for pauses (less aggressive)
+            pause_peak_threshold = 0.08    # Allow some energy during pauses
+            silence_rms_threshold = 0.008  # Lower threshold for true silence
+            silence_peak_threshold = 0.03  # Strict threshold for true silence
 
-            for frame_index in range(num_frames):
-                # Get whisper chunk
-                audio_index = math.floor(frame_index * whisper_idx_multiplier)
+            # Process chunks with smart silence detection
+            audio_prompts = []
+            raw_energy_values = []  # Track energy for temporal analysis
+            
+            # First pass: extract audio prompts and calculate energy
+            for frame_index in range(total_video_frames):
+                # Calculate precise audio index for this video frame
+                precise_audio_time = frame_index * frame_duration_seconds
+                audio_index = int(precise_audio_time * audio_fps)
+                
+                # Get whisper chunk with exact timing
                 audio_clip = whisper_feature[:, audio_index: audio_index + audio_feature_length_per_frame]
                 audio_clip = rearrange(audio_clip, 'b c h w -> b (c h) w')
                 audio_prompts.append(audio_clip)
 
-                # Check if corresponding raw audio segment is silent
-                frame_duration = 1.0 / fps
-                start_sample = int(frame_index * frame_duration * sr)
-                end_sample = int((frame_index + 1) * frame_duration * sr)
+                # Calculate energy for this frame
+                start_sample = int(frame_index * samples_per_video_frame)
+                end_sample = int((frame_index + 1) * samples_per_video_frame)
 
                 if start_sample < len(raw_audio):
                     audio_segment = raw_audio[start_sample:min(end_sample, len(raw_audio))]
-
-                    # Use librosa.trim to detect if there's meaningful audio
-                    trimmed, _ = librosa.effects.trim(audio_segment, top_db=30)  # 30dB threshold
-
-                    # Consider silent if trimmed audio is very short or has low energy
-                    is_silent = (len(trimmed) < len(audio_segment) * 0.1 or
-                                 np.max(np.abs(trimmed)) < 0.01)
-
-                    if is_silent:
-                        silent_chunks.add(frame_index)
-                        # Store the first silent chunk as template
-                        if silent_template is None:
-                            silent_template = audio_clip.clone()
+                    if len(audio_segment) > 0:
+                        rms_energy = np.sqrt(np.mean(audio_segment**2))
+                        peak_energy = np.max(np.abs(audio_segment))
+                        raw_energy_values.append((rms_energy, peak_energy))
+                    else:
+                        raw_energy_values.append((0.0, 0.0))
                 else:
-                    # Beyond audio length
-                    silent_chunks.add(frame_index)
-                    # Store the first silent chunk as template
-                    if silent_template is None:
-                        silent_template = audio_clip.clone()
+                    raw_energy_values.append((0.0, 0.0))
 
-            # If no silent chunks found, create a minimal silent template
-            if silent_template is None and len(silent_chunks) == 0:
-                # Create a minimal noise template for truly silent audio
-                if len(audio_prompts) > 0:
-                    silent_template = torch.randn_like(audio_prompts[0]) * 0.01  # Very low amplitude noise
-                    print(f"Created minimal silent template for completely silent audio")
+            # Second pass: smart silence classification with temporal context
+            silence_states = []  # 0=speaking, 1=pause, 2=true_silence
+            
+            for frame_index in range(total_video_frames):
+                rms_energy, peak_energy = raw_energy_values[frame_index]
+                
+                # Check if current frame is quiet
+                is_quiet = (rms_energy < pause_rms_threshold and peak_energy < pause_peak_threshold)
+                is_very_quiet = (rms_energy < silence_rms_threshold and peak_energy < silence_peak_threshold)
+                
+                if not is_quiet:
+                    # Definitely speaking
+                    silence_states.append(0)
+                elif is_very_quiet:
+                    # Check temporal context for true silence
+                    # Look ahead and behind to see if this is extended silence
+                    start_check = max(0, frame_index - true_silence_frames//2)
+                    end_check = min(total_video_frames, frame_index + true_silence_frames//2)
+                    
+                    context_quiet_count = 0
+                    for check_idx in range(start_check, end_check):
+                        check_rms, check_peak = raw_energy_values[check_idx]
+                        if check_rms < silence_rms_threshold and check_peak < silence_peak_threshold:
+                            context_quiet_count += 1
+                    
+                    # If most of the context is also very quiet, it's true silence
+                    context_ratio = context_quiet_count / (end_check - start_check)
+                    if context_ratio > 0.7:  # 70% of context is quiet
+                        silence_states.append(2)  # True silence
+                    else:
+                        silence_states.append(1)  # Pause
+                else:
+                    # Moderately quiet - check if it's a brief pause
+                    # Look ahead to see if speech resumes soon
+                    look_ahead = min(pause_buffer_frames, total_video_frames - frame_index - 1)
+                    speech_resumes = False
+                    
+                    for look_idx in range(frame_index + 1, frame_index + 1 + look_ahead):
+                        if look_idx < len(raw_energy_values):
+                            look_rms, look_peak = raw_energy_values[look_idx]
+                            if look_rms > pause_rms_threshold or look_peak > pause_peak_threshold:
+                                speech_resumes = True
+                                break
+                    
+                    if speech_resumes:
+                        silence_states.append(1)  # Pause
+                    else:
+                        silence_states.append(2)  # Likely true silence
+
+            # Create different templates and chunk sets
+            silent_chunks = set()      # True silence chunks
+            pause_chunks = set()       # Short pause chunks  
+            silent_template = None     # Template for true silence
+            pause_template = None      # Template for pauses (reduced animation)
+            
+            # Categorize chunks and create templates
+            for frame_index in range(total_video_frames):
+                if silence_states[frame_index] == 2:  # True silence
+                    silent_chunks.add(frame_index)
+                    if silent_template is None:
+                        # Create a more neutral template for true silence
+                        silent_template = torch.randn_like(audio_prompts[frame_index]) * 0.002
+                elif silence_states[frame_index] == 1:  # Pause
+                    pause_chunks.add(frame_index)
+                    if pause_template is None:
+                        # Use actual audio but reduced amplitude for pauses
+                        pause_template = audio_prompts[frame_index].clone() * 0.3
+
+            # Fallback templates
+            if silent_template is None and len(audio_prompts) > 0:
+                silent_template = torch.randn_like(audio_prompts[0]) * 0.002
+            if pause_template is None and len(audio_prompts) > 0:
+                pause_template = audio_prompts[0].clone() * 0.3
 
             audio_prompts = torch.cat(audio_prompts, dim=0)
 
-            print(f"Processed {len(audio_prompts)} chunks, {len(silent_chunks)} detected as silent")
-            if silent_template is not None:
-                print(f"Silent template captured and ready for use")
-            return audio_prompts, silent_chunks, silent_template
+            print(f"Processed {len(audio_prompts)} chunks for {total_video_frames} frames @ {video_fps}fps")
+            print(f"Smart silence detection: {len(silent_chunks)} true silence, {len(pause_chunks)} pauses, {total_video_frames - len(silent_chunks) - len(pause_chunks)} speaking")
+            
+            # Return extended info including pause handling
+            return audio_prompts, silent_chunks, silent_template, pause_chunks, pause_template
 
         except Exception as e:
             print(f"Error in whisper chunk processing with silence detection: {e}")
             import traceback
             traceback.print_exc()
-            return [], set(), None
+            return [], set(), None, set(), None
 
     def _process_and_cache_audio(self, audio_path: str, fps: float, audio_source: int = 1):
         """Process audio upfront and cache chunks like realtime_inference.py"""
         try:
+            # Convert MP3/other formats to WAV for precise timing
+            wav_audio_path = ensure_wav_audio(audio_path)
+            
             # Choose the right cache variables based on audio source
             if audio_source == 1:
                 current_path = self._current_audio_path
@@ -301,12 +387,12 @@ class LipSyncer(BaseProcessor):
                 current_path = self._current_audio_path_2
                 cached_chunks = self._whisper_chunks_2
 
-            # Skip if already processed
-            if current_path == audio_path and cached_chunks is not None:
+            # Skip if already processed (check both original and WAV paths)
+            if (current_path == audio_path or current_path == wav_audio_path) and cached_chunks is not None:
                 return cached_chunks
 
-            # Process whisper chunks with integrated silence detection
-            whisper_chunks, silent_chunks, silent_template = self._get_whisper_chunks_with_silence_detection(audio_path,
+            # Process whisper chunks with integrated silence detection using WAV
+            whisper_chunks, silent_chunks, silent_template, pause_chunks, pause_template = self._get_whisper_chunks_with_silence_detection(wav_audio_path,
                                                                                                              fps,
                                                                                                              self.weight_dtype,
                                                                                                              self.device)
@@ -314,18 +400,23 @@ class LipSyncer(BaseProcessor):
             # Cache the results in the appropriate variables
             if audio_source == 1:
                 self._whisper_chunks = whisper_chunks
-                self._current_audio_path = audio_path
+                self._current_audio_path = wav_audio_path  # Store WAV path
                 self._silent_chunks = silent_chunks
                 self._silent_template = silent_template
+                self._pause_chunks = pause_chunks
+                self._pause_template = pause_template
             else:
                 self._whisper_chunks_2 = whisper_chunks
-                self._current_audio_path_2 = audio_path
+                self._current_audio_path_2 = wav_audio_path  # Store WAV path
                 self._silent_chunks_2 = silent_chunks
                 self._silent_template_2 = silent_template
+                self._pause_chunks_2 = pause_chunks
+                self._pause_template_2 = pause_template
 
-            template_status = "with silent template" if silent_template is not None else "no silent template"
+            silent_status = f"{len(silent_chunks)} silent" if silent_chunks else "no silent"
+            pause_status = f"{len(pause_chunks)} pause" if pause_chunks else "no pause"
             print(
-                f"Cached {len(whisper_chunks)} audio chunks for source {audio_source}: {audio_path} ({len(silent_chunks)} silent, {template_status})")
+                f"Cached {len(whisper_chunks)} audio chunks for source {audio_source}: {wav_audio_path} ({silent_status}, {pause_status})")
             return whisper_chunks
 
         except Exception as e:
@@ -334,16 +425,18 @@ class LipSyncer(BaseProcessor):
             return []
 
     def get_audio_chunk_for_frame(self, frame_index: int, audio_source: int = 1) -> tuple:
-        """Get the appropriate audio chunk for a specific frame index and whether it's silent"""
+        """Get the appropriate audio chunk for a specific frame index with smart silence/pause handling"""
         try:
             # Handle negative frame indices (use 0 instead)
             if frame_index < 0:
                 frame_index = 0
 
-            # Choose the right audio chunks and silent chunks
+            # Choose the right audio chunks and templates
             chunks = self._whisper_chunks if audio_source == 1 else self._whisper_chunks_2
             silent_chunks = self._silent_chunks if audio_source == 1 else self._silent_chunks_2
             silent_template = self._silent_template if audio_source == 1 else self._silent_template_2
+            pause_chunks = self._pause_chunks if audio_source == 1 else self._pause_chunks_2
+            pause_template = self._pause_template if audio_source == 1 else self._pause_template_2
 
             # Properly check if chunks is None or empty without tensor boolean evaluation
             if chunks is None:
@@ -364,19 +457,22 @@ class LipSyncer(BaseProcessor):
             # Use modulo to cycle through chunks like datagen does
             chunk_index = frame_index % chunks_len
 
-            # Check if this chunk is silent
-            is_silent = silent_chunks is not None and chunk_index in silent_chunks
-
-            # If silent and we have a silent template, use the template instead
-            if is_silent and silent_template is not None:
-                #print(f"Using silent template for frame {frame_index} (source {audio_source})")
-                return silent_template, is_silent
+            # Check chunk type and return appropriate template/chunk
+            is_true_silence = silent_chunks is not None and chunk_index in silent_chunks
+            is_pause = pause_chunks is not None and chunk_index in pause_chunks
+            
+            if is_true_silence and silent_template is not None:
+                # True silence - use silent template (neutral mouth position)
+                return silent_template, True  # Return True to indicate silence
+            elif is_pause and pause_template is not None:
+                # Short pause - use pause template (reduced animation, maintains some mouth movement)
+                return pause_template, False  # Return False as it's not true silence
             else:
-                # Use the actual audio chunk
+                # Normal speech - use actual audio chunk
                 audio_chunk = chunks[chunk_index]
                 # Ensure we return a proper tensor
                 if isinstance(audio_chunk, torch.Tensor):
-                    return audio_chunk, is_silent
+                    return audio_chunk, False
                 else:
                     return None, False
 
@@ -604,6 +700,20 @@ class LipSyncer(BaseProcessor):
             self._musetalk_face_parsing = None
             self._musetalk_audio_processor = None
             self._musetalk_whisper = None
+            
+        # Clear cached audio data
+        self._whisper_chunks = None
+        self._whisper_chunks_2 = None
+        self._current_audio_path = None
+        self._current_audio_path_2 = None
+        self._silent_chunks = None
+        self._silent_chunks_2 = None
+        self._silent_template = None
+        self._silent_template_2 = None
+        self._pause_chunks = None
+        self._pause_chunks_2 = None
+        self._pause_template = None
+        self._pause_template_2 = None
 
     def process_frame(self, inputs: LipSyncerInputs) -> VisionFrame:
         reference_faces = inputs.get('reference_faces')

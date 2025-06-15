@@ -14,6 +14,8 @@ from typing import List, Optional, Any, Dict
 from facefusion import logger
 from facefusion.vision import read_image, write_image
 
+# CUDA thread safety flag
+_FORCE_CPU_IN_WORKERS = True
 
 @dataclass
 class FrameData:
@@ -106,6 +108,37 @@ class AsyncFrameReader:
     def _read_frame_worker(self, frame_path: str, frame_number: int) -> FrameData:
         """Worker function to read a single frame."""
         read_start = time.time()
+        
+        # Store original execution providers and force CPU for worker threads
+        original_providers = None
+        original_device_id = None
+        if _FORCE_CPU_IN_WORKERS:
+            try:
+                from facefusion import state_manager
+                from facefusion.inference_manager import clear_inference_pool
+                
+                # Store original settings
+                original_providers = state_manager.get_item('execution_providers')
+                original_device_id = state_manager.get_item('execution_device_id')
+                
+                if original_providers and 'cuda' in str(original_providers).lower():
+                    # Temporarily force CPU execution in worker threads
+                    state_manager.set_item('execution_providers', ['cpu'])
+                    state_manager.set_item('execution_device_id', 'cpu')
+                    
+                    # Clear any existing CUDA inference pools to prevent context conflicts
+                    try:
+                        clear_inference_pool('face_detector')
+                        clear_inference_pool('face_landmarker')
+                        clear_inference_pool('face_recognizer')
+                        clear_inference_pool('face_classifier')
+                    except:
+                        pass
+                    
+                    #logger.debug(f"Worker thread {threading.current_thread().name}: Forced CPU execution", __name__)
+            except Exception as e:
+                logger.debug(f"Could not override execution providers in worker: {e}", __name__)
+        
         try:
             frame_data = read_image(frame_path)
             read_time = time.time() - read_start
@@ -127,6 +160,15 @@ class AsyncFrameReader:
                 metadata={'error': str(e)},
                 timestamp=time.time()
             )
+        finally:
+            # Restore original execution providers
+            if _FORCE_CPU_IN_WORKERS and original_providers is not None:
+                try:
+                    state_manager.set_item('execution_providers', original_providers)
+                    if original_device_id is not None:
+                        state_manager.set_item('execution_device_id', original_device_id)
+                except Exception as e:
+                    logger.debug(f"Could not restore execution providers in worker: {e}", __name__)
 
     def add_frame_paths(self, frame_paths: List[str]) -> None:
         """Add frame paths to the reading queue."""
@@ -148,8 +190,12 @@ class AsyncFrameReader:
         """Monitor completed futures and add results to output queue."""
 
         def monitor():
+            from facefusion import process_manager
+            
             for future in as_completed(self.futures):
-                if not self.is_running:
+                # Check if processing should stop
+                if not self.is_running or process_manager.is_stopping():
+                    logger.debug("Stopping async frame reader due to process manager state", __name__)
                     break
 
                 try:
@@ -160,7 +206,7 @@ class AsyncFrameReader:
                             self.stats['total_read_time'] += frame_data.metadata['read_time']
 
                     # Add to output queue (block if queue is full)
-                    while self.is_running:
+                    while self.is_running and not process_manager.is_stopping():
                         try:
                             self.output_queue.put(frame_data, timeout=0.1)
                             break
@@ -217,7 +263,7 @@ class AsyncFrameWriter:
         self.num_workers = num_workers
         self.use_processes = use_processes
 
-        self.write_queue: Queue[FrameData] = Queue(maxsize=max_queue_size)
+        self.input_queue: Queue[FrameData] = Queue(maxsize=max_queue_size)
         self.executor = None
         self.futures = []
         self.is_running = False
@@ -266,7 +312,7 @@ class AsyncFrameWriter:
             self.executor = None
 
         # Clear queues
-        self._clear_queue(self.write_queue)
+        self._clear_queue(self.input_queue)
         self.futures.clear()
 
         logger.debug("AsyncFrameWriter stopped", __name__)
@@ -282,55 +328,87 @@ class AsyncFrameWriter:
     def _write_frame_worker(self, frame_data: FrameData, output_path: str) -> bool:
         """Worker function to write a single frame."""
         write_start = time.time()
+        
+        # Store original execution providers and force CPU for worker threads
+        original_providers = None
+        original_device_id = None
+        if _FORCE_CPU_IN_WORKERS:
+            try:
+                from facefusion import state_manager
+                from facefusion.inference_manager import clear_inference_pool
+                
+                # Store original settings
+                original_providers = state_manager.get_item('execution_providers')
+                original_device_id = state_manager.get_item('execution_device_id')
+                
+                if original_providers and 'cuda' in str(original_providers).lower():
+                    # Temporarily force CPU execution in worker threads
+                    state_manager.set_item('execution_providers', ['cpu'])
+                    state_manager.set_item('execution_device_id', 'cpu')
+                    # logger.debug(f"Writer worker thread {threading.current_thread().name}: Forced CPU execution", __name__)
+            except Exception as e:
+                logger.debug(f"Could not override execution providers in writer worker: {e}", __name__)
+        
         try:
-            success = write_image(output_path, frame_data.frame_data)
-            write_time = time.time() - write_start
+            if frame_data.frame_data is not None:
+                success = write_image(output_path, frame_data.frame_data)
+                write_time = time.time() - write_start
 
-            if success:
-                self.stats['frames_written'] += 1
-                self.stats['total_write_time'] += write_time
-                logger.debug(f"Wrote frame {frame_data.frame_number} to {output_path} "
-                             f"in {write_time * 1000:.1f}ms", __name__)
+                if success:
+                    self.stats['frames_written'] += 1
+                    self.stats['total_write_time'] += write_time
+                else:
+                    self.stats['write_errors'] += 1
+
+                return success
             else:
-                logger.error(f"Failed to write frame {frame_data.frame_number} to {output_path}", __name__)
                 self.stats['write_errors'] += 1
-
-            return success
+                return False
 
         except Exception as e:
-            logger.error(f"Error writing frame {frame_data.frame_number} to {output_path}: {e}", __name__)
+            logger.error(f"Failed to write frame to {output_path}: {e}", __name__)
             self.stats['write_errors'] += 1
             return False
+        finally:
+            # Restore original execution providers
+            if _FORCE_CPU_IN_WORKERS and original_providers is not None:
+                try:
+                    state_manager.set_item('execution_providers', original_providers)
+                    if original_device_id is not None:
+                        state_manager.set_item('execution_device_id', original_device_id)
+                except Exception as e:
+                    logger.debug(f"Could not restore execution providers in writer worker: {e}", __name__)
 
     def _start_writer_worker(self) -> None:
         """Start the writer worker thread."""
-
+        
         def writer_worker():
-            while self.is_running:
+            from facefusion import process_manager
+            
+            while self.is_running and not process_manager.is_stopping():
                 try:
-                    # Get frame data from queue
-                    frame_data = self.write_queue.get(timeout=0.1)
-                    if frame_data is None:
-                        continue
-
-                    # Determine output path
-                    if frame_data.metadata and 'output_path' in frame_data.metadata:
-                        output_path = frame_data.metadata['output_path']
-                    else:
-                        # Generate default path
-                        base_dir = os.path.dirname(frame_data.frame_path)
-                        filename = f"frame_{frame_data.frame_number:06d}.png"
-                        output_path = os.path.join(base_dir, filename)
-
-                    # Submit write task
-                    future = self.executor.submit(self._write_frame_worker, frame_data, output_path)
-                    self.futures.append(future)
-
+                    # Get frame data from input queue
+                    frame_data = self.input_queue.get(timeout=1.0)
+                    
+                    # Process the frame
+                    output_path = frame_data.metadata.get('output_path') if frame_data.metadata else None
+                    if output_path:
+                        success = self._write_frame_worker(frame_data, output_path)
+                        if not success:
+                            logger.warn(f"Failed to write frame {frame_data.frame_number}", __name__)
+                    
+                    self.input_queue.task_done()
+                    
                 except Empty:
+                    # Timeout is normal, just continue
                     continue
                 except Exception as e:
                     logger.error(f"Error in writer worker: {e}", __name__)
+                    self.stats['write_errors'] += 1
+            
+            logger.debug("Writer worker stopped", __name__)
 
+        # Start writer worker thread
         writer_thread = threading.Thread(target=writer_worker, daemon=True)
         writer_thread.start()
 
@@ -346,7 +424,7 @@ class AsyncFrameWriter:
             frame_data.metadata['output_path'] = output_path
 
         try:
-            self.write_queue.put(frame_data, timeout=timeout)
+            self.input_queue.put(frame_data, timeout=timeout)
             return True
         except Full:
             logger.warn("Write queue is full, frame write may be delayed", __name__)
@@ -363,7 +441,7 @@ class AsyncFrameWriter:
             'write_errors': self.stats['write_errors'],
             'elapsed_time': elapsed_time,
             'avg_write_time_ms': avg_write_time * 1000,
-            'queue_size': self.write_queue.qsize(),
+            'queue_size': self.input_queue.qsize(),
             'is_running': self.is_running
         }
 

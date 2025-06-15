@@ -31,6 +31,10 @@ def warn(message: str, module_name: str) -> None:
     get_package_logger().warning(create_message(message, module_name))
 
 
+def warning(message: str, module_name: str) -> None:
+    warn(message, module_name)
+
+
 def error(message: str, module_name: str) -> None:
     get_package_logger().error(create_message(message, module_name))
 

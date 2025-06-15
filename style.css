@@ -1,53 +1,547 @@
-.selectRow {
-    pointer-events: all;
-    cursor: pointer;
+/* ===== RUNDIFFUSION STYLE-COMPLIANT UI ===== */
+/* Designed following RunDiffusion Style Guidelines */
+/* https://rdstyle.digitalhigh.co/ */
+
+/* Main layout improvements */
+.gradio-container {
+    max-width: 100% !important;
+    font-family: 'Inter', 'Segoe UI', 'Roboto', sans-serif;
 }
 
-.selectRow.selected {
-    background-color: #e6e6e6;
-    border: 1px solid #d9d9d9;
+/* RunDiffusion Brand Header */
+.rd-brand-header {
+    position: relative;
+    z-index: 10;
 }
 
-.scrollable-div {
-    width: 100%;
-    overflow-y: auto;
-}
-
-#ff3_status {
-    margin-top: 20px !important;
-}
-
-.switch_btn {
+.rd-brand-header::before {
+    content: '';
     position: absolute;
-    display: block !important;
-    width: 25px !important;
-    height: 25px !important;
-    max-width: 25px !important;
-    max-height: 25px !important;
+    top: 0;
+    left: 0;
     right: 0;
-    padding: 0 !important;
-    min-width: 0 !important;
+    bottom: 0;
+    background: linear-gradient(135deg, #ff6b35 0%, #004d7a 100%);
+    filter: blur(20px);
+    opacity: 0.3;
+    z-index: -1;
+}
+
+/* RunDiffusion Brand Colors */
+:root {
+    --rd-primary: #ff6b35;        /* RunDiffusion Orange */
+    --rd-secondary: #004d7a;      /* RunDiffusion Blue */
+    --rd-accent: #ffa500;         /* Accent Orange */
+    --rd-dark: #1a1a1a;          /* Dark Background */
+    --rd-light: #f8f9fa;         /* Light Background */
+    --rd-success: #28a745;        /* Success Green */
+    --rd-warning: #ffc107;        /* Warning Yellow */
+    --rd-danger: #dc3545;         /* Danger Red */
+    --rd-gray: #6c757d;           /* Neutral Gray */
+}
+
+/* Workflow tabs styling - RunDiffusion Theme */
+#main_workflow_tabs {
+    margin-bottom: 1rem;
+}
+
+#main_workflow_tabs .tab-nav {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border-radius: 12px 12px 0 0;
+    padding: 8px;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.2);
+}
+
+#main_workflow_tabs .tab-nav button {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    margin: 0 4px;
+    padding: 12px 20px;
+    transition: all 0.3s ease;
+}
+
+#main_workflow_tabs .tab-nav button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+}
+
+#main_workflow_tabs .tab-nav button.selected {
+    background: white;
+    color: var(--rd-primary);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Group styling - RunDiffusion Cards */
+.gradio-group {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px -1px rgba(255, 107, 53, 0.1);
+    margin: 1rem 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.gradio-group:hover {
+    box-shadow: 0 10px 15px -3px rgba(255, 107, 53, 0.15);
+    transform: translateY(-2px);
+}
+
+/* Section headers - RunDiffusion Branding */
+.gradio-group h3 {
+    background: linear-gradient(135deg, var(--rd-light) 0%, #e2e8f0 100%);
+    border-bottom: 2px solid var(--rd-primary);
+    color: var(--rd-secondary);
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0 !important;
+    padding: 1rem 1.5rem;
+}
+
+/* Setup tab - RunDiffusion Green Theme */
+#setup_tab .gradio-group {
+    border-left: 4px solid var(--rd-success);
+}
+
+#setup_tab h3 {
+    background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+    color: var(--rd-success);
+    border-bottom-color: var(--rd-success);
+}
+
+/* Preview tab - RunDiffusion Primary Theme */
+#preview_tab .gradio-group {
+    border-left: 4px solid var(--rd-primary);
+}
+
+#preview_tab h3 {
+    background: linear-gradient(135deg, #fff5f0 0%, #fed7cc 100%);
+    color: var(--rd-primary);
+    border-bottom-color: var(--rd-primary);
+}
+
+/* Face management tab - RunDiffusion Secondary Theme */
+#face_tab .gradio-group {
+    border-left: 4px solid var(--rd-secondary);
+}
+
+#face_tab h3 {
+    background: linear-gradient(135deg, #f0f7ff 0%, #cce7ff 100%);
+    color: var(--rd-secondary);
+    border-bottom-color: var(--rd-secondary);
+}
+
+/* Processors tab - RunDiffusion Accent Theme */
+#processors_tab .gradio-group {
+    border-left: 4px solid var(--rd-accent);
+}
+
+#processors_tab h3 {
+    background: linear-gradient(135deg, #fff8e1 0%, #ffe082 100%);
+    color: #e65100;
+    border-bottom-color: var(--rd-accent);
+}
+
+/* Execute tab - RunDiffusion Warning Theme */
+#execute_tab .gradio-group {
+    border-left: 4px solid var(--rd-warning);
+}
+
+#execute_tab h3 {
+    background: linear-gradient(135deg, #fffbf0 0%, #fff3cd 100%);
+    color: #856404;
+    border-bottom-color: var(--rd-warning);
+}
+
+/* Enhanced preview image styling */
+#ff_preview_image {
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 25px rgba(255, 107, 53, 0.15);
+    margin-bottom: 1rem;
+    border: 2px solid var(--rd-primary);
+}
+
+/* Timeline controls group - RunDiffusion Theme */
+#timeline_controls_group {
+    background: linear-gradient(135deg, var(--rd-light) 0%, #e2e8f0 100%);
+    border: 2px solid var(--rd-primary);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+
+/* Frame info text styling - RunDiffusion Dark Theme */
+#frame_info_text {
+    background: var(--rd-dark);
+    border: none;
+    border-radius: 12px;
+    color: var(--rd-light);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding: 12px 16px;
+    text-align: center;
+}
+
+/* Timeline progress styling */
+#timeline_progress {
+    margin: 1rem 0;
+}
+
+/* Timeline slider styling - RunDiffusion Branding */
+#ff_timeline_slider {
+    margin: 1rem 0;
+}
+
+#ff_timeline_slider input[type="range"] {
+    background: linear-gradient(to right, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border-radius: 12px;
+    height: 12px;
+}
+
+#ff_timeline_slider input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    background: white;
+    border: 3px solid var(--rd-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    height: 24px;
+    width: 24px;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+}
+
+#ff_timeline_slider input[type="range"]::-moz-range-thumb {
+    background: white;
+    border: 3px solid var(--rd-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    height: 24px;
+    width: 24px;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+}
+
+/* Playback speed slider */
+#playback_speed_slider {
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+/* Enhanced preview controls - RunDiffusion Theme */
+.ff_preview_frame_button {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 1.2rem;
+    font-weight: 600;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    width: 48px !important;
+    height: 48px !important;
+    margin: 0 6px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.ff_preview_frame_button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(255, 107, 53, 0.5);
+}
+
+.ff_preview_frame_button:active {
+    transform: translateY(-1px);
+}
+
+/* Play button special styling - RunDiffusion Success */
+#ff_play_pause_button {
+    background: linear-gradient(135deg, var(--rd-success) 0%, #38a169 100%);
+    font-size: 1.4rem;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    min-height: 56px !important;
+    max-height: 56px !important;
+    width: 56px !important;
+    height: 56px !important;
+    margin: 0 12px;
+}
+
+#ff_play_pause_button:hover {
+    box-shadow: 0 8px 25px rgba(40, 167, 69, 0.5);
+}
+
+/* Timeline slider styling */
+input[type="range"] {
+    background: linear-gradient(to right, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border-radius: 8px;
+    height: 8px;
+}
+
+/* Face cache management styling - RunDiffusion Theme */
+#index_video_button {
+    background: linear-gradient(135deg, var(--rd-success) 0%, #38a169 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-weight: 600;
+    padding: 12px 24px;
+    transition: all 0.3s ease;
+}
+
+#index_video_button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+}
+
+#clear_cache_button {
+    background: linear-gradient(135deg, var(--rd-danger) 0%, #c82333 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-weight: 600;
+    padding: 12px 24px;
+    transition: all 0.3s ease;
+}
+
+#clear_cache_button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+}
+
+#find_unmatched_button {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-weight: 600;
+    padding: 12px 24px;
+    transition: all 0.3s ease;
+}
+
+#find_unmatched_button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+}
+
+/* Gallery improvements */
+.gradio-gallery {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+#all_unmatched_faces_gallery {
+    background: var(--rd-light);
+    border: 2px dashed var(--rd-primary);
+    border-radius: 12px;
+    min-height: 200px;
+    padding: 1rem;
+}
+
+#all_unmatched_faces_gallery .grid-wrap {
+    gap: 12px;
+}
+
+#all_unmatched_faces_gallery .grid-item {
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+#all_unmatched_faces_gallery .grid-item:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 25px rgba(255, 107, 53, 0.25);
+    border-color: var(--rd-primary);
+}
+
+/* Face selection galleries */
+#ff3_reference_face_position_gallery,
+#ff3_reference_faces_selection_gallery,
+#ff3_reference_faces_selection_gallery_2 {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--rd-primary);
 }
 
 #ff3_reference_face_position_gallery {
     width: 100% !important;
-    max-height: 85px;
-    height: 85px;
+    max-height: 100px;
+    height: 100px;
 }
 
-#ff3_reference_faces_selection_gallery, #ff3_reference_faces_selection_gallery_2{
-    max-height: 85px;
-    width: calc(100% - 2.2em);
+#ff3_reference_faces_selection_gallery,
+#ff3_reference_faces_selection_gallery_2 {
+    max-height: 100px;
+    width: calc(100% - 2.5em);
 }
 
-#ff3_add_reference_face_button, .remove_reference_faces_button {
+/* Button improvements - RunDiffusion Theme */
+#ff3_add_reference_face_button,
+.remove_reference_faces_button {
+    background: linear-gradient(135deg, var(--rd-success) 0%, #38a169 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
     flex: none;
-    max-width: 2.2em;
-    min-width: 2.2em !important;
-    height: 2.4em;
+    font-weight: 600;
+    max-width: 2.5em;
+    min-width: 2.5em !important;
+    height: 2.8em;
     line-height: 1em;
-    border-radius: 0.5em;
+    transition: all 0.3s ease;
 }
+
+#ff3_add_reference_face_button:hover,
+.remove_reference_faces_button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+}
+
+.remove_reference_faces_button {
+    background: linear-gradient(135deg, var(--rd-danger) 0%, #c82333 100%);
+    top: 25%;
+    position: relative;
+}
+
+.remove_reference_faces_button:hover {
+    box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+}
+
+/* Status indicators */
+#index_status_text,
+#cache_info_text {
+    background: var(--rd-light);
+    border: 1px solid var(--rd-primary);
+    border-radius: 8px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9rem;
+}
+
+/* Mask controls - RunDiffusion Theme */
+.maskBtn {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border: none;
+    border-radius: 12px !important;
+    color: white;
+    font-weight: 600;
+    margin: 6px 6px !important;
+    max-width: 10em;
+    min-width: 8.5em !important;
+    padding: 10px 16px;
+    transition: all 0.3s ease;
+}
+
+.maskBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+}
+
+#ff3_bottom_mask_positions {
+    background: var(--rd-light);
+    border: 1px solid var(--rd-primary);
+    border-radius: 12px;
+    margin: 8px;
+    padding: 12px;
+    overflow: hidden;
+}
+
+#ff3_bottom_mask_positions p {
+    color: var(--rd-secondary);
+    font-weight: 500;
+    line-height: 1.4;
+    margin: 0;
+    padding: 0;
+}
+
+/* Improved scrollbars - RunDiffusion Theme */
+.scrollable-div::-webkit-scrollbar {
+    width: 8px;
+}
+
+.scrollable-div::-webkit-scrollbar-track {
+    background: var(--rd-light);
+    border-radius: 4px;
+}
+
+.scrollable-div::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border-radius: 4px;
+}
+
+.scrollable-div::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, var(--rd-secondary) 0%, var(--rd-primary) 100%);
+}
+
+/* Selected state improvements - RunDiffusion Theme */
+.selectRow {
+    border-radius: 8px;
+    cursor: pointer;
+    pointer-events: all;
+    transition: all 0.3s ease;
+}
+
+.selectRow:hover {
+    background-color: var(--rd-light);
+    transform: translateY(-1px);
+}
+
+.selectRow.selected {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border: 2px solid var(--rd-primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+/* Output elements */
+.output_elements {
+    min-height: 0 !important;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Status indicator - RunDiffusion Success Theme */
+#ff3_status {
+    background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+    border: 2px solid var(--rd-success);
+    border-radius: 12px;
+    color: var(--rd-success);
+    font-weight: 600;
+    margin-top: 20px !important;
+    padding: 1rem;
+}
+
+/* Switch button - RunDiffusion Theme */
+.switch_btn {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    display: block !important;
+    height: 28px !important;
+    max-height: 28px !important;
+    max-width: 28px !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    position: absolute;
+    right: 0;
+    transition: all 0.3s ease;
+    width: 28px !important;
+}
+
+.switch_btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+}
+
+/* Grid improvements */
 #ff3_reference_faces_selection_gallery .grid-wrap.fixed-height,
 #ff3_reference_faces_selection_gallery_2 .grid-wrap.fixed-height,
 #ff3_reference_face_position_gallery .grid-wrap.fixed-height {
@@ -55,44 +549,121 @@
     overflow-y: auto;
 }
 
-#ff3_reference_face_position_gallery .grid-wrap.fixed-height {
-    overflow-x: hidden;
-    overflow-y: auto;
+/* Loading states and animations */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
 }
 
-.ff_preview_frame_button {
-    min-width: 36px!important;
-    max-width: 36px!important;
-    min-height: 36px!important;
-    max-height: 36px!important;
-    width: 36px!important;
-    height: 36px!important;
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-10px); }
+    60% { transform: translateY(-5px); }
 }
 
-.output_elements {
-    min-height: 0 !important;
+@keyframes rd-glow {
+    0%, 100% { box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3); }
+    50% { box-shadow: 0 4px 12px rgba(255, 107, 53, 0.6); }
 }
 
-.remove_reference_faces_button {
-    top: 25%;
+.loading {
+    animation: pulse 2s infinite;
+}
+
+.bouncing {
+    animation: bounce 1s infinite;
+}
+
+.rd-glow {
+    animation: rd-glow 2s infinite;
+}
+
+/* Progress indicators - RunDiffusion Theme */
+.progress-bar {
+    background: #e2e8f0;
+    border-radius: 8px;
+    height: 8px;
+    overflow: hidden;
     position: relative;
 }
 
-.maskBtn {
-    max-width: 9.35em;
-    min-width: 8em !important;
-    border-radius: 10px !important;
-    margin: 5px 5px !important;
+.progress-fill {
+    background: linear-gradient(135deg, var(--rd-primary) 0%, var(--rd-secondary) 100%);
+    border-radius: 8px;
+    height: 100%;
+    transition: width 0.3s ease;
 }
 
-#ff3_bottom_mask_positions {
-    margin: 5px;
-    padding: 4px;
+/* Tooltips - RunDiffusion Theme */
+.tooltip {
+    background: rgba(26, 26, 26, 0.9);
+    border: 1px solid var(--rd-primary);
+    border-radius: 6px;
+    color: white;
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    position: absolute;
+    white-space: nowrap;
+    z-index: 1000;
+}
+
+/* Enhanced tab styling */
+.gradio-tabitem {
+    padding: 2rem;
+}
+
+/* Card hover effects - RunDiffusion Theme */
+.card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(255, 107, 53, 0.1);
     overflow: hidden;
+    transition: all 0.3s ease;
 }
 
-#ff3_bottom_mask_positions p {
-    margin: 0;
-    padding: 0;
-    line-height: 1.2;
+.card:hover {
+    box-shadow: 0 10px 15px -3px rgba(255, 107, 53, 0.15);
+    transform: translateY(-2px);
+}
+
+/* RunDiffusion branding accent */
+.rd-brand-accent {
+    color: var(--rd-primary);
+    font-weight: 700;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .gradio-group {
+        margin: 0.5rem 0;
+    }
+    
+    .gradio-group h3 {
+        font-size: 1rem;
+        padding: 0.75rem 1rem;
+    }
+    
+    .ff_preview_frame_button {
+        min-width: 40px !important;
+        max-width: 40px !important;
+        min-height: 40px !important;
+        max-height: 40px !important;
+        width: 40px !important;
+        height: 40px !important;
+        font-size: 1rem;
+    }
+    
+    #ff_play_pause_button {
+        min-width: 48px !important;
+        max-width: 48px !important;
+        min-height: 48px !important;
+        max-height: 48px !important;
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 1.2rem;
+    }
+    
+    #timeline_controls_group {
+        padding: 1rem;
+    }
 }

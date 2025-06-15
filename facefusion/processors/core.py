@@ -4,9 +4,10 @@ import os
 import pkgutil
 import traceback
 import time
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Tuple
 
 import facefusion.globals
 from facefusion import logger, wording, state_manager
@@ -19,6 +20,26 @@ from facefusion.processors.optimizations.async_io import get_global_io_manager, 
 from facefusion.processors.optimizations.batch_scheduler import clear_all_schedulers
 from facefusion.typing import ProcessFrames, QueuePayload
 from facefusion.inference_manager import get_multi_gpu_stats, MultiGPUInferenceWrapper
+
+# Initialize CUDA thread safety optimizations
+try:
+    from facefusion.processors.optimizations import configure_cuda_thread_safety, get_optimization_status
+    configure_cuda_thread_safety(force_cpu_in_workers=True)
+    
+    # Log optimization status for debugging
+    optimization_status = get_optimization_status()
+    logger.debug(f"Processor optimizations status: {optimization_status}", __name__)
+    
+    # Check for any compatibility issues
+    compatibility = optimization_status.get('compatibility', {})
+    for module, status in compatibility.items():
+        if not status.get('compatible', True) or status.get('issues'):
+            issues = status.get('issues', [])
+            if issues:
+                logger.warn(f"Optimization module '{module}' has issues: {', '.join(issues)}", __name__)
+    
+except ImportError:
+    logger.debug("CUDA thread safety optimization not available", __name__)
 
 PROCESSORS_METHODS = \
     [
@@ -139,7 +160,7 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
             io_manager.start()
             logger.debug(f"Using async I/O for {len(temp_frame_paths)} frames", __name__)
         except Exception as e:
-            logger.warning(f"Failed to initialize async I/O, falling back to sync: {e}", __name__)
+            logger.warn(f"Failed to initialize async I/O, falling back to sync: {e}", __name__)
             use_async_io = False
 
     with tqdm(total=len(queue_payloads), desc=wording.get('processing'), unit='frame', ascii=' =',
@@ -172,6 +193,39 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
                 if current_step % 30 == 0 or current_step == status.job_total:
                     status.preview_image = preview_image
 
+        # Create a wrapper function that sets frame context before processing
+        def process_frames_with_context(queue_payloads_batch: List[QueuePayload]) -> List[Tuple[int, str]]:
+            """Wrapper that sets frame number context for video face cache integration"""
+            results = []
+            
+            for queue_payload in queue_payloads_batch:
+                frame_number = queue_payload.get('frame_number')
+                
+                # Set frame number context for face cache lookup
+                if frame_number is not None:
+                    try:
+                        from facefusion.face_analyser import set_current_frame_number
+                        set_current_frame_number(frame_number)
+                    except ImportError:
+                        pass
+                
+                # Process single frame
+                try:
+                    single_result = process_frames([queue_payload])
+                    results.extend(single_result)
+                except Exception as e:
+                    logger.error(f"Error processing frame {frame_number}: {e}", __name__)
+                    results.append((frame_number or 0, ""))
+                finally:
+                    # Clear frame context after processing
+                    try:
+                        from facefusion.face_analyser import clear_current_frame_number
+                        clear_current_frame_number()
+                    except ImportError:
+                        pass
+            
+            return results
+
         with ThreadPoolExecutor(max_workers=state_manager.get_item('execution_thread_count')) as executor:
             futures = []
             queue: Queue[QueuePayload] = create_queue(queue_payloads)
@@ -181,7 +235,8 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
                 io_manager.reader.add_frame_paths(temp_frame_paths)
             
             while not queue.empty():
-                future = executor.submit(process_frames, pick_queue(queue, 1))
+                # Use the context-aware wrapper instead of direct process_frames
+                future = executor.submit(process_frames_with_context, pick_queue(queue, 1))
                 futures.append(future)
             
             for future_done in as_completed(futures):
@@ -224,6 +279,29 @@ def multi_process_frames(temp_frame_paths: List[str], process_frames: ProcessFra
                            f"({stats['io_efficiency']['read_fps']:.1f} FPS), "
                            f"Write: {stats['writer']['frames_written']} frames "
                            f"({stats['io_efficiency']['write_fps']:.1f} FPS)", __name__)
+        
+        # Log face cache usage statistics if available
+        try:
+            from facefusion.video_face_index import VIDEO_FACE_INDEX
+            target_path = state_manager.get_item('target_path')
+            if target_path:
+                is_indexed, metadata = VIDEO_FACE_INDEX.is_video_indexed(target_path)
+                if is_indexed:
+                    cache_hit_rate = (metadata.get('indexed_frames', 0) / len(temp_frame_paths)) * 100
+                    logger.info(f"Face Cache: {cache_hit_rate:.1f}% cache hit rate "
+                               f"({metadata.get('indexed_frames', 0)}/{len(temp_frame_paths)} frames)", __name__)
+                    
+                    # Check for face matching cache usage
+                    with sqlite3.connect(str(VIDEO_FACE_INDEX.cache_dir / "face_index.db")) as conn:
+                        cursor = conn.execute("""
+                            SELECT COUNT(*) FROM face_matches WHERE video_path = ?
+                        """, (target_path,))
+                        match_cache_count = cursor.fetchone()[0]
+                        
+                        if match_cache_count > 0:
+                            logger.info(f"Face Matching Cache: {match_cache_count} cached match results available", __name__)
+        except (ImportError, Exception):
+            pass
 
 
 def create_queue(queue_payloads: List[QueuePayload]) -> Queue[QueuePayload]:

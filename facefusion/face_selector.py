@@ -7,6 +7,31 @@ from facefusion.typing import Face, FaceSelectorOrder, FaceSet, Gender, Race
 
 
 def find_similar_faces(faces: List[Face], reference_faces: FaceSet, face_distance: float) -> List[Face]:
+    """
+    Find similar faces with optional caching integration for video processing
+    """
+    # Try to use cached face matching if available
+    try:
+        from facefusion.video_face_index import VIDEO_FACE_INDEX
+        from facefusion.face_analyser import get_many_faces
+        
+        # Check if we're in video processing context with frame number
+        current_frame_number = getattr(get_many_faces, '_current_frame_number', None)
+        target_path = state_manager.get_item('target_path')
+        
+        if current_frame_number is not None and target_path:
+            # Try to get cached face matches
+            cached_matches = VIDEO_FACE_INDEX.get_cached_face_matches(
+                target_path, current_frame_number, faces, reference_faces, face_distance
+            )
+            
+            if cached_matches is not None:
+                return cached_matches
+    except (ImportError, Exception):
+        # If caching fails, continue with normal processing
+        pass
+    
+    # Normal face matching logic
     similar_faces: List[Face] = []
     if faces and reference_faces:
         for reference_face in reference_faces:
@@ -14,6 +39,22 @@ def find_similar_faces(faces: List[Face], reference_faces: FaceSet, face_distanc
                 for face in faces:
                     if compare_faces(face, reference_face, face_distance):
                         similar_faces.append(face)
+    
+    # Try to cache the result if we're in video context
+    try:
+        from facefusion.video_face_index import VIDEO_FACE_INDEX
+        from facefusion.face_analyser import get_many_faces
+        
+        current_frame_number = getattr(get_many_faces, '_current_frame_number', None)
+        target_path = state_manager.get_item('target_path')
+        
+        if current_frame_number is not None and target_path:
+            VIDEO_FACE_INDEX.cache_face_matches(
+                target_path, current_frame_number, faces, reference_faces, face_distance, similar_faces
+            )
+    except (ImportError, Exception):
+        pass
+    
     return similar_faces
 
 

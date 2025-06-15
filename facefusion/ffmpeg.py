@@ -124,9 +124,17 @@ def merge_video(target_path: str, output_video_resolution: str, output_video_fps
                          map_amf_preset(state_manager.get_item('output_video_preset'))])
     if state_manager.get_item('output_video_encoder') in ['h264_videotoolbox', 'hevc_videotoolbox']:
         commands.extend(['-q:v', str(state_manager.get_item('output_video_quality'))])
-    commands.extend(
-        ['-vf', 'framerate=fps=' + str(output_video_fps), '-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-y',
-         temp_file_path])
+    
+    # Enhanced video sync parameters for lip sync precision
+    commands.extend([
+        '-vf', 'framerate=fps=' + str(output_video_fps), 
+        '-pix_fmt', 'yuv420p', 
+        '-colorspace', 'bt709',
+        '-vsync', '1',  # Ensure consistent frame timing
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts',
+        '-y', temp_file_path
+    ])
     return run_ffmpeg(commands).returncode == 0
 
 
@@ -172,8 +180,9 @@ def calc_image_compression(image_path: str, image_quality: int) -> int:
 
 
 def read_audio_buffer(target_path: str, sample_rate: int, channel_total: int) -> Optional[AudioBuffer]:
+    # Force consistent audio processing - avoid MP3 timing issues
     commands = ['-i', target_path, '-vn', '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', str(sample_rate), '-ac',
-                str(channel_total), '-']
+                str(channel_total), '-avoid_negative_ts', 'make_zero', '-fflags', '+genpts', '-']
     process = open_ffmpeg(commands)
     audio_buffer, _ = process.communicate()
     if process.returncode == 0:
@@ -193,16 +202,35 @@ def restore_audio(target_path: str, output_path: str, output_video_fps: Fps) -> 
     if isinstance(trim_frame_end, int):
         end_time = trim_frame_end / output_video_fps
         commands.extend(['-to', str(end_time)])
-    commands.extend(
-        ['-i', target_path, '-c:v', 'copy', '-c:a', state_manager.get_item('output_audio_encoder'), '-map', '0:v:0',
-         '-map', '1:a:0', '-shortest', '-y', output_path])
+    commands.extend([
+        '-i', target_path, 
+        '-c:v', 'copy', 
+        '-c:a', state_manager.get_item('output_audio_encoder'),
+        '-ar', '48000',  # Force consistent sample rate
+        '-map', '0:v:0', '-map', '1:a:0', 
+        '-vsync', '1',  # Ensure proper video sync
+        '-async', '1',  # Enable audio sync correction
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts',
+        '-shortest', '-y', output_path
+    ])
     return run_ffmpeg(commands).returncode == 0
 
 
 def replace_audio(target_path: str, audio_path: str, output_path: str) -> bool:
     temp_file_path = get_temp_file_path(target_path)
-    commands = ['-i', temp_file_path, '-i', audio_path, '-c:a', state_manager.get_item('output_audio_encoder'), '-af',
-                'apad', '-shortest', '-y', output_path]
+    commands = [
+        '-i', temp_file_path, '-i', audio_path, 
+        '-c:v', 'copy',
+        '-c:a', state_manager.get_item('output_audio_encoder'), 
+        '-ar', '48000',  # Force consistent sample rate
+        '-af', 'apad',
+        '-vsync', '1',  # Ensure proper video sync
+        '-async', '1',  # Enable audio sync correction
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts',
+        '-shortest', '-y', output_path
+    ]
     return run_ffmpeg(commands).returncode == 0
 
 
@@ -235,3 +263,45 @@ def extract_audio_from_video(target_path: str) -> Optional[str]:
         return audio_path
 
     return None
+
+
+def ensure_wav_audio(audio_path: str) -> str:
+    """Convert MP3/other formats to WAV for precise timing"""
+    import os
+    from pathlib import Path
+    
+    # If already WAV, return as-is
+    if audio_path.lower().endswith('.wav'):
+        return audio_path
+    
+    # Create WAV version
+    wav_path = str(Path(audio_path).with_suffix('.wav'))
+    
+    # Check if WAV already exists and is newer
+    if os.path.exists(wav_path):
+        audio_mtime = os.path.getmtime(audio_path)
+        wav_mtime = os.path.getmtime(wav_path)
+        if wav_mtime > audio_mtime:
+            print(f"Using existing WAV: {wav_path}")
+            return wav_path
+    
+    # Convert to WAV with precise timing parameters
+    commands = [
+        '-i', audio_path,
+        '-acodec', 'pcm_s16le',  # PCM 16-bit
+        '-ar', '48000',          # 48kHz sample rate
+        '-ac', '2',              # Stereo
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts',
+        '-y', wav_path
+    ]
+    
+    print(f"Converting to WAV for precise timing: {audio_path} -> {wav_path}")
+    process = run_ffmpeg(commands, show_progress=False)
+    
+    if process.returncode == 0:
+        print(f"Successfully converted to WAV: {wav_path}")
+        return wav_path
+    else:
+        print(f"Failed to convert to WAV, using original: {audio_path}")
+        return audio_path

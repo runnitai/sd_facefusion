@@ -102,55 +102,65 @@ def read_static_raw_voice(audio_path: str, fps: Fps) -> Optional[List[numpy.ndar
 
 
 def read_raw_voice(audio_path: str, fps: Fps) -> Optional[List[numpy.ndarray]]:
-    """Read and process raw voice audio for MuseTalk at 16kHz - simplified approach"""
+    """Read and process raw voice audio for MuseTalk at 16kHz with precise timing"""
     if not is_audio(audio_path):
         print(f"DEBUG: {audio_path} is not a valid audio file")
         return None
         
-    # Simple approach - read directly and convert to 16kHz
+    # Use librosa for consistent audio loading and processing
     try:
-        import soundfile
-        audio_buffer, source_sample_rate = soundfile.read(audio_path)
-        print(f"DEBUG: Read audio directly: shape {audio_buffer.shape}, sample_rate {source_sample_rate}, max: {numpy.max(numpy.abs(audio_buffer))}")
+        import librosa
+        # Load directly at 16kHz to avoid resampling artifacts
+        audio_buffer, actual_sample_rate = librosa.load(audio_path, sr=16000, mono=True, dtype=numpy.float32)
+        print(f"DEBUG: Loaded audio at 16kHz: shape {audio_buffer.shape}, actual_sr {actual_sample_rate}, max: {numpy.max(numpy.abs(audio_buffer)):.6f}")
     except Exception as e:
-        print(f"DEBUG: ERROR reading audio with soundfile: {e}")
+        print(f"DEBUG: ERROR reading audio with librosa: {e}")
         return None
     
-    # Convert to mono if stereo
-    if audio_buffer.ndim == 2:
-        audio_buffer = numpy.mean(audio_buffer, axis=1)
-        print(f"DEBUG: Converted to mono: shape {audio_buffer.shape}")
-    
-    # Convert to float32 and normalize to [-1, 1]
-    audio_buffer = audio_buffer.astype(numpy.float32)
+    # Ensure proper normalization without clipping
     max_val = numpy.max(numpy.abs(audio_buffer))
-    if max_val > 1.0:
-        audio_buffer = audio_buffer / max_val
-        print(f"DEBUG: Normalized from max {max_val:.6f} to [-1, 1]")
+    if max_val > 0.0:
+        # Gentle normalization to preserve dynamic range
+        audio_buffer = audio_buffer / max(max_val, 1.0) * 0.95
+        print(f"DEBUG: Normalized from max {max_val:.6f} with gentle scaling")
     
-    # Resample to 16kHz for Whisper
+    # Calculate precise frame timing parameters
     target_sample_rate = 16000
-    if source_sample_rate != target_sample_rate:
-        import librosa
-        audio_buffer = librosa.resample(audio_buffer, orig_sr=source_sample_rate, target_sr=target_sample_rate)
-        print(f"DEBUG: Resampled from {source_sample_rate}Hz to {target_sample_rate}Hz: shape {audio_buffer.shape}")
+    video_fps = float(fps)
+    frame_duration_seconds = 1.0 / video_fps
+    samples_per_frame = int(target_sample_rate * frame_duration_seconds)
     
-    print(f"DEBUG: Final audio after basic processing: shape {audio_buffer.shape}, max: {numpy.max(numpy.abs(audio_buffer)):.6f}")
+    # Calculate total frames based on exact duration
+    total_duration_seconds = len(audio_buffer) / target_sample_rate
+    total_frames = int(total_duration_seconds * video_fps)
     
-    # Extract frames based on FPS - simple approach
-    samples_per_frame = target_sample_rate // int(fps)  # e.g., 640 samples for 25fps
+    print(f"DEBUG: Precise timing - {samples_per_frame} samples/frame, {total_frames} total frames, {total_duration_seconds:.3f}s duration")
+    
+    # Extract frames with precise timing alignment
     audio_frames = []
+    for frame_idx in range(total_frames):
+        start_sample = int(frame_idx * samples_per_frame)
+        end_sample = int((frame_idx + 1) * samples_per_frame)
+        
+        # Extract frame with bounds checking
+        if start_sample < len(audio_buffer):
+            frame = audio_buffer[start_sample:min(end_sample, len(audio_buffer))]
+            
+            # Pad frame if needed to maintain consistent length
+            if len(frame) < samples_per_frame:
+                frame = numpy.pad(frame, (0, samples_per_frame - len(frame)), mode='constant', constant_values=0.0)
+            
+            audio_frames.append(frame.astype(numpy.float32))
+        else:
+            # Create silent frame for beyond audio duration
+            frame = numpy.zeros(samples_per_frame, dtype=numpy.float32)
+            audio_frames.append(frame)
     
-    print(f"DEBUG: Extracting frames with {samples_per_frame} samples per frame (fps={fps})")
-    
-    for i in range(0, len(audio_buffer) - samples_per_frame + 1, samples_per_frame):
-        frame = audio_buffer[i:i + samples_per_frame]
-        audio_frames.append(frame.astype(numpy.float32))
-    
-    print(f"DEBUG: Created {len(audio_frames)} audio frames")
+    print(f"DEBUG: Created {len(audio_frames)} precisely timed audio frames")
     if audio_frames:
-        print(f"DEBUG: First frame max: {numpy.max(numpy.abs(audio_frames[0])):.6f}")
-        print(f"DEBUG: Last frame max: {numpy.max(numpy.abs(audio_frames[-1])):.6f}")
+        print(f"DEBUG: Frame 0 max: {numpy.max(numpy.abs(audio_frames[0])):.6f}")
+        if len(audio_frames) > 1:
+            print(f"DEBUG: Frame -1 max: {numpy.max(numpy.abs(audio_frames[-1])):.6f}")
     
     return audio_frames
 
