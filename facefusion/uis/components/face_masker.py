@@ -30,37 +30,19 @@ AUTO_PADDING_STATUS: Optional[gradio.HTML] = None
 
 
 def find_yolo_models():
-    try:
-        from modules.paths_internal import models_path
-        adetailer_path = os.path.join(models_path, "adetailer")
-        custom_path = os.path.join(models_path, "facefusion", "yolo")
-        
-        # Create directories if they don't exist
-        os.makedirs(custom_path, exist_ok=True)
-        
-        models = []
-        
-        # Check adetailer path
-        if os.path.exists(adetailer_path):
-            for file in os.listdir(adetailer_path):
-                if file.endswith('.pt'):
-                    models.append(os.path.join(adetailer_path, file))
-        
-        # Check custom path
-        if os.path.exists(custom_path):
-            for file in os.listdir(custom_path):
-                if file.endswith('.pt'):
-                    models.append(os.path.join(custom_path, file))
-        
-        return models
-    except ImportError:
-        # Fallback to assets path if not within SD webui
-        custom_path = resolve_relative_path('../.assets/models/yolo')
-        os.makedirs(custom_path, exist_ok=True)
-        if os.path.exists(custom_path):
-            return [os.path.join(custom_path, f) for f in os.listdir(custom_path) if f.endswith('.pt')]
-        return []
-
+    from modules.paths_internal import models_path
+    adetailer_path = os.path.join(models_path, "adetailer")
+    
+    models = []
+    
+    # Check adetailer path
+    if os.path.exists(adetailer_path):
+        for file in os.listdir(adetailer_path):
+            if file.endswith('.pt'):
+                models.append(os.path.join(adetailer_path, file))
+            
+    return models
+    
 
 def render() -> None:
     global FACE_MASK_TYPES_CHECKBOX_GROUP
