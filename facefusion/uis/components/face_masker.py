@@ -33,7 +33,6 @@ def find_yolo_models():
     try:
         from modules.paths_internal import models_path
         adetailer_path = os.path.join(models_path, "adetailer")
-        custom_path = os.path.join(models_path, "facefusion", "yolo")
         
         # Create directories if they don't exist
         os.makedirs(custom_path, exist_ok=True)

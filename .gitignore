@@ -1,4 +1,3 @@
-.assets
 .idea
 .vscode
 # Ignore all __pycache__ directories everywhere
