@@ -141,49 +141,30 @@ def conditional_download_hashes(download_directory_path: str, hashes: DownloadSe
     return not invalid_hash_paths
 
 
-def conditional_download_sources(download_directory_path: str, sources: DownloadSet, skip_hash_validation: bool = False) -> bool:
+def conditional_download_sources(download_directory_path: str, sources: DownloadSet) -> bool:
     source_paths = [sources.get(source_key).get('path') for source_key in sources.keys()]
     process_manager.check()
     if not state_manager.get_item('skip_download'):
-        if skip_hash_validation:
-            _, invalid_source_paths = validate_source_paths_no_hash(source_paths)
-        else:
-            _, invalid_source_paths = validate_source_paths(source_paths)
-            
+        _, invalid_source_paths = validate_source_paths(source_paths)
         if invalid_source_paths:
             for index in sources:
                 if sources.get(index).get('path') in invalid_source_paths:
                     invalid_source_url = sources.get(index).get('url')
                     conditional_download(download_directory_path, [invalid_source_url])
-    
-    if skip_hash_validation:
-        valid_source_paths, invalid_source_paths = validate_source_paths_no_hash(source_paths)
-    else:
-        valid_source_paths, invalid_source_paths = validate_source_paths(source_paths)
-        
+    valid_source_paths, invalid_source_paths = validate_source_paths(source_paths)
     for valid_source_path in valid_source_paths:
         valid_source_file_name, _ = os.path.splitext(os.path.basename(valid_source_path))
     for invalid_source_path in invalid_source_paths:
         invalid_source_file_name, _ = os.path.splitext(os.path.basename(invalid_source_path))
-        if not skip_hash_validation:
-            print(f"Invalid source path: {invalid_source_path}")
-            logger.error(wording.get('validating_source_failed').format(source_file_name=invalid_source_file_name),
+        print(f"Invalid source path: {invalid_source_path}")
+        logger.error(wording.get('validating_source_failed').format(source_file_name=invalid_source_file_name),
+                     __name__)
+        if remove_file(invalid_source_path):
+            logger.error(wording.get('deleting_corrupt_source').format(source_file_name=invalid_source_file_name),
                          __name__)
-            if remove_file(invalid_source_path):
-                logger.error(wording.get('deleting_corrupt_source').format(source_file_name=invalid_source_file_name),
-                             __name__)
-        else:
-            print(f"Missing source file (will download): {invalid_source_path}")
-            logger.info(f"Downloading missing file: {invalid_source_file_name}", __name__)
-            
     if not invalid_source_paths:
         process_manager.end()
     return not invalid_source_paths
-
-
-def conditional_download_sources_no_hash(download_directory_path: str, sources: DownloadSet) -> bool:
-    """Download sources without hash validation - just check if files exist"""
-    return conditional_download_sources(download_directory_path, sources, skip_hash_validation=True)
 
 
 def validate_hash_paths(hash_paths: List[str]) -> Tuple[List[str], List[str]]:
@@ -204,19 +185,6 @@ def validate_source_paths(source_paths: List[str]) -> Tuple[List[str], List[str]
 
     for source_path in source_paths:
         if validate_hash(source_path):
-            valid_source_paths.append(source_path)
-        else:
-            invalid_source_paths.append(source_path)
-    return valid_source_paths, invalid_source_paths
-
-
-def validate_source_paths_no_hash(source_paths: List[str]) -> Tuple[List[str], List[str]]:
-    """Validate source paths by checking file existence only, no hash validation"""
-    valid_source_paths = []
-    invalid_source_paths = []
-
-    for source_path in source_paths:
-        if is_file(source_path) and get_file_size(source_path) > 0:
             valid_source_paths.append(source_path)
         else:
             invalid_source_paths.append(source_path)

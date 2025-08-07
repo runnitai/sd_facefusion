@@ -1,366 +1,208 @@
-import os
-import traceback
 from argparse import ArgumentParser
 from typing import List, Tuple
 
 import cv2
 import numpy
-import numpy as np
-import torch
 
-from facefusion import logger, state_manager, wording
-from facefusion.download import conditional_download_sources_no_hash
+from facefusion import config, logger, process_manager, state_manager, wording
+from facefusion.audio import create_empty_audio_frame, get_voice_frame
+from facefusion.common_helper import get_first
 from facefusion.face_analyser import get_many_faces, get_one_face
-from facefusion.face_helper import create_bounding_box, paste_back, warp_face_by_face_landmark_5
+from facefusion.face_helper import create_bounding_box, paste_back, warp_face_by_bounding_box, \
+    warp_face_by_face_landmark_5
 from facefusion.face_selector import find_similar_faces, sort_and_filter_faces
 from facefusion.face_store import get_reference_faces
-from facefusion.filesystem import filter_audio_paths, in_directory, is_image, is_video, \
-    resolve_relative_path, same_file_extension, has_audio
-from facefusion.musetalk.utils.audio_processor import AudioProcessor
-from facefusion.musetalk.utils.blending import get_image_prepare_material, get_image_blending
-from facefusion.musetalk.utils.face_parsing import FaceParsing
-from facefusion.musetalk.utils.utils import load_all_model, datagen
+from facefusion.filesystem import filter_audio_paths, has_audio, in_directory, is_image, is_video, \
+    resolve_relative_path, same_file_extension
+from facefusion.jobs import job_store
 from facefusion.processors.base_processor import BaseProcessor
 from facefusion.processors.typing import LipSyncerInputs
 from facefusion.program_helper import find_argument_group
-from facefusion.typing import ApplyStateItem, Args, Face, InferencePool, ModelSet, \
+from facefusion.thread_helper import conditional_thread_semaphore
+from facefusion.typing import ApplyStateItem, Args, AudioFrame, Face, ModelSet, \
     ProcessMode, QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, restrict_video_fps, write_image
+from facefusion.workers.classes.face_masker import FaceMasker
+
+
+def prepare_audio_frame(temp_audio_frame: AudioFrame) -> AudioFrame:
+    try:
+        # Ensure we're working with a numpy array
+        if not isinstance(temp_audio_frame, numpy.ndarray):
+            logger.error(f"Audio frame has invalid type: {type(temp_audio_frame)}", __name__)
+            return numpy.expand_dims(create_empty_audio_frame(), axis=(0, 1))
+            
+        # Make a copy to avoid modifying the original
+        audio_frame = temp_audio_frame.copy()
+        
+        # Check for empty frames or NaN values
+        if audio_frame.size == 0 or numpy.isnan(audio_frame).any():
+            logger.warning("Empty or invalid audio frame detected in prepare_audio_frame", __name__)
+            return numpy.expand_dims(create_empty_audio_frame(), axis=(0, 1))
+        
+        # Calculate audio magnitude for logging and decision making
+        audio_magnitude = numpy.sum(numpy.abs(audio_frame))
+        logger.info(f"Audio frame magnitude: {audio_magnitude}", __name__)
+        
+        # If audio is too quiet but not empty, amplify it
+        if 0 < audio_magnitude < 0.1:
+            amplification = min(0.5 / audio_magnitude, 200.0)  # Allow higher amplification
+            logger.info(f"Amplifying quiet audio by {amplification}x", __name__)
+            audio_frame = audio_frame * amplification
+            
+        # Ensure float32 type
+        if audio_frame.dtype != numpy.float32:
+            audio_frame = audio_frame.astype(numpy.float32)
+            
+        # Replace any NaN or infinite values
+        audio_frame = numpy.nan_to_num(audio_frame, nan=0.0, posinf=1.0, neginf=-1.0)
+            
+        # Apply the transformation - carefully checking for errors
+        try:
+            audio_frame = numpy.maximum(numpy.exp(-5 * numpy.log(10)), audio_frame)
+            audio_frame = numpy.log10(numpy.maximum(1e-8, audio_frame)) * 1.6 + 3.2  # Changed from 1e-10 to 1e-8
+            
+            # Add extra range for clearer lip movement
+            audio_frame = audio_frame.clip(-4, 4).astype(numpy.float32)
+            
+            # If the frame is still very quiet after transformation, boost it
+            transformed_magnitude = numpy.sum(numpy.abs(audio_frame))
+            if 0 < transformed_magnitude < 1.0:
+                boost_factor = min(3.0 / transformed_magnitude, 10.0)
+                logger.info(f"Boosting transformed audio by {boost_factor}x from {transformed_magnitude}", __name__)
+                audio_frame = audio_frame * boost_factor
+        except Exception as e:
+            logger.error(f"Error transforming audio frame: {str(e)}", __name__)
+            return numpy.expand_dims(create_empty_audio_frame(), axis=(0, 1))
+        
+        # Add batch and channel dimensions if needed
+        if audio_frame.ndim == 2:
+            audio_frame = numpy.expand_dims(audio_frame, axis=(0, 1))
+        
+        # Check final shape to ensure it's valid
+        if audio_frame.ndim != 4:
+            logger.error(f"Invalid output shape: {audio_frame.shape}", __name__)
+            return numpy.expand_dims(create_empty_audio_frame(), axis=(0, 1))
+            
+        # Final magnitude check
+        final_magnitude = numpy.sum(numpy.abs(audio_frame))
+        logger.info(f"Final audio frame magnitude: {final_magnitude}", __name__)
+            
+        return audio_frame
+    except Exception as e:
+        logger.error(f"Error in prepare_audio_frame: {str(e)}", __name__)
+        return numpy.expand_dims(create_empty_audio_frame(), axis=(0, 1))
+
+
+def prepare_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
+    crop_vision_frame = numpy.expand_dims(crop_vision_frame, axis=0)
+    prepare_vision_frame = crop_vision_frame.copy()
+    prepare_vision_frame[:, 48:] = 0
+    crop_vision_frame = numpy.concatenate((prepare_vision_frame, crop_vision_frame), axis=3)
+    return crop_vision_frame.transpose(0, 3, 1, 2).astype('float32') / 255.0
+
+
+def normalize_close_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
+    crop_vision_frame = crop_vision_frame[0].transpose(1, 2, 0)
+    crop_vision_frame = crop_vision_frame.clip(0, 1) * 255
+    return crop_vision_frame.astype(numpy.uint8)
 
 
 class LipSyncer(BaseProcessor):
     MODEL_SET: ModelSet = {
-        'musetalk_v15': {
+        'wav2lip_96': {
             'hashes': {
-                # No hash validation for HuggingFace models
-            },
-            'sources': {
-                'musetalk_unet': {
-                    'url': 'https://huggingface.co/TMElyralab/MuseTalk/resolve/main/musetalkV15/unet.pth?download=true',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/unet.pth')
-                },
-                'musetalk_config': {
-                    'url': 'https://huggingface.co/TMElyralab/MuseTalk/resolve/main/musetalkV15/musetalk.json?download=true',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/musetalk.json')
-                },
-                'sd_vae_config': {
-                    'url': 'https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/config.json?download=true',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/sd-vae-ft-mse/config.json')
-                },
-                'sd_vae_model': {
-                    'url': 'https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors?download=true',
-                    'path': resolve_relative_path(
-                        '../.assets/models/musetalk_v15/sd-vae-ft-mse/vae-ft-mse-840000-ema-pruned.safetensors')
-                },
-                'whisper_config': {
-                    'url': 'https://huggingface.co/openai/whisper-tiny/resolve/main/config.json?download=true',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/whisper-tiny/config.json')
-                },
-                'whisper_preprocessor_config': {
-                    'url': 'https://huggingface.co/openai/whisper-tiny/resolve/main/preprocessor_config.json?download=true',
-                    'path': resolve_relative_path(
-                        '../.assets/models/musetalk_v15/whisper-tiny/preprocessor_config.json')
-                },
-                'whisper_model': {
-                    'url': 'https://huggingface.co/openai/whisper-tiny/resolve/main/model.safetensors?download=true',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/whisper-tiny/pytorch_model.bin')
-                },
-                'whisper_tokenizer': {
-                    'url': 'https://huggingface.co/openai/whisper-tiny/resolve/main/tokenizer.json?download=true',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/whisper-tiny/tokenizer.json')
-                },
-                'whisper_vocab': {
-                    'url': 'https://huggingface.co/openai/whisper-tiny/resolve/main/vocab.json?download=true',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/whisper-tiny/vocab.json')
-                },
-                'face_parse_resnet': {
-                    'url': 'https://github.com/fregu856/deeplabv3/raw/refs/heads/master/pretrained_models/resnet/resnet18-5c106cde.pth',
-                    'path': resolve_relative_path(
-                        '../.assets/models/musetalk_v15/face-parse-bisent/resnet18-5c106cde.pth')
-                },
-                'face_parse_bisent': {
-                    'url': 'https://github.com/zllrunning/face-makeup.PyTorch/raw/refs/heads/master/cp/79999_iter.pth',
-                    'path': resolve_relative_path('../.assets/models/musetalk_v15/face-parse-bisent/79999_iter.pth')
+                'lip_syncer': {
+                    'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/wav2lip_96.hash',
+                    'path': resolve_relative_path('../.assets/models/wav2lip_96.hash')
                 }
             },
-            'size': (256, 256)
+            'sources': {
+                'lip_syncer': {
+                    'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/wav2lip_96.onnx',
+                    'path': resolve_relative_path('../.assets/models/wav2lip_96.onnx')
+                }
+            },
+            'size': (96, 96)
+        },
+        'wav2lip_gan_96': {
+            'hashes': {
+                'lip_syncer': {
+                    'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/wav2lip_gan_96.hash',
+                    'path': resolve_relative_path('../.assets/models/wav2lip_gan_96.hash')
+                }
+            },
+            'sources': {
+                'lip_syncer': {
+                    'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/wav2lip_gan_96.onnx',
+                    'path': resolve_relative_path('../.assets/models/wav2lip_gan_96.onnx')
+                }
+            },
+            'size': (96, 96)
         }
     }
 
-    model_key: str = 'musetalk_model'
+    model_key: str = 'lip_syncer_model'
     priority = 10
 
-    # MuseTalk components
-    _musetalk_vae = None
-    _musetalk_unet = None
-    _musetalk_pe = None
-    _musetalk_face_parsing = None
-    _musetalk_audio_processor = None
-    _musetalk_whisper = None
-    
-    # Global audio chunks storage (like realtime_inference.py)
-    _whisper_chunks = None
-    _whisper_chunks_2 = None
-    _current_audio_path = None
-    _current_audio_path_2 = None
-    _silent_chunks = None  # Set of silent chunk indices for source 1
-    _silent_chunks_2 = None  # Set of silent chunk indices for source 2
-
     def register_args(self, program: ArgumentParser) -> None:
-        group = find_argument_group(program, 'processors')
-        if group:
-            group.add_argument('--lip-sync-empty-audio', action='store_true', help='sync lip movements even when no audio is detected')
+        group_processors = find_argument_group(program, 'processors')
+        if group_processors:
+            group_processors.add_argument('--lip-syncer-model', help=wording.get('help.lip_syncer_model'),
+                                          default=config.get_str_value('processors.lip_syncer_model', 'wav2lip_gan_96'),
+                                          choices=self.list_models())
+            job_store.register_step_keys(['lip_syncer_model'])
 
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
-        state_manager.set_item('lip_sync_empty_audio', args.get('lip_sync_empty_audio', False))
-
-    def _initialize_musetalk(self):
-        """Initialize MuseTalk components following original project structure"""
-        if self._musetalk_vae is None:
-            try:
-                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-                # Load MuseTalk models using the original workflow
-                self._musetalk_vae, self._musetalk_unet, self._musetalk_pe = load_all_model(device=device)
-
-                # Ensure proper dtype
-                weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-                self._musetalk_unet.model = self._musetalk_unet.model.to(dtype=weight_dtype)
-                
-                # Initialize audio processor exactly like original MuseTalk
-                whisper_model_path = resolve_relative_path('../.assets/models/musetalk_v15/whisper-tiny')
-                self._musetalk_audio_processor = AudioProcessor(feature_extractor_path=whisper_model_path)
-                
-                # Initialize Whisper for audio feature extraction
-                from transformers import WhisperModel
-                self._musetalk_whisper = WhisperModel.from_pretrained(whisper_model_path)
-                self._musetalk_whisper.to(device)
-                self._musetalk_whisper = self._musetalk_whisper.to(dtype=weight_dtype)
-                
-                # Initialize face parsing
-                try:
-                    self._musetalk_face_parsing = FaceParsing()
-                    if self._musetalk_face_parsing is None or not hasattr(self._musetalk_face_parsing, 'net'):
-                        logger.error("FaceParsing initialization returned None or invalid object", __name__)
-                        raise RuntimeError("FaceParsing initialization failed")
-                except Exception as fp_error:
-                    logger.error(f"FaceParsing initialization failed: {fp_error}", __name__)
-                    traceback.print_exc()
-                    self._musetalk_face_parsing = None
-                    raise fp_error
-
-                logger.info("MuseTalk models initialized successfully", __name__)
-
-            except Exception as e:
-                logger.error(f"MuseTalk initialization failed: {e}", __name__)
-                logger.error(f"Traceback: {traceback.format_exc()}", __name__)
-                raise e
-
-    def _get_whisper_chunks_with_silence_detection(self, audio_path: str, fps: float, weight_dtype, device):
-        """Get whisper chunks and detect silence during processing"""
-        try:
-            import librosa
-            import math
-            from einops import rearrange
-            
-            # Load raw audio for silence detection
-            raw_audio, sr = librosa.load(audio_path, sr=16000)
-            
-            # Get whisper features using the audio processor
-            whisper_input_features, librosa_length = self._musetalk_audio_processor.get_audio_feature(audio_path, weight_dtype=weight_dtype)
-            
-            # Process whisper features
-            audio_feature_length_per_frame = 2 * (2 + 2 + 1)  # audio_padding_length_left=2, right=2
-            whisper_feature = []
-            
-            for input_feature in whisper_input_features:
-                input_feature = input_feature.to(device).to(weight_dtype)
-                audio_feats = self._musetalk_whisper.encoder(input_feature, output_hidden_states=True).hidden_states
-                audio_feats = torch.stack(audio_feats, dim=2)
-                whisper_feature.append(audio_feats)
-
-            whisper_feature = torch.cat(whisper_feature, dim=1)
-            
-            # Trim and pad like original
-            audio_fps = 50
-            fps = int(fps)
-            whisper_idx_multiplier = audio_fps / fps
-            num_frames = math.floor((librosa_length / sr) * fps)
-            actual_length = math.floor((librosa_length / sr) * audio_fps)
-            whisper_feature = whisper_feature[:,:actual_length,...]
-
-            padding_nums = math.ceil(whisper_idx_multiplier)
-            whisper_feature = torch.cat([
-                torch.zeros_like(whisper_feature[:, :padding_nums * 2]),  # left padding
-                whisper_feature,
-                torch.zeros_like(whisper_feature[:, :padding_nums * 6])   # right padding
-            ], 1)
-
-            # Process chunks and detect silence simultaneously
-            audio_prompts = []
-            silent_chunks = set()
-            
-            for frame_index in range(num_frames):
-                # Get whisper chunk
-                audio_index = math.floor(frame_index * whisper_idx_multiplier)
-                audio_clip = whisper_feature[:, audio_index: audio_index + audio_feature_length_per_frame]
-                audio_clip = rearrange(audio_clip, 'b c h w -> b (c h) w')
-                audio_prompts.append(audio_clip)
-                
-                # Check if corresponding raw audio segment is silent
-                frame_duration = 1.0 / fps
-                start_sample = int(frame_index * frame_duration * sr)
-                end_sample = int((frame_index + 1) * frame_duration * sr)
-                
-                if start_sample < len(raw_audio):
-                    audio_segment = raw_audio[start_sample:min(end_sample, len(raw_audio))]
-                    
-                    # Use librosa.trim to detect if there's meaningful audio
-                    trimmed, _ = librosa.effects.trim(audio_segment, top_db=30)  # 30dB threshold
-                    
-                    # Consider silent if trimmed audio is very short or has low energy
-                    is_silent = (len(trimmed) < len(audio_segment) * 0.1 or 
-                               np.max(np.abs(trimmed)) < 0.01)
-                    
-                    if is_silent:
-                        silent_chunks.add(frame_index)
-                else:
-                    # Beyond audio length
-                    silent_chunks.add(frame_index)
-
-            audio_prompts = torch.cat(audio_prompts, dim=0)
-            
-            print(f"Processed {len(audio_prompts)} chunks, {len(silent_chunks)} detected as silent")
-            return audio_prompts, silent_chunks
-            
-        except Exception as e:
-            print(f"Error in whisper chunk processing with silence detection: {e}")
-            import traceback
-            traceback.print_exc()
-            return [], set()
-
-    def _process_and_cache_audio(self, audio_path: str, fps: float, audio_source: int = 1):
-        """Process audio upfront and cache chunks like realtime_inference.py"""
-        try:
-            # Choose the right cache variables based on audio source
-            if audio_source == 1:
-                current_path = self._current_audio_path
-                cached_chunks = self._whisper_chunks
-                cached_silent = self._silent_chunks
-            else:
-                current_path = self._current_audio_path_2
-                cached_chunks = self._whisper_chunks_2
-                cached_silent = self._silent_chunks_2
-            
-            # Skip if already processed
-            if current_path == audio_path and cached_chunks is not None:
-                print(f"Using cached audio chunks for source {audio_source}: {audio_path} ({len(cached_chunks)} chunks, {len(cached_silent) if cached_silent else 0} silent)")
-                return cached_chunks
-                
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-            
-            print(f"Processing and caching audio source {audio_source}: {audio_path}")
-            
-            # Process whisper chunks with integrated silence detection
-            whisper_chunks, silent_chunks = self._get_whisper_chunks_with_silence_detection(audio_path, fps, weight_dtype, device)
-            
-            # Cache the results in the appropriate variables
-            if audio_source == 1:
-                self._whisper_chunks = whisper_chunks
-                self._current_audio_path = audio_path
-                self._silent_chunks = silent_chunks
-            else:
-                self._whisper_chunks_2 = whisper_chunks
-                self._current_audio_path_2 = audio_path
-                self._silent_chunks_2 = silent_chunks
-            
-            print(f"Cached {len(whisper_chunks)} audio chunks for source {audio_source}: {audio_path} ({len(silent_chunks)} silent)")
-            return whisper_chunks
-
-        except Exception as e:
-            print(f"Audio processing failed for source {audio_source}: {e}")
-            traceback.print_exc()
-            return []
-
-    def get_audio_chunk_for_frame(self, frame_index: int, audio_source: int = 1) -> tuple:
-        """Get the appropriate audio chunk for a specific frame index and whether it's silent"""
-        try:
-            # Handle negative frame indices (use 0 instead)
-            if frame_index < 0:
-                frame_index = 0
-                
-            # Choose the right audio chunks and silent chunks
-            chunks = self._whisper_chunks if audio_source == 1 else self._whisper_chunks_2
-            silent_chunks = self._silent_chunks if audio_source == 1 else self._silent_chunks_2
-            
-            # Properly check if chunks is None or empty without tensor boolean evaluation
-            if chunks is None:
-                print(f"No audio chunks available for source {audio_source} (chunks is None)")
-                return None, False
-            
-            # Check if chunks is a list/sequence and if it's empty
-            try:
-                chunks_len = len(chunks)
-                if chunks_len == 0:
-                    print(f"No audio chunks available for source {audio_source} (empty list)")
-                    return None, False
-            except TypeError:
-                # If chunks doesn't support len(), it's probably not a valid chunks list
-                print(f"Invalid chunks type for source {audio_source}: {type(chunks)}")
-                return None, False
-                
-            # Use modulo to cycle through chunks like datagen does
-            chunk_index = frame_index % chunks_len
-            audio_chunk = chunks[chunk_index]
-            
-            # Check if this chunk is silent
-            is_silent = silent_chunks is not None and chunk_index in silent_chunks
-            
-            # Ensure we return a proper tensor
-            if isinstance(audio_chunk, torch.Tensor):
-                #print(f"Retrieved audio chunk {chunk_index} for frame {frame_index} from source {audio_source}, shape: {audio_chunk.shape}, silent: {is_silent}")
-                return audio_chunk, is_silent
-            else:
-                #print(f"Audio chunk is not a tensor: {type(audio_chunk)}")
-                return None, False
-            
-        except Exception as e:
-            print(f"Error getting audio chunk for frame {frame_index}: {e}")
-            import traceback
-            traceback.print_exc()
-            return None, False
-
-    def pre_check(self) -> bool:
-        """Download MuseTalk models if needed"""
-        download_directory_path = resolve_relative_path(self.model_path)
-        model_sources = self.get_model_options().get('sources', {})
-
-        all_downloaded = True
-        for model_key, model_info in model_sources.items():
-            model_path = model_info.get('path')
-
-            # Create the directory for this specific model
-            model_dir = os.path.dirname(model_path)
-            os.makedirs(model_dir, exist_ok=True)
-
-            # Create a single-item source dict for this model
-            single_source = {model_key: model_info}
-
-            downloaded = conditional_download_sources_no_hash(model_dir, single_source)
-
-            if downloaded:
-                logger.info(f"✓ {model_key} downloaded successfully", __name__)
-            else:
-                logger.error(f"✗ Failed to download {model_key}", __name__)
-                all_downloaded = False
-
-        return all_downloaded
+        apply_state_item('lip_syncer_model', args.get('lip_syncer_model'))
 
     def pre_process(self, mode: ProcessMode) -> bool:
-        if not has_audio(state_manager.get_item('source_paths')):
+        # Get source paths and add extensive logging
+        source_paths = state_manager.get_item('source_paths')
+        logger.info(f"Checking source paths for audio: {source_paths}", __name__)
+        
+        # First check if source_paths exists at all
+        if not source_paths or not isinstance(source_paths, list) or len(source_paths) == 0:
             logger.error(wording.get('choose_audio_source') + wording.get('exclamation_mark'), __name__)
             return False
+            
+        # Then check if any are valid audio files
+        audio_paths = filter_audio_paths(source_paths)
+        logger.info(f"Filtered audio paths: {audio_paths}", __name__)
+        
+        if not audio_paths or len(audio_paths) == 0:
+            logger.error(wording.get('choose_audio_source') + wording.get('exclamation_mark'), __name__)
+            return False
+        
+        # Check if we need to validate reference faces
+        if 'reference' in state_manager.get_item('face_selector_mode'):
+            try:
+                reference_faces = get_reference_faces()
+                if reference_faces is None or (isinstance(reference_faces, (list, tuple)) and len(reference_faces) == 0):
+                    logger.warning("No reference faces available but using reference mode", __name__)
+                    # Don't return False here - we'll handle this in the process_frame method
+            except Exception as e:
+                logger.warning(f"Error checking reference faces: {e}", __name__)
+                # Continue anyway - we'll handle this in the process_frame method
+        
+        # Check if we can actually extract frames from the audio
+        for audio_path in audio_paths:
+            try:
+                # Try to get a sample frame to validate the audio works
+                test_frame = get_voice_frame(audio_path, 25)
+                if test_frame is not None and isinstance(test_frame, numpy.ndarray) and test_frame.size > 0:
+                    logger.info(f"Successfully validated audio file: {audio_path}", __name__)
+                    # Explicitly save this working audio path to ensure it's used
+                    if source_paths and isinstance(source_paths, list):
+                        # Move this working audio file to the front of the list
+                        source_paths = [p for p in source_paths if p != audio_path]
+                        source_paths.insert(0, audio_path)
+                        state_manager.set_item('source_paths', source_paths)
+                    return True
+            except Exception as e:
+                logger.error(f"Error validating audio file {audio_path}: {str(e)}", __name__)
+        
+        # Other checks for target and output paths
         if mode in ['output', 'preview'] and not is_image(state_manager.get_item('target_path')) and not is_video(
                 state_manager.get_item('target_path')):
             logger.error(wording.get('choose_image_or_video_target') + wording.get('exclamation_mark'), __name__)
@@ -372,289 +214,442 @@ class LipSyncer(BaseProcessor):
                 [state_manager.get_item('target_path'), state_manager.get_item('output_path')]):
             logger.error(wording.get('match_target_and_output_extension') + wording.get('exclamation_mark'), __name__)
             return False
+            
+        # If we've gone through all audio files and none worked, return false
+        logger.error("None of the audio files could be processed for lip syncing", __name__)
+        return False
 
-        # Initialize MuseTalk and process audio upfront
-        self._initialize_musetalk()
-        
-        # Get audio paths and process them
-        source_paths = state_manager.get_item('source_paths')
-        source_paths_2 = state_manager.get_item('source_paths_2')
-        
-        fps = restrict_video_fps(state_manager.get_item('target_path'), state_manager.get_item('output_video_fps'))
-        
-        if source_paths:
-            audio_paths = filter_audio_paths(source_paths)
-            if audio_paths:
-                self._process_and_cache_audio(audio_paths[0], fps, audio_source=1)
-        
-        if source_paths_2:
-            audio_paths_2 = filter_audio_paths(source_paths_2)
-            if audio_paths_2:
-                self._process_and_cache_audio(audio_paths_2[0], fps, audio_source=2)
-
-        return True
-
-    def sync_lip(self, target_face: Face, audio_chunk: torch.Tensor, temp_vision_frame: VisionFrame, is_silent: bool = False) -> VisionFrame:
-        """Main lip sync method using MuseTalk with properly processed audio chunk"""
+    def sync_lip(self, target_face: Face, temp_audio_frame: AudioFrame, temp_vision_frame: VisionFrame) -> VisionFrame:
         try:
-            # Ensure MuseTalk models are initialized
-            self._initialize_musetalk()
+            masker = FaceMasker()
+            model_size = self.get_model_options().get('size')
             
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            weight_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+            # Validate and log audio frame before processing
+            if temp_audio_frame is None:
+                logger.error("Audio frame is None in sync_lip", __name__)
+                return temp_vision_frame
             
-            # Check if we should sync empty audio
-            sync_empty_audio = state_manager.get_item('lip_sync_empty_audio')
-            if sync_empty_audio is None:
-                sync_empty_audio = False
+            if not isinstance(temp_audio_frame, numpy.ndarray):
+                logger.error(f"Audio frame has invalid type in sync_lip: {type(temp_audio_frame)}", __name__)
+                return temp_vision_frame
             
-            # Handle silent audio chunks based on raw audio analysis
-            if audio_chunk is None or is_silent:
-                if not sync_empty_audio:
-                    # Return original frame without modification
-                    print(f"Silent audio chunk detected and sync_empty_audio is False - returning original frame")
-                    return temp_vision_frame
-                else:
-                    # Use small random features for natural mouth movement
-                    audio_chunk = torch.randn(1, 50, 384, device=device, dtype=weight_dtype) * 0.05
-                    print(f"Silent audio chunk detected but sync_empty_audio is True - using random features")
+            # Log audio frame magnitude for debugging
+            audio_magnitude = numpy.sum(numpy.abs(temp_audio_frame))
+            logger.info(f"Audio frame magnitude in sync_lip: {audio_magnitude}", __name__)
             
-            # Face processing - align to 512x512 as per MuseTalk requirements
-            crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
-                                                                            target_face.landmark_set.get('5/68'),
-                                                                            'ffhq_512', (512, 512))
-            face_landmark_68 = cv2.transform(target_face.landmark_set.get('68').reshape(1, -1, 2),
-                                             affine_matrix).reshape(-1, 2)
+            # Artificially enhance very quiet audio frames for better lip movement
+            if 0 < audio_magnitude < 0.5:
+                enhancement = min(1.0 / audio_magnitude, 50.0)
+                logger.info(f"Enhancing quiet audio in sync_lip by {enhancement}x", __name__)
+                temp_audio_frame = temp_audio_frame * enhancement
+            
+            # Ensure audio frame is in the correct format
+            temp_audio_frame = prepare_audio_frame(temp_audio_frame)
+            
+            # Warp face
+            crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
+                temp_vision_frame, target_face.landmark_set.get('5/68'), 'ffhq_512', (512, 512))
+                
+            face_landmark_68 = cv2.transform(target_face.landmark_set.get('68').reshape(1, -1, 2), affine_matrix).reshape(
+                -1, 2)
             bounding_box = create_bounding_box(face_landmark_68)
-
-            # Adjust bounding box for MuseTalk face region (256x256)
-            x1, y1, x2, y2 = bounding_box
-            extra_margin = 10
-            y2 = min(y2 + extra_margin, crop_vision_frame.shape[0])
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-
-            face_crop = crop_vision_frame[y1:y2, x1:x2]
-            face_crop_resized = cv2.resize(face_crop, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+            bounding_box[1] -= numpy.abs(bounding_box[3] - bounding_box[1]) * 0.125
             
-            # Process audio chunk through PE like realtime_inference.py
-            # Add batch dimension if missing (PE expects [batch, seq_len, d_model])
-            if audio_chunk.dim() == 2:
-                audio_chunk = audio_chunk.unsqueeze(0)  # Add batch dimension: [50, 384] -> [1, 50, 384]
+            # Create masks
+            mouth_mask = masker.create_mouth_mask(face_landmark_68)
+            box_mask = masker.create_static_box_mask(
+                crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
+                state_manager.get_item('face_mask_padding'))
+            crop_masks = [mouth_mask, box_mask]
+
+            if 'occlusion' in state_manager.get_item('face_mask_types'):
+                occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
+                crop_masks.append(occlusion_mask)
+
+            close_vision_frame, close_matrix = warp_face_by_bounding_box(crop_vision_frame, bounding_box, model_size)
+            close_vision_frame = prepare_crop_frame(close_vision_frame)
             
-            audio_features = self._musetalk_pe(audio_chunk.to(device))
+            # Forward pass through the model
+            logger.info(f"Running lip sync model with audio shape: {temp_audio_frame.shape}", __name__)
+            close_vision_frame = self.forward(temp_audio_frame, close_vision_frame)
+            close_vision_frame = normalize_close_frame(close_vision_frame)
             
-            # MuseTalk inference - single step latent space inpainting
-            latents = self._musetalk_vae.get_latents_for_unet(face_crop_resized)
-            latents = latents.to(dtype=weight_dtype, device=device)
-            audio_features = audio_features.to(dtype=weight_dtype, device=device)
-
-            timesteps = torch.tensor([0], device=device, dtype=weight_dtype)
-
-            # Single-step UNet inference (NOT diffusion - this is key!)
-            with torch.no_grad():
-                pred_latents = self._musetalk_unet.model(latents, timesteps,
-                                                         encoder_hidden_states=audio_features).sample
-
-            # Decode latents back to image
-            result_frame = self._musetalk_vae.decode_latents(pred_latents)
-            result_frame = result_frame[0]
-
-            # Resize back to original face size
-            result_frame_resized = cv2.resize(result_frame.astype(numpy.uint8), (x2 - x1, y2 - y1))
+            # Transform back and paste
+            crop_vision_frame = cv2.warpAffine(close_vision_frame, cv2.invertAffineTransform(close_matrix), (512, 512),
+                                            borderMode=cv2.BORDER_REPLICATE)
+            crop_mask = numpy.minimum.reduce(crop_masks)
             
-            # Apply face blending if face parsing is available
-            try:
-                if self._musetalk_face_parsing is not None:
-                    mask_array, crop_box = get_image_prepare_material(
-                        crop_vision_frame,
-                        [x1, y1, x2, y2],
-                        fp=self._musetalk_face_parsing,
-                        mode="raw"
-                    )
-
-                    blended_frame = get_image_blending(
-                        crop_vision_frame,
-                        result_frame_resized,
-                        [x1, y1, x2, y2],
-                        mask_array,
-                        crop_box
-                    )
-                else:
-                    # Fallback to simple paste
-                    blended_frame = crop_vision_frame.copy()
-                    blended_frame[y1:y2, x1:x2] = result_frame_resized
-
-                # Paste back to original frame
-                paste_vision_frame = paste_back(temp_vision_frame, blended_frame,
-                                                numpy.ones_like(blended_frame[:, :, 0]), affine_matrix)
-
-            except Exception as e:
-                logger.warn(f"Face blending failed, using simple paste: {e}", __name__)
-                crop_vision_frame[y1:y2, x1:x2] = result_frame_resized
-                paste_vision_frame = paste_back(temp_vision_frame, crop_vision_frame,
-                                                numpy.ones_like(crop_vision_frame[:, :, 0]), affine_matrix)
-
-            return paste_vision_frame
-
+            # Enhance the mask for more visible movement with quiet audio
+            if audio_magnitude < 1.0:
+                logger.info("Enhancing mask for quiet audio", __name__)
+                # Increase mask intensity for more visibility
+                mask_enhancement = 1.5
+                crop_mask = numpy.clip(crop_mask * mask_enhancement, 0, 1)
+            
+            return paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
         except Exception as e:
-            logger.error(f"MuseTalk sync failed: {e}", __name__)
-            logger.error(f"Traceback: {traceback.format_exc()}", __name__)
+            logger.error(f"Error in sync_lip: {e}", __name__)
             return temp_vision_frame
 
-    def get_inference_pool(self) -> InferencePool:
-        """Initialize and return MuseTalk inference pool"""
-        self._initialize_musetalk()
-        return {
-            'musetalk_vae': self._musetalk_vae,
-            'musetalk_unet': self._musetalk_unet,
-            'musetalk_pe': self._musetalk_pe,
-            'musetalk_face_parsing': self._musetalk_face_parsing,
-            'musetalk_audio_processor': self._musetalk_audio_processor,
-            'musetalk_whisper': self._musetalk_whisper
-        }
-
-    def clear_inference_pool(self) -> None:
-        """Clear MuseTalk models from memory"""
-        if hasattr(self, '_musetalk_vae') and self._musetalk_vae is not None:
-            del self._musetalk_vae
-            del self._musetalk_unet
-            del self._musetalk_pe
-            del self._musetalk_face_parsing
-            del self._musetalk_audio_processor
-            del self._musetalk_whisper
-
-            self._musetalk_vae = None
-            self._musetalk_unet = None
-            self._musetalk_pe = None
-            self._musetalk_face_parsing = None
-            self._musetalk_audio_processor = None
-            self._musetalk_whisper = None
+    def forward(self, temp_audio_frame: AudioFrame, close_vision_frame: VisionFrame) -> VisionFrame:
+        try:
+            lip_syncer = self.get_inference_pool().get('lip_syncer')
+            
+            # Add debugging info
+            logger.info(f"Running lip sync model with audio shape: {temp_audio_frame.shape}, vision shape: {close_vision_frame.shape}", __name__)
+            
+            if temp_audio_frame is None:
+                logger.error("Audio frame is None in forward method", __name__)
+                raise ValueError("Audio frame cannot be None")
+            
+            # Ensure audio has enough signal for the model to detect
+            if isinstance(temp_audio_frame, numpy.ndarray):
+                # Check if the audio frame is too quiet
+                audio_magnitude = numpy.sum(numpy.abs(temp_audio_frame))
+                logger.info(f"Audio magnitude in forward method: {audio_magnitude}", __name__)
+                
+                if audio_magnitude < 0.1:
+                    # Create an artificial "speaking" pattern to force some movement
+                    logger.info("Audio too quiet in forward method, creating artificial speaking pattern", __name__)
+                    # Generate a sine wave pattern to simulate speech
+                    if temp_audio_frame.ndim >= 4:
+                        for i in range(temp_audio_frame.shape[0]):
+                            for j in range(temp_audio_frame.shape[3]):
+                                # Create a sine wave pattern with varying amplitude
+                                pattern = numpy.sin(numpy.linspace(0, 4*numpy.pi, temp_audio_frame.shape[2])) * 2.0
+                                # Apply to different parts of the audio frame
+                                temp_audio_frame[i, 0, :, j] = pattern
+            
+            # Run the model with enhanced audio
+            with conditional_thread_semaphore():
+                result = lip_syncer.run(None, {'source': temp_audio_frame, 'target': close_vision_frame})[0]
+                
+            # Log model output stats
+            if isinstance(result, numpy.ndarray):
+                logger.info(f"Lip sync model output shape: {result.shape}, max: {numpy.max(result)}, min: {numpy.min(result)}", __name__)
+                
+            return result
+        except Exception as e:
+            logger.error(f"Error in forward method: {e}", __name__)
+            # Return original frame if model fails
+            return close_vision_frame
 
     def process_frame(self, inputs: LipSyncerInputs) -> VisionFrame:
+        # Get inputs with proper validation
         reference_faces = inputs.get('reference_faces')
-        # Get frame index if available, otherwise use 0
-        frame_index = inputs.get('frame_index', 0)
+        source_audio_frame = inputs.get('source_audio_frame')
+        source_audio_frame_2 = inputs.get('source_audio_frame_2')
         target_vision_frame = inputs.get('target_vision_frame')
-
+        
+        # Validate reference faces
+        if reference_faces is None:
+            reference_faces = []
+        elif not isinstance(reference_faces, (list, tuple)):
+            reference_faces = [reference_faces]
+            
+        # Get faces in target frame
         many_faces = []
         try:
             many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
         except Exception as e:
             logger.error(f"Error detecting faces in target frame: {e}", __name__)
-
+        
+        # Check if both audio frames are empty
+        if source_audio_frame is None and source_audio_frame_2 is None:
+            logger.error("No audio frames available - both audio sources are None", __name__)
+            return target_vision_frame
+            
+        # Create empty frames if needed
+        if source_audio_frame is None:
+            logger.warn("Primary audio frame is None, creating empty frame", __name__)
+            source_audio_frame = create_empty_audio_frame()
+            
+        if source_audio_frame_2 is None:
+            source_audio_frame_2 = create_empty_audio_frame()
+            
+        # Check if frames have any data by checking sum of absolute values
+        if (not isinstance(source_audio_frame, numpy.ndarray) or numpy.sum(numpy.abs(source_audio_frame)) < 1e-9) and \
+           (not isinstance(source_audio_frame_2, numpy.ndarray) or numpy.sum(numpy.abs(source_audio_frame_2)) < 1e-9):
+            logger.error(f"Both audio frames are empty or have no meaningful data. First frame sum: {numpy.sum(numpy.abs(source_audio_frame)) if isinstance(source_audio_frame, numpy.ndarray) else None}, Second frame sum: {numpy.sum(numpy.abs(source_audio_frame_2)) if isinstance(source_audio_frame_2, numpy.ndarray) else None}", __name__)
+            return target_vision_frame
+            
+        # Ensure correct types for audio frames
+        if not isinstance(source_audio_frame, numpy.ndarray):
+            logger.error(f"Audio frame has wrong type: {type(source_audio_frame)}", __name__)
+            source_audio_frame = create_empty_audio_frame()
+        
+        if not isinstance(source_audio_frame_2, numpy.ndarray):
+            source_audio_frame_2 = create_empty_audio_frame()
+            
+        # Convert to float32 if needed
+        if source_audio_frame.dtype != numpy.float32:
+            logger.info(f"Converting audio frame from {source_audio_frame.dtype} to float32", __name__)
+            source_audio_frame = source_audio_frame.astype(numpy.float32)
+            
+        if source_audio_frame_2.dtype != numpy.float32:
+            source_audio_frame_2 = source_audio_frame_2.astype(numpy.float32)
+            
+        # Ensure correct dimensions
+        expected_shape = (80, 16)
+        if source_audio_frame.shape != expected_shape:
+            logger.warn(f"Reshaping audio frame from {source_audio_frame.shape} to {expected_shape}", __name__)
+            # Try to reshape or pad appropriately
+            try:
+                if source_audio_frame.size >= expected_shape[0] * expected_shape[1]:
+                    # Reshape if we have enough data
+                    source_audio_frame = source_audio_frame.flatten()[:expected_shape[0] * expected_shape[1]].reshape(expected_shape)
+                else:
+                    # Pad if we don't have enough data
+                    temp_frame = numpy.zeros(expected_shape, dtype=numpy.float32)
+                    r, c = min(source_audio_frame.shape[0], expected_shape[0]), min(source_audio_frame.shape[1], expected_shape[1])
+                    temp_frame[:r, :c] = source_audio_frame[:r, :c]
+                    source_audio_frame = temp_frame
+            except Exception as e:
+                logger.error(f"Failed to reshape audio frame: {e}", __name__)
+                source_audio_frame = create_empty_audio_frame()
+                
+        # Do the same for the second audio frame
+        if source_audio_frame_2.shape != expected_shape:
+            try:
+                if source_audio_frame_2.size >= expected_shape[0] * expected_shape[1]:
+                    source_audio_frame_2 = source_audio_frame_2.flatten()[:expected_shape[0] * expected_shape[1]].reshape(expected_shape)
+                else:
+                    temp_frame = numpy.zeros(expected_shape, dtype=numpy.float32)
+                    r, c = min(source_audio_frame_2.shape[0], expected_shape[0]), min(source_audio_frame_2.shape[1], expected_shape[1])
+                    temp_frame[:r, :c] = source_audio_frame_2[:r, :c]
+                    source_audio_frame_2 = temp_frame
+            except:
+                source_audio_frame_2 = create_empty_audio_frame()
+        
+        # Process faces based on the face selector mode
         face_selector_mode = state_manager.get_item('face_selector_mode')
-
         if face_selector_mode == 'many':
             if many_faces:
-                for i, target_face in enumerate(many_faces):
+                for target_face in many_faces:
                     try:
-                        audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1)
-                        target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame, is_silent)
+                        target_vision_frame = self.sync_lip(target_face, source_audio_frame, target_vision_frame)
                     except Exception as e:
-                        logger.error(f"Error while syncing lip for face {i + 1} in 'many' mode: {e}", __name__)
-
+                        logger.error(f"Error while syncing lip for 'many' mode: {e}", __name__)
+        
         elif face_selector_mode == 'one':
             target_face = get_one_face(many_faces)
             if target_face:
                 try:
-                    audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1)
-                    target_vision_frame = self.sync_lip(target_face, audio_chunk, target_vision_frame, is_silent)
+                    target_vision_frame = self.sync_lip(target_face, source_audio_frame, target_vision_frame)
                 except Exception as e:
                     logger.error(f"Error while syncing lip for 'one' mode: {e}", __name__)
-
+        
         elif face_selector_mode == 'reference':
+            # Only proceed if we have reference faces
             if not reference_faces or len(reference_faces) == 0:
                 logger.warn("No reference faces available for 'reference' mode", __name__)
                 return target_vision_frame
-
+                
             # Process each valid reference face
-            for ref_idx, ref_face in reference_faces.items():
+            for ref_idx, ref_face in enumerate(reference_faces):
                 if ref_face is None:
                     continue
-
-                # Get the corresponding audio chunk
-                audio_chunk, is_silent = self.get_audio_chunk_for_frame(frame_index, 1 if ref_idx == 0 else 2)
-
+                    
+                # Get the corresponding audio frame (use first audio for all refs if second is not available)
+                if ref_idx == 0 or not numpy.any(source_audio_frame_2):
+                    src_audio = source_audio_frame
+                else:
+                    src_audio = source_audio_frame_2
+                    
                 # Find similar faces
                 try:
                     similar_faces = find_similar_faces(many_faces, ref_face,
-                                                       state_manager.get_item('reference_face_distance'))
-
+                                                    state_manager.get_item('reference_face_distance'))
                     if similar_faces:
-                        for sim_idx, similar_face in enumerate(similar_faces):
+                        for similar_face in similar_faces:
                             try:
-                                target_vision_frame = self.sync_lip(similar_face, audio_chunk, target_vision_frame, is_silent)
+                                target_vision_frame = self.sync_lip(similar_face, src_audio, target_vision_frame)
                             except Exception as e:
-                                logger.error(
-                                    f"Error while syncing lip for similar face {sim_idx + 1} of reference {ref_idx + 1}: {e}",
-                                    __name__)
+                                logger.error(f"Error while syncing lip for reference {ref_idx}: {e}", __name__)
                 except Exception as e:
-                    logger.error(f"Error finding similar faces for reference {ref_idx + 1}: {e}", __name__)
-
+                    logger.error(f"Error finding similar faces for reference {ref_idx}: {e}", __name__)
+        
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
-        """Process frames using the cached audio chunks - simple frame-by-frame processing"""
+        # Get audio sources
+        source_paths = state_manager.get_item('source_paths')
+        source_paths_2 = state_manager.get_item('source_paths_2')
         
-        # Ensure models are initialized and audio is processed
-        self._initialize_musetalk()
+        # Add debug logging
+        logger.info(f"Source paths: {source_paths}", __name__)
+        logger.info(f"Source paths 2: {source_paths_2}", __name__)
         
-        # Properly check if whisper_chunks is None or empty without tensor boolean evaluation
-        if self._whisper_chunks is None:
-            logger.error("No audio chunks available (whisper_chunks is None). Did you upload an audio file?", __name__)
+        # Validate source paths
+        if not source_paths or not isinstance(source_paths, list) or len(source_paths) == 0:
+            logger.error("No source paths found. Did you upload an audio file?", __name__)
             return []
         
-        try:
-            chunks_len = len(self._whisper_chunks)
-            if chunks_len == 0:
-                logger.error("No audio chunks available (empty chunks). Did you upload an audio file?", __name__)
-                return []
-        except TypeError:
-            logger.error("Invalid whisper_chunks type. Did you upload an audio file?", __name__)
+        # Filter to find audio paths and get the first working one
+        audio_paths = filter_audio_paths(source_paths)
+        audio_paths_2 = filter_audio_paths(source_paths_2) if source_paths_2 else []
+        
+        logger.info(f"Filtered audio paths: {audio_paths}", __name__)
+        logger.info(f"Filtered audio paths 2: {audio_paths_2}", __name__)
+        
+        # Test each audio path until we find one that works
+        working_audio_path = None
+        for audio_path in audio_paths:
+            try:
+                test_frame = get_voice_frame(audio_path, 25)
+                if test_frame is not None and isinstance(test_frame, numpy.ndarray) and test_frame.size > 0:
+                    working_audio_path = audio_path
+                    logger.info(f"Found working audio path: {working_audio_path}", __name__)
+                    break
+            except Exception as e:
+                logger.error(f"Error testing audio path {audio_path}: {str(e)}", __name__)
+                
+        # Test each audio path 2 until we find one that works
+        working_audio_path_2 = None
+        for audio_path in audio_paths_2:
+            try:
+                test_frame = get_voice_frame(audio_path, 25)
+                if test_frame is not None and isinstance(test_frame, numpy.ndarray) and test_frame.size > 0:
+                    working_audio_path_2 = audio_path
+                    logger.info(f"Found working audio path 2: {working_audio_path_2}", __name__)
+                    break
+            except Exception as e:
+                logger.error(f"Error testing audio path 2 {audio_path}: {str(e)}", __name__)
+        
+        if not working_audio_path:
+            logger.error("No valid audio file found in source paths. Check file type and format.", __name__)
             return []
-
-        # Simple frame-by-frame processing - much more memory efficient
+            
+        # Get video settings
+        temp_video_fps = restrict_video_fps(state_manager.get_item('target_path'),
+                                            state_manager.get_item('output_video_fps'))
         output_frames = []
-        
-        for queue_payload in queue_payloads:
+
+        # Process each frame
+        for queue_payload in process_manager.manage(queue_payloads):
             target_vision_path = queue_payload['frame_path']
             frame_number = queue_payload['frame_number']
             
+            # Get audio frames
             try:
-                # Read the frame
-                target_vision_frame = read_image(target_vision_path)
+                source_audio_frame = get_voice_frame(working_audio_path, temp_video_fps, frame_number)
+                logger.info(f"Got audio frame for frame {frame_number}: {source_audio_frame.shape if source_audio_frame is not None else None}", __name__)
+            except Exception as e:
+                logger.error(f"Error getting voice frame: {str(e)}", __name__)
+                source_audio_frame = None
                 
-                # Get reference faces if needed
-                reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
+            try:
+                source_audio_frame_2 = get_voice_frame(working_audio_path_2, temp_video_fps, frame_number) if working_audio_path_2 else None
+            except Exception as e:
+                logger.error(f"Error getting voice frame 2: {str(e)}", __name__)
+                source_audio_frame_2 = None
+            
+            # Add debug logging
+            if source_audio_frame is None:
+                logger.error(f"Failed to get voice frame for {working_audio_path} at frame {frame_number}", __name__)
+            
+            reference_faces = queue_payload['reference_faces']
+
+            # Ensure we have valid audio frames
+            if source_audio_frame is None or not isinstance(source_audio_frame, numpy.ndarray) or numpy.sum(numpy.abs(source_audio_frame)) < 1e-9:
+                logger.warn(f"Empty or invalid audio frame from {working_audio_path}. Sum: {numpy.sum(numpy.abs(source_audio_frame)) if isinstance(source_audio_frame, numpy.ndarray) else None}. Creating empty frame.", __name__)
+                source_audio_frame = create_empty_audio_frame()
                 
-                # Process the frame using the same logic as preview
-                result_frame = self.process_frame({
+            if source_audio_frame_2 is None or not isinstance(source_audio_frame_2, numpy.ndarray) or numpy.sum(numpy.abs(source_audio_frame_2)) < 1e-9:
+                source_audio_frame_2 = create_empty_audio_frame()
+                
+            # Process the frame
+            target_vision_frame = read_image(target_vision_path)
+            result_frame = self.process_frame(
+                {
                     'reference_faces': reference_faces,
-                    'frame_index': frame_number,  # Use frame number for audio chunk selection
+                    'source_audio_frame': source_audio_frame,
+                    'source_audio_frame_2': source_audio_frame_2,
                     'target_vision_frame': target_vision_frame
                 })
-                
-                # Write the processed frame back
-                write_image(target_vision_path, result_frame)
-                output_frames.append((frame_number, target_vision_path))
-                
-            except Exception as e:
-                logger.error(f"Error processing frame {frame_number}: {e}", __name__)
-                # On error, just add the original frame
-                output_frames.append((frame_number, target_vision_path))
-
+            write_image(target_vision_path, result_frame)
+            output_frames.append((frame_number, target_vision_path))
+            
         return output_frames
 
     def process_image(self, target_path: str, output_path: str, reference_faces=None) -> None:
-        if not reference_faces:
-            reference_faces = get_reference_faces() if 'reference' in state_manager.get_item(
-                'face_selector_mode') else None
+        # Validate and prepare reference faces
+        if reference_faces is None:
+            try:
+                if 'reference' in state_manager.get_item('face_selector_mode'):
+                    reference_faces = get_reference_faces()
+                    # Ensure we have a list or tuple
+                    if reference_faces is None:
+                        reference_faces = []
+                    elif not isinstance(reference_faces, (list, tuple)):
+                        reference_faces = [reference_faces]
+                else:
+                    reference_faces = []
+            except Exception as e:
+                logger.error(f"Error getting reference faces: {e}", __name__)
+                reference_faces = []
         
-        target_vision_frame = read_static_image(target_path)
-        result_frame = self.process_frame(
-            {
-                'reference_faces': reference_faces,
-                'frame_index': 0,  # For images, use first audio chunk
-                'target_vision_frame': target_vision_frame
-            })
-        write_image(output_path, result_frame)
+        # Get audio source
+        source_paths = state_manager.get_item('source_paths')
+        
+        # Add debug logging
+        logger.info(f"Image processing source paths: {source_paths}", __name__)
+        
+        # Validate source paths
+        if not source_paths or not isinstance(source_paths, list) or len(source_paths) == 0:
+            logger.error("No source paths found for image processing", __name__)
+            return
+        
+        # Filter to find audio paths and test each one to find a working one
+        audio_paths = filter_audio_paths(source_paths)
+        logger.info(f"Filtered audio paths for image: {audio_paths}", __name__)
+        
+        # Test each audio path until we find one that works
+        working_audio_path = None
+        for audio_path in audio_paths:
+            try:
+                test_frame = get_voice_frame(audio_path, 25)
+                if test_frame is not None and isinstance(test_frame, numpy.ndarray) and test_frame.size > 0:
+                    working_audio_path = audio_path
+                    logger.info(f"Found working audio path for image: {working_audio_path}", __name__)
+                    break
+            except Exception as e:
+                logger.error(f"Error testing audio path for image {audio_path}: {str(e)}", __name__)
+        
+        if not working_audio_path:
+            logger.error("No valid audio file found for image processing", __name__)
+            return
+        
+        # Get audio frame
+        try:
+            source_audio_frame = get_voice_frame(working_audio_path, 25)
+            logger.info(f"Got audio frame for image: {source_audio_frame.shape if source_audio_frame is not None else None}", __name__)
+        except Exception as e:
+            logger.error(f"Error getting voice frame for image: {str(e)}", __name__)
+            source_audio_frame = None
+        
+        # Validate audio frame
+        if source_audio_frame is None or not isinstance(source_audio_frame, numpy.ndarray) or numpy.sum(numpy.abs(source_audio_frame)) < 1e-9:
+            logger.error(f"Invalid audio frame for image from {working_audio_path}. Sum: {numpy.sum(numpy.abs(source_audio_frame)) if isinstance(source_audio_frame, numpy.ndarray) else None}", __name__)
+            source_audio_frame = create_empty_audio_frame()
+        
+        # Process image
+        try:
+            target_vision_frame = read_static_image(target_path)
+            result_frame = self.process_frame(
+                {
+                    'reference_faces': reference_faces,
+                    'source_audio_frame': source_audio_frame,
+                    'source_audio_frame_2': create_empty_audio_frame(),  # Default empty second frame
+                    'target_vision_frame': target_vision_frame
+                })
+            write_image(output_path, result_frame)
+        except Exception as e:
+            logger.error(f"Error processing image: {e}", __name__)
+            # Try to copy the original image as fallback
+            try:
+                import shutil
+                shutil.copy(target_path, output_path)
+                logger.warning(f"Copied original image to output as fallback", __name__)
+            except Exception as copy_error:
+                logger.error(f"Failed to copy original image: {copy_error}", __name__)

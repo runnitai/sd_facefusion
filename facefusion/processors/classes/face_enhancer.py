@@ -20,7 +20,7 @@ from facefusion.thread_helper import thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Face, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame
 from facefusion.vision import read_image, read_static_image, write_image
-from facefusion.workers.classes.face_masker import FaceMasker
+from facefusion.workers.classes.face_masker import FaceMasker, clear_yolo_model_cache
 from facefusion.workers.core import clear_worker_modules
 
 
@@ -255,11 +255,30 @@ class FaceEnhancer(BaseProcessor):
                                           default=config.get_int_value("processors.face_enhancer_blend", "85"),
                                           choices=processors_choices.face_enhancer_blend_range,
                                           metavar=create_int_metavar(processors_choices.face_enhancer_blend_range))
-            job_store.register_step_keys(["face_enhancer_model", "face_enhancer_blend"])
+            group_processors.add_argument("--face-enhancer-smart-enhance", help=wording.get("help.face_enhancer_smart_enhance"),
+                                          default=config.get_str_value("processors.face_enhancer_smart_enhance", "true"),
+                                          choices=["true", "false"])
+            group_processors.add_argument("--face-enhancer-smart-minimum-size", help=wording.get("help.face_enhancer_smart_minimum_size"),
+                                          type=int,
+                                          default=config.get_int_value("processors.face_enhancer_smart_minimum_size", "250"),
+                                          choices=processors_choices.face_enhancer_smart_minimum_size_range,
+                                          metavar=create_int_metavar(processors_choices.face_enhancer_smart_minimum_size_range))
+            job_store.register_step_keys(["face_enhancer_model", "face_enhancer_blend", "face_enhancer_smart_enhance", "face_enhancer_smart_minimum_size"])
 
     def apply_args(self, args: Args, apply_state_item: ApplyStateItem) -> None:
         apply_state_item("face_enhancer_model", args.get("face_enhancer_model"))
         apply_state_item("face_enhancer_blend", args.get("face_enhancer_blend"))
+        
+        # Handle boolean conversion properly
+        smart_enhance_value = args.get("face_enhancer_smart_enhance")
+        if isinstance(smart_enhance_value, bool):
+            apply_state_item("face_enhancer_smart_enhance", smart_enhance_value)
+        elif isinstance(smart_enhance_value, str):
+            apply_state_item("face_enhancer_smart_enhance", smart_enhance_value.lower() == "true")
+        else:
+            apply_state_item("face_enhancer_smart_enhance", True)  # Default to True
+            
+        apply_state_item("face_enhancer_smart_minimum_size", args.get("face_enhancer_smart_minimum_size"))
 
     def pre_process(self, mode: ProcessMode) -> bool:
         if mode in ["output", "preview"] and not (is_image(state_manager.get_item("target_path"))
@@ -275,24 +294,44 @@ class FaceEnhancer(BaseProcessor):
             return False
         return True
 
+    def should_enhance_face(self, face: Face) -> bool:
+        """Check if face should be enhanced based on smart enhance settings."""
+        smart_enhance_enabled = state_manager.get_item("face_enhancer_smart_enhance")
+        if smart_enhance_enabled is None or not smart_enhance_enabled:
+            return True
+        
+        # Get face bounding box
+        bbox = face.bounding_box
+        face_height = bbox[3] - bbox[1]  # bottom - top
+        minimum_size = state_manager.get_item("face_enhancer_smart_minimum_size") or 250
+        
+        if face_height >= minimum_size:
+            logger.debug(f"Face height {face_height} is greater than minimum size {minimum_size}, enhancing face", __name__)
+            return True
+        else:
+            logger.debug(f"Face height {face_height} is less than minimum size {minimum_size}, skipping face", __name__)
+            return False
+
     def process_frame(self, inputs: FaceEnhancerInputs) -> VisionFrame:
         reference_faces = inputs.get("reference_faces")
         target_vision_frame = inputs.get("target_vision_frame")
-        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
+        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]), vision_frame=target_vision_frame)
 
         if state_manager.get_item("face_selector_mode") == "many":
             for target_face in many_faces:
-                target_vision_frame = self.enhance_face(target_face, target_vision_frame)
+                if self.should_enhance_face(target_face):
+                    target_vision_frame = self.enhance_face(target_face, target_vision_frame)
         elif state_manager.get_item("face_selector_mode") == "one":
             target_face = get_one_face(many_faces)
-            if target_face:
+            if target_face and self.should_enhance_face(target_face):
                 target_vision_frame = self.enhance_face(target_face, target_vision_frame)
         elif state_manager.get_item("face_selector_mode") == "reference":
             for src_face_idx, ref_faces in reference_faces.items():
                 similar_faces = find_similar_faces(many_faces, ref_faces, state_manager.get_item("reference_face_distance"))
                 if similar_faces:
                     for similar_face in similar_faces:
-                        target_vision_frame = self.enhance_face(similar_face, target_vision_frame)
+                        if self.should_enhance_face(similar_face):
+                            target_vision_frame = self.enhance_face(similar_face, target_vision_frame)
         return target_vision_frame
 
     def process_frames(self, queue_payloads: List[QueuePayload]) -> List[Tuple[int, str]]:
@@ -328,21 +367,34 @@ class FaceEnhancer(BaseProcessor):
         crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame,
                                                                         target_face.landmark_set.get('5/68'),
                                                                         model_template, model_size)
-        crop_mask = masker.create_combined_mask(
-            state_manager.get_item('face_mask_types'),
-            crop_vision_frame.shape[:2][::-1], 
-            state_manager.get_item('face_mask_blur'),
-            state_manager.get_item('face_mask_padding'),
-            state_manager.get_item('face_mask_regions'),
-            crop_vision_frame,
-            temp_vision_frame,
-            target_face.landmark_set.get('5/68'),
-            target_face
-        )
+        # Use auto-padding data if available
+        auto_padding_model = state_manager.get_item('auto_padding_model')
+        if auto_padding_model and auto_padding_model != "None":
+            # Auto-padding mode: use detected padding or reasonable defaults
+            if hasattr(target_face, 'auto_padding_data') and target_face.auto_padding_data['padding_needed']:
+                effective_padding = target_face.auto_padding_data['recommended_padding']
+            else:
+                # No objects detected, use default padding for auto-padding mode
+                effective_padding = state_manager.get_item('face_mask_padding') or (0, 0, 0, 0)
+        else:
+            # Manual padding mode: use default padding
+            effective_padding = (0, 0, 0, 0)
+            
+        box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1], state_manager.get_item('face_mask_blur'),
+                                          effective_padding)
+        crop_masks = [box_mask]
+
+        if 'occlusion' in state_manager.get_item('face_mask_types'):
+            occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
+            crop_masks.append(occlusion_mask)
+            
+# Custom masks have been replaced by auto-padding system
+        # The auto-padding detection is now handled in sort_and_filter_faces
 
         crop_vision_frame = prepare_crop_frame(crop_vision_frame)
         crop_vision_frame = self.forward(crop_vision_frame)
         crop_vision_frame = normalize_crop_frame(crop_vision_frame)
+        crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
         paste_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
         temp_vision_frame = blend_frame(temp_vision_frame, paste_vision_frame)
         return temp_vision_frame

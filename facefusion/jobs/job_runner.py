@@ -106,8 +106,14 @@ def finalize_steps(job_id: str) -> bool:
     output_set = collect_output_set(job_id)
     for output_path, temp_output_paths in output_set.items():
         if all(map(is_video, temp_output_paths)):
-            if not concat_video(output_path, temp_output_paths):
-                return False
+            # If there's only one video file, just move it directly instead of concatenating
+            if len(temp_output_paths) == 1:
+                if not move_file(temp_output_paths[0], output_path):
+                    return False
+            else:
+                # Only concatenate if there are multiple videos
+                if not concat_video(output_path, temp_output_paths):
+                    return False
         if any(map(is_image, temp_output_paths)):
             for temp_output_path in temp_output_paths:
                 if not move_file(temp_output_path, output_path):

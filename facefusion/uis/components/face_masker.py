@@ -22,10 +22,11 @@ MASK_ENABLE_BUTTON: Optional[gradio.Button] = None
 MASK_CLEAR_BUTTON: Optional[gradio.Button] = None
 BOTTOM_MASK_POSITIONS: Optional[gradio.HTML] = None
 FACE_MASK_PADDING_GROUP: Optional[gradio.Group] = None
-CUSTOM_YOLO_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
-CUSTOM_YOLO_CONFIDENCE_SLIDER: Optional[gradio.Slider] = None
-CUSTOM_YOLO_RADIUS_SLIDER: Optional[gradio.Slider] = None
-CUSTOM_YOLO_GROUP: Optional[gradio.Group] = None
+AUTO_PADDING_MODEL_DROPDOWN: Optional[gradio.Dropdown] = None
+AUTO_PADDING_CONFIDENCE_SLIDER: Optional[gradio.Slider] = None
+AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER: Optional[gradio.Slider] = None
+AUTO_PADDING_GROUP: Optional[gradio.Group] = None
+AUTO_PADDING_STATUS: Optional[gradio.HTML] = None
 
 
 def find_yolo_models():
@@ -74,14 +75,17 @@ def render() -> None:
     global MASK_CLEAR_BUTTON
     global BOTTOM_MASK_POSITIONS
     global FACE_MASK_PADDING_GROUP
-    global CUSTOM_YOLO_MODEL_DROPDOWN
-    global CUSTOM_YOLO_CONFIDENCE_SLIDER
-    global CUSTOM_YOLO_RADIUS_SLIDER
-    global CUSTOM_YOLO_GROUP
+    global AUTO_PADDING_MODEL_DROPDOWN
+    global AUTO_PADDING_CONFIDENCE_SLIDER
+    global AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER
+    global AUTO_PADDING_GROUP
+    global AUTO_PADDING_STATUS
 
-    has_box_mask = 'box' in state_manager.get_item('face_mask_types')
-    has_region_mask = 'region' in state_manager.get_item('face_mask_types')
-    has_custom_mask = 'custom' in state_manager.get_item('face_mask_types')
+    face_mask_types = state_manager.get_item('face_mask_types') or ['box']
+    has_box_mask = 'box' in face_mask_types
+    has_region_mask = 'region' in face_mask_types
+    auto_padding_model = state_manager.get_item('auto_padding_model') or "None"
+    has_auto_padding = auto_padding_model and auto_padding_model != "None"
     non_face_processors = ['frame_colorizer', 'frame_enhancer', 'style_transfer']
     # Make the group visible if any face processor is selected
     show_group = False
@@ -90,15 +94,19 @@ def render() -> None:
             show_group = True
             break
     with gradio.Group(visible=show_group) as FACE_MASK_PADDING_GROUP:
+        # Filter out 'custom' from face mask types since it's replaced by auto-padding
+        available_mask_types = [t for t in facefusion.choices.face_mask_types if t != 'custom']
+        current_mask_types = [t for t in face_mask_types if t != 'custom']
+        
         FACE_MASK_TYPES_CHECKBOX_GROUP = gradio.CheckboxGroup(
             label=wording.get('uis.face_mask_types_checkbox_group'),
-            choices=facefusion.choices.face_mask_types,
-            value=state_manager.get_item('face_mask_types')
+            choices=available_mask_types,
+            value=current_mask_types
         )
         FACE_MASK_REGIONS_CHECKBOX_GROUP = gradio.CheckboxGroup(
             label=wording.get('uis.face_mask_regions_checkbox_group'),
             choices=facefusion.choices.face_mask_regions,
-            value=state_manager.get_item('face_mask_regions'),
+            value=state_manager.get_item('face_mask_regions') or [],
             visible=has_region_mask
         )
         FACE_MASK_BLUR_SLIDER = gradio.Slider(
@@ -106,40 +114,49 @@ def render() -> None:
             step=calc_float_step(facefusion.choices.face_mask_blur_range),
             minimum=facefusion.choices.face_mask_blur_range[0],
             maximum=facefusion.choices.face_mask_blur_range[-1],
-            value=state_manager.get_item('face_mask_blur'),
+            value=state_manager.get_item('face_mask_blur') or 0.3,
             visible=has_box_mask
         )
-        with gradio.Group(visible=has_custom_mask) as CUSTOM_YOLO_GROUP:
+        # Auto-padding model selection - always visible
+        with gradio.Group() as AUTO_PADDING_GROUP:
             yolo_models = find_yolo_models()
-            model_names = [os.path.basename(m) for m in yolo_models]
-            model_dict = dict(zip(model_names, yolo_models))
+            model_names = ["None"] + [os.path.basename(m) for m in yolo_models]
+            model_dict = dict(zip([os.path.basename(m) for m in yolo_models], yolo_models))
             
-            CUSTOM_YOLO_MODEL_DROPDOWN = gradio.Dropdown(
-                label="YOLO Detection Model",
+            AUTO_PADDING_MODEL_DROPDOWN = gradio.Dropdown(
+                label="Auto Padding Model",
                 choices=model_names,
-                value=state_manager.get_item('custom_yolo_model') if state_manager.get_item('custom_yolo_model') in model_names else (model_names[0] if model_names else None),
+                value=auto_padding_model,
                 type="value"
             )
-            CUSTOM_YOLO_CONFIDENCE_SLIDER = gradio.Slider(
+            
+            AUTO_PADDING_CONFIDENCE_SLIDER = gradio.Slider(
                 label="Detection Confidence",
                 minimum=0.0,
                 maximum=1.0,
                 step=0.05,
-                value=state_manager.get_item('custom_yolo_confidence') if state_manager.get_item('custom_yolo_confidence') is not None else 0.5
+                value=state_manager.get_item('auto_padding_confidence') if state_manager.get_item('auto_padding_confidence') is not None else 0.5,
+                visible=False  # Will be controlled by change listener
             )
-            CUSTOM_YOLO_RADIUS_SLIDER = gradio.Slider(
-                label="Mask Radius (pixels)",
+            AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER = gradio.Slider(
+                label="Intersection Threshold (pixels)",
                 minimum=0,
-                maximum=100,
-                step=1,
-                value=state_manager.get_item('custom_yolo_radius') if state_manager.get_item('custom_yolo_radius') is not None else 10
+                maximum=200,
+                step=5,
+                value=state_manager.get_item('auto_padding_intersection_threshold') if state_manager.get_item('auto_padding_intersection_threshold') is not None else 50,
+                visible=False  # Will be controlled by change listener
+            )
+            
+            AUTO_PADDING_STATUS = gradio.HTML(
+                value="<div style='text-align: center; padding: 10px; color: #888;'>AUTO PADDING OFF</div>" if not has_auto_padding else "<div style='text-align: center; padding: 10px; color: #4CAF50;'>AUTO PADDING ON</div>"
             )
         with gradio.Row():
             MASK_DISABLE_BUTTON = gradio.Button(value="Disable Padding", variant="secondary", visible=False,
                                                 elem_classes=["maskBtn"])
-            MASK_ENABLE_BUTTON = gradio.Button(value="Enable Padding", variant="primary", visible=True,
+            MASK_ENABLE_BUTTON = gradio.Button(value="Enable Padding", variant="primary", visible=False,  # Will be controlled by change listener
                                                elem_classes=["maskBtn"])
-            MASK_CLEAR_BUTTON = gradio.Button(value="Clear Markers", elem_classes=["maskBtn"])
+            MASK_CLEAR_BUTTON = gradio.Button(value="Clear Markers", elem_classes=["maskBtn"], visible=False)  # Will be controlled by change listener
+        with gradio.Row():
             BOTTOM_MASK_POSITIONS = gradio.HTML(value=generate_frame_html(True),
                                                 elem_id="bottom_mask_positions")
         with gradio.Row():
@@ -148,16 +165,14 @@ def render() -> None:
                 step=calc_int_step(facefusion.choices.face_mask_padding_range),
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
-                value=state_manager.get_item('face_mask_padding')[0],
-                visible=has_box_mask
+                value=(state_manager.get_item('face_mask_padding') or (0, 0, 0, 0))[0]
             )
             FACE_MASK_PADDING_RIGHT_SLIDER = gradio.Slider(
                 label=wording.get('uis.face_mask_padding_right_slider'),
                 step=calc_int_step(facefusion.choices.face_mask_padding_range),
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
-                value=state_manager.get_item('face_mask_padding')[1],
-                visible=has_box_mask
+                value=(state_manager.get_item('face_mask_padding') or (0, 0, 0, 0))[1]
             )
         with gradio.Row():
             FACE_MASK_PADDING_BOTTOM_SLIDER = gradio.Slider(
@@ -165,16 +180,14 @@ def render() -> None:
                 step=calc_int_step(facefusion.choices.face_mask_padding_range),
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
-                value=state_manager.get_item('face_mask_padding')[2],
-                visible=has_box_mask
+                value=(state_manager.get_item('face_mask_padding') or (0, 0, 0, 0))[2]
             )
             FACE_MASK_PADDING_LEFT_SLIDER = gradio.Slider(
                 label=wording.get('uis.face_mask_padding_left_slider'),
                 step=calc_int_step(facefusion.choices.face_mask_padding_range),
                 minimum=facefusion.choices.face_mask_padding_range[0],
                 maximum=facefusion.choices.face_mask_padding_range[-1],
-                value=state_manager.get_item('face_mask_padding')[3],
-                visible=has_box_mask
+                value=(state_manager.get_item('face_mask_padding') or (0, 0, 0, 0))[3]
             )
     register_ui_component('face_mask_types_checkbox_group', FACE_MASK_TYPES_CHECKBOX_GROUP)
     register_ui_component('face_mask_regions_checkbox_group', FACE_MASK_REGIONS_CHECKBOX_GROUP)
@@ -187,9 +200,10 @@ def render() -> None:
     register_ui_component("mask_disable_button", MASK_DISABLE_BUTTON)
     register_ui_component("mask_enable_button", MASK_ENABLE_BUTTON)
     register_ui_component("mask_clear_button", MASK_CLEAR_BUTTON)
-    register_ui_component("custom_yolo_model_dropdown", CUSTOM_YOLO_MODEL_DROPDOWN)
-    register_ui_component("custom_yolo_confidence_slider", CUSTOM_YOLO_CONFIDENCE_SLIDER)
-    register_ui_component("custom_yolo_radius_slider", CUSTOM_YOLO_RADIUS_SLIDER)
+    register_ui_component("auto_padding_model_dropdown", AUTO_PADDING_MODEL_DROPDOWN)
+    register_ui_component("auto_padding_confidence_slider", AUTO_PADDING_CONFIDENCE_SLIDER)
+    register_ui_component("auto_padding_intersection_threshold_slider", AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER)
+    register_ui_component("auto_padding_status", AUTO_PADDING_STATUS)
 
 
 def listen() -> None:
@@ -197,7 +211,7 @@ def listen() -> None:
                                           outputs=[FACE_MASK_TYPES_CHECKBOX_GROUP, FACE_MASK_REGIONS_CHECKBOX_GROUP,
                                                    FACE_MASK_BLUR_SLIDER, FACE_MASK_PADDING_TOP_SLIDER,
                                                    FACE_MASK_PADDING_RIGHT_SLIDER, FACE_MASK_PADDING_BOTTOM_SLIDER,
-                                                   FACE_MASK_PADDING_LEFT_SLIDER, CUSTOM_YOLO_GROUP])
+                                                   FACE_MASK_PADDING_LEFT_SLIDER])
     FACE_MASK_REGIONS_CHECKBOX_GROUP.change(update_face_mask_regions, inputs=FACE_MASK_REGIONS_CHECKBOX_GROUP,
                                             outputs=FACE_MASK_REGIONS_CHECKBOX_GROUP)
     FACE_MASK_BLUR_SLIDER.release(update_face_mask_blur, inputs=FACE_MASK_BLUR_SLIDER)
@@ -207,9 +221,15 @@ def listen() -> None:
     for face_mask_padding_slider in face_mask_padding_sliders:
         face_mask_padding_slider.release(update_face_mask_padding, inputs=face_mask_padding_sliders)
 
-    CUSTOM_YOLO_MODEL_DROPDOWN.change(update_custom_yolo_model, inputs=CUSTOM_YOLO_MODEL_DROPDOWN)
-    CUSTOM_YOLO_CONFIDENCE_SLIDER.release(update_custom_yolo_confidence, inputs=CUSTOM_YOLO_CONFIDENCE_SLIDER)
-    CUSTOM_YOLO_RADIUS_SLIDER.release(update_custom_yolo_radius, inputs=CUSTOM_YOLO_RADIUS_SLIDER)
+    AUTO_PADDING_MODEL_DROPDOWN.change(update_auto_padding_model_and_ui, inputs=AUTO_PADDING_MODEL_DROPDOWN,
+                                       outputs=[AUTO_PADDING_STATUS, AUTO_PADDING_CONFIDENCE_SLIDER, AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER,
+                                               MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON, MASK_CLEAR_BUTTON])
+    AUTO_PADDING_CONFIDENCE_SLIDER.release(update_auto_padding_confidence, inputs=AUTO_PADDING_CONFIDENCE_SLIDER)
+    AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER.release(update_auto_padding_intersection_threshold, inputs=AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER)
+    
+    # Update auto-padding status when settings change
+    AUTO_PADDING_CONFIDENCE_SLIDER.release(update_auto_padding_status, outputs=[AUTO_PADDING_STATUS])
+    AUTO_PADDING_INTERSECTION_THRESHOLD_SLIDER.release(update_auto_padding_status, outputs=[AUTO_PADDING_STATUS])
 
     preview_frame_slider = get_ui_component("preview_frame_slider")
     mask_elements = [BOTTOM_MASK_POSITIONS, MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON]
@@ -242,6 +262,12 @@ def listen() -> None:
         getattr(preview_frame_slider, method)(update_mask_buttons,
                                               inputs=preview_frame_slider,
                                               outputs=[MASK_ENABLE_BUTTON, MASK_DISABLE_BUTTON])
+        
+    # Update auto-padding status when preview frame changes
+    for method in ['change', 'release']:
+        getattr(preview_frame_slider, method)(update_auto_padding_status,
+                                              inputs=preview_frame_slider,
+                                              outputs=[AUTO_PADDING_STATUS])
 
     processors_checkbox_group = get_ui_component('processors_checkbox_group')
     if processors_checkbox_group:
@@ -263,21 +289,23 @@ def toggle_group(processors: List[str]) -> gradio.update:
 
 
 def update_face_mask_types(face_mask_types: List[FaceMaskType]) -> Tuple[
-    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
-    face_mask_types = face_mask_types or facefusion.choices.face_mask_types
+    gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+    # Filter out 'custom' from face mask types since it's replaced by auto-padding
+    available_mask_types = [t for t in facefusion.choices.face_mask_types if t != 'custom']
+    face_mask_types = [t for t in (face_mask_types or available_mask_types) if t != 'custom']
     state_manager.set_item('face_mask_types', face_mask_types)
     has_box_mask = 'box' in face_mask_types
     has_region_mask = 'region' in face_mask_types
-    has_custom_mask = 'custom' in face_mask_types
+    auto_padding_model = state_manager.get_item('auto_padding_model') or "None"
+    has_auto_padding = auto_padding_model and auto_padding_model != "None"
     return (
-        gradio.update(value=state_manager.get_item('face_mask_types')),
+        gradio.update(value=face_mask_types),
         gradio.update(visible=has_region_mask),
-        gradio.update(visible=has_box_mask),
-        gradio.update(visible=has_box_mask),
-        gradio.update(visible=has_box_mask),
-        gradio.update(visible=has_box_mask),
-        gradio.update(visible=has_box_mask),
-        gradio.update(visible=has_custom_mask)
+        gradio.update(visible=has_box_mask and not has_auto_padding),
+        gradio.update(visible=has_box_mask and not has_auto_padding),
+        gradio.update(visible=has_box_mask and not has_auto_padding),
+        gradio.update(visible=has_box_mask and not has_auto_padding),
+        gradio.update(visible=has_box_mask and not has_auto_padding)
     )
 
 
@@ -298,16 +326,57 @@ def update_face_mask_padding(face_mask_padding_top: float, face_mask_padding_rig
     state_manager.set_item('face_mask_padding', face_mask_padding)
 
 
-def update_custom_yolo_model(custom_yolo_model: str) -> None:
-    state_manager.set_item('custom_yolo_model', custom_yolo_model)
+def update_auto_padding_model(auto_padding_model: str) -> gradio.update:
+    state_manager.set_item('auto_padding_model', auto_padding_model)
+    # Use the centralized status update function
+    return update_auto_padding_status()
 
 
-def update_custom_yolo_confidence(custom_yolo_confidence: float) -> None:
-    state_manager.set_item('custom_yolo_confidence', custom_yolo_confidence)
+def update_auto_padding_model_and_ui(auto_padding_model: str) -> Tuple[gradio.update, gradio.update, gradio.update, gradio.update, gradio.update, gradio.update]:
+    """Update auto-padding model and toggle UI visibility"""
+    state_manager.set_item('auto_padding_model', auto_padding_model)
+    has_auto_padding = auto_padding_model and auto_padding_model != "None"
+    
+    # Update status
+    status_update = update_auto_padding_status()
+    
+    # Show/hide auto-padding settings - show when model is selected
+    auto_confidence_visible = gradio.update(visible=has_auto_padding)
+    auto_threshold_visible = gradio.update(visible=has_auto_padding)
+    
+    # Hide/show manual mask timing buttons - show when "None" is selected
+    manual_timing_visible = not has_auto_padding
+    mask_enable_visible = gradio.update(visible=manual_timing_visible)
+    mask_disable_visible = gradio.update(visible=manual_timing_visible)
+    mask_clear_visible = gradio.update(visible=manual_timing_visible)
+    
+    return (status_update, auto_confidence_visible, auto_threshold_visible,
+            mask_enable_visible, mask_disable_visible, mask_clear_visible)
 
 
-def update_custom_yolo_radius(custom_yolo_radius: int) -> None:
-    state_manager.set_item('custom_yolo_radius', custom_yolo_radius)
+def update_auto_padding_confidence(auto_padding_confidence: float) -> None:
+    state_manager.set_item('auto_padding_confidence', auto_padding_confidence)
+
+
+def update_auto_padding_intersection_threshold(auto_padding_intersection_threshold: int) -> None:
+    state_manager.set_item('auto_padding_intersection_threshold', auto_padding_intersection_threshold)
+
+
+def update_auto_padding_status(frame_number: int = 0) -> gradio.update:
+    """Update auto-padding status based on current frame and settings"""
+    auto_padding_model = state_manager.get_item('auto_padding_model') or "None"
+    has_auto_padding = auto_padding_model and auto_padding_model != "None"
+    
+    if not has_auto_padding:
+        status_text = "<div style='text-align: center; padding: 10px; color: #888;'>AUTO PADDING OFF</div>"
+    else:
+        # For now, just show that auto-padding is active
+        # TODO: In the future, we could check if objects were actually detected in the current frame
+        model_name = os.path.basename(auto_padding_model) if auto_padding_model != "None" else "Unknown"
+        confidence = state_manager.get_item('auto_padding_confidence') or 0.5
+        status_text = f"<div style='text-align: center; padding: 10px; color: #4CAF50;'>AUTO PADDING ON<br/><small>{model_name} (conf: {confidence})</small></div>"
+    
+    return gradio.update(value=status_text)
 
 
 def generate_frame_html(return_value: bool = False) -> gradio.update:

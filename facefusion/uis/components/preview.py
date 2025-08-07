@@ -8,13 +8,13 @@ import cv2
 import gradio
 
 from facefusion import wording, process_manager, state_manager
-from facefusion.audio import get_audio_frame
+from facefusion.audio import get_audio_frame, create_empty_audio_frame
 from facefusion.common_helper import get_first
 from facefusion.face_analyser import get_average_faces
 from facefusion.face_store import clear_static_faces, get_reference_faces, clear_reference_faces
 from facefusion.filesystem import is_video, is_image, filter_audio_paths
 from facefusion.processors.core import get_processors_modules
-from facefusion.typing import Face, VisionFrame
+from facefusion.typing import Face, AudioFrame, VisionFrame
 from facefusion.uis.components.face_masker import update_mask_buttons
 from facefusion.uis.core import get_ui_component, register_ui_component, get_ui_components
 from facefusion.vision import get_video_frame, count_video_frame_total, normalize_frame_color, \
@@ -36,7 +36,6 @@ SOURCE_FRAMES_1 = []
 SOURCE_FRAMES_2 = []
 
 frame_processing_lock = threading.Lock()
-
 
 
 def render() -> None:
@@ -227,6 +226,31 @@ def listen() -> None:
             ui_component.release(update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=all_update_elements)
     for ui_component in get_ui_components(
             [
+                'age_modifier_model_dropdown',
+                'expression_restorer_model_dropdown',
+                'processors_checkbox_group',
+                'face_editor_model_dropdown',
+                'face_enhancer_model_dropdown',
+                'face_swapper_model_dropdown',
+                'face_swapper_pixel_boost_dropdown',
+                'frame_colorizer_model_dropdown',
+                'frame_enhancer_model_dropdown',
+                'lip_syncer_model_dropdown',
+                'face_selector_mode_dropdown',
+                'face_selector_order_dropdown',
+                'face_selector_gender_dropdown',
+                'face_selector_race_dropdown',
+                'face_detector_model_dropdown',
+                'face_detector_size_dropdown',
+                'face_detector_angles_checkbox_group',
+                'face_landmarker_model_dropdown',
+                'style_changer_model_dropdown'
+            ]):
+        if ui_component:
+            ui_component.change(clear_and_update_preview_image, inputs=PREVIEW_FRAME_SLIDER, outputs=PREVIEW_IMAGE)
+
+    for ui_component in get_ui_components(
+            [
                 'face_detector_score_slider',
                 'face_landmarker_score_slider'
             ]):
@@ -260,19 +284,17 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
     enable_button, disable_button = gradio.update(), gradio.update()
 
     try:
-        # Get source faces
+        #conditional_append_reference_faces()
         source_faces = get_average_faces()
-        
-        # No need to process audio here - lip syncer will get the chunks itself
-        audio_features = None
-        audio_features_2 = None
-        
+        source_audio_frame = create_empty_audio_frame()
+        source_audio_frame_2 = create_empty_audio_frame()
+
         if is_image(state_manager.get_item('target_path')):
             target_vision_frame = read_static_image(state_manager.get_item('target_path'))
             if target_vision_frame is not None:
                 preview_vision_frame = process_preview_frame(
                     source_faces,
-                    audio_features, audio_features_2, target_vision_frame, frame_number
+                    source_audio_frame, source_audio_frame_2, target_vision_frame, -1
                 )
                 preview_vision_frame = normalize_frame_color(preview_vision_frame)
                 preview = gradio.update(value=preview_vision_frame, visible=True)
@@ -282,7 +304,7 @@ def update_preview_image(frame_number: int = 0) -> Tuple[gradio.update, gradio.u
             if temp_vision_frame is not None:
                 preview_vision_frame = process_preview_frame(
                     source_faces,
-                    audio_features, audio_features_2, temp_vision_frame, frame_number
+                    source_audio_frame, source_audio_frame_2, temp_vision_frame, frame_number
                 )
                 preview_vision_frame = normalize_frame_color(preview_vision_frame)
                 preview = gradio.update(value=preview_vision_frame, visible=True)
@@ -335,14 +357,10 @@ def update_preview_frame_slider() -> gradio.update:
 
 
 def process_preview_frame(source_faces: Dict[int, Face],
-                          audio_features, audio_features_2,
+                          source_audio_frame: AudioFrame, source_audio_frame_2: AudioFrame,
                           target_vision_frame: VisionFrame,
-                          frame_number=0) -> VisionFrame:
+                          frame_number=-1) -> VisionFrame:
     with frame_processing_lock:
-        # Ensure frame_number is non-negative
-        if frame_number < 0:
-            frame_number = 0
-            
         target_vision_frame = resize_frame_resolution(target_vision_frame, (640, 640))
         analyser = ContentAnalyser()
         if analyser.analyse_frame(target_vision_frame):
@@ -363,7 +381,8 @@ def process_preview_frame(source_faces: Dict[int, Face],
                         'reference_faces': reference_faces,
                         'source_faces': source_faces,
                         'source_visual_frame': source_frame,
-                        'frame_index': frame_number,  # Pass frame index for audio chunk selection
+                        'source_audio_frame': source_audio_frame,
+                        'source_audio_frame_2': source_audio_frame_2,
                         'target_vision_frame': target_vision_frame,
                         'target_frame_number': frame_number,
                         'source_vision_frame': source_frame,

@@ -96,10 +96,8 @@ def listen() -> None:
     TARGET_FOLDER.change(update_folder, inputs=TARGET_FOLDER)
     global SOURCE_FILES
     SOURCE_FILES = get_ui_component('source_file')
-    
-    # Only add the change handler if SOURCE_FILES is available
     SYNC_VIDEO_LIP.change(update_sync_video_lip, inputs=[SYNC_VIDEO_LIP, SOURCE_FILES], outputs=[SOURCE_FILES])
-    
+
 
 def update_folder(folder: str):
     logger.info(f"Updating target folder: {folder}", __name__)

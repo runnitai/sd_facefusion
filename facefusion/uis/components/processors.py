@@ -27,33 +27,12 @@ def listen() -> None:
 
 
 def update_processors(processors: List[str]) -> gradio.update:
-    """Update processors and maintain order/state properly"""
-    
-    # Get current processors before clearing
-    current_processors = state_manager.get_item('processors') or []
-    
-    # Add debug logging
-    from facefusion import logger
-    logger.info(f"Updating processors from {current_processors} to {processors}", __name__)
-    
-    # Only clear processors that are being removed
-    processors_to_clear = [p for p in current_processors if p not in processors]
-    if processors_to_clear:
-        logger.info(f"Clearing processors: {processors_to_clear}", __name__)
-        clear_processors_modules(processors_to_clear)
-    
-    # Update the processors list
+    clear_processors_modules(state_manager.get_item('processors'))
     state_manager.set_item('processors', processors)
 
-    # Pre-check only new processors to avoid unnecessary reloading
-    new_processors = [p for p in processors if p not in current_processors]
-    if new_processors:
-        logger.info(f"Pre-checking new processors: {new_processors}", __name__)
-        for processor_module in get_processors_modules(new_processors):
-            if not processor_module.pre_check():
-                logger.warn(f"Pre-check failed for processor: {processor_module.display_name}", __name__)
-                return gradio.update()
-    
+    for processor_module in get_processors_modules(state_manager.get_item('processors')):
+        if not processor_module.pre_check():
+            return gradio.update()
     return gradio.update(value=state_manager.get_item('processors'),
                          choices=sort_processors(state_manager.get_item('processors')))
 

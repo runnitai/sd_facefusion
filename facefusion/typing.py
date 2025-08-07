@@ -35,18 +35,33 @@ FaceReference = TypedDict('FaceReference',
                                'face_index': int,
                                'sorts': Dict[str, Any]
                           })
-Face = namedtuple('Face',
-                  [
-                      'bounding_box',
-                      'score_set',
-                      'landmark_set',
-                      'angle',
-                      'embedding',
-                      'normed_embedding',
-                      'gender',
-                      'age',
-                      'race'
-                  ])
+# Create base Face namedtuple
+_BaseFace = namedtuple('Face',
+                      [
+                          'bounding_box',
+                          'score_set',
+                          'landmark_set',
+                          'angle',
+                          'embedding',
+                          'normed_embedding',
+                          'gender',
+                          'age',
+                          'race'
+                      ])
+
+# Extend Face to support auto_padding_data
+class Face(_BaseFace):
+    def __new__(cls, bounding_box, score_set, landmark_set, angle, embedding, normed_embedding, gender, age, race, auto_padding_data=None):
+        instance = super().__new__(cls, bounding_box, score_set, landmark_set, angle, embedding, normed_embedding, gender, age, race)
+        return instance
+    
+    def __init__(self, bounding_box, score_set, landmark_set, angle, embedding, normed_embedding, gender, age, race, auto_padding_data=None):
+        self.auto_padding_data = auto_padding_data or {
+            'has_intersection': False,
+            'objects_detected': [],
+            'padding_needed': False,
+            'recommended_padding': (0, 0, 0, 0)
+        }
 FaceSet = Dict[str, List[Face]]
 FaceStore = TypedDict('FaceStore',
                       {

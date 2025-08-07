@@ -16,7 +16,7 @@ FaceSwapperModel = Literal[
 FrameColorizerModel = Literal['ddcolor', 'ddcolor_artistic', 'deoldify', 'deoldify_artistic', 'deoldify_stable']
 FrameEnhancerModel = Literal[
     'clear_reality_x4', 'lsdir_x4', 'nomos8k_sc_x4', 'real_esrgan_x2', 'real_esrgan_x2_fp16', 'real_esrgan_x4', 'real_esrgan_x4_fp16', 'real_hatgan_x4', 'real_esrgan_x8', 'real_esrgan_x8_fp16', 'span_kendata_x4', 'ultra_sharp_x4']
-LipSyncerModel = Literal['wav2lip_96', 'wav2lip_gan_96', 'musetalk_v15']
+LipSyncerModel = Literal['wav2lip_96', 'wav2lip_gan_96']
 
 FaceSwapperSet = Dict[FaceSwapperModel, List[str]]
 

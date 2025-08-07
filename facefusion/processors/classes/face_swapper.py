@@ -4,7 +4,8 @@ from typing import List, Tuple
 
 import numpy
 
-from facefusion import config, inference_manager, logger, process_manager, state_manager, wording
+from facefusion import config, inference_manager, process_manager, state_manager, wording
+from extensions.sd_facefusion.facefusion import logger
 from facefusion.common_helper import get_first
 from facefusion.execution import has_execution_provider
 from facefusion.face_analyser import get_many_faces, get_one_face, get_average_faces
@@ -23,7 +24,7 @@ from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Embedding, Face, InferencePool, ModelOptions, ModelSet, ProcessMode, \
     QueuePayload, VisionFrame, Padding
 from facefusion.vision import read_image, read_static_image, unpack_resolution, write_image
-from facefusion.workers.classes.face_masker import FaceMasker
+from facefusion.workers.classes.face_masker import FaceMasker, clear_yolo_model_cache
 from facefusion.workers.core import clear_worker_modules
 
 
@@ -31,17 +32,21 @@ def update_padding(padding: Padding, frame_number: int) -> Padding:
     if frame_number == -1:
         return padding
 
-    disabled_times = state_manager.get_item('mask_disabled_times')
-    enabled_times = state_manager.get_item('mask_enabled_times')
+    disabled_times = state_manager.get_item('mask_disabled_times') or []
+    enabled_times = state_manager.get_item('mask_enabled_times') or []
 
     latest_disabled_frame = max([frame for frame in disabled_times if frame <= frame_number], default=None)
     latest_enabled_frame = max([frame for frame in enabled_times if frame <= frame_number], default=None)
-
-    if latest_disabled_frame is not None and (
-            latest_enabled_frame is None or latest_disabled_frame > latest_enabled_frame):
-        new_padding = (0, 0, 0, 0)
-        return new_padding
-    return padding
+    
+    # Padding is disabled by default
+    # Only enable padding if there's an enabled event that's more recent than any disabled event
+    if latest_enabled_frame is not None and (
+            latest_disabled_frame is None or latest_enabled_frame > latest_disabled_frame):
+        return padding  # Enable padding
+    
+    # Default: disable padding
+    new_padding = (0, 0, 0, 0)
+    return new_padding
 
 
 class FaceSwapper(BaseProcessor):
@@ -374,6 +379,7 @@ class FaceSwapper(BaseProcessor):
         self.src_cache = {}
         if state_manager.get_item("video_memory_strategy") in ["strict", "moderate"]:
             self.clear_inference_pool()
+            clear_yolo_model_cache()  # Clear YOLO model cache to free memory
         if state_manager.get_item("video_memory_strategy") == "strict":
             clear_worker_modules()
 
@@ -382,21 +388,34 @@ class FaceSwapper(BaseProcessor):
         source_faces = inputs.get('source_faces')
         face_selector_mode = state_manager.get_item('face_selector_mode')
         source_face = next(iter(source_faces.values())) if not face_selector_mode == 'reference' else None
-
+        target_frame_number = inputs.get('target_frame_number', -1)
         target_vision_frame = inputs.get('target_vision_frame')
-        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
+        # We should probably use auto-masking here as we can detect objects once and calculate facial intersections or closeness
+        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]), vision_frame=target_vision_frame)
+        
+        # Calculate padding once per frame - now handled by auto-padding if enabled
+        padding = state_manager.get_item('face_mask_padding')
+        auto_padding_model = state_manager.get_item('auto_padding_model')
+        
+        # Use manual padding system if no auto-padding model is selected
+        if not auto_padding_model or auto_padding_model == "None":
+            padding = update_padding(padding, target_frame_number)
+        else:
+            padding = (0, 0, 0, 0)  # Reset padding to zero if auto-padding is enabled  
+        # Otherwise, padding will be determined per-face by auto-padding detection
+        
         src_idx = 0
         if face_selector_mode == 'many':
             if many_faces:
                 for target_face in many_faces:
-                    target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx)
+                    target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx, target_frame_number, padding)
             else:
                 print("No target face found")
         if face_selector_mode == 'one':
            # watch.next("one_face")
             target_face = get_one_face(many_faces)
             if target_face:
-                target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx)
+                target_vision_frame = self.swap_face(source_face, target_face, target_vision_frame, src_idx, target_frame_number, padding)
             else:
                 logger.info("No target face found", __name__)
         if face_selector_mode == 'reference':
@@ -420,7 +439,7 @@ class FaceSwapper(BaseProcessor):
                 if similar_faces:
                     for similar_face in similar_faces:
                         target_vision_frame = self.swap_face(
-                            src_face, similar_face, target_vision_frame, src_face_idx
+                            src_face, similar_face, target_vision_frame, src_face_idx, target_frame_number, padding
                         )
 
         return target_vision_frame
@@ -475,7 +494,7 @@ class FaceSwapper(BaseProcessor):
         inference_manager.clear_inference_pool(model_context)
 
     def swap_face(self, source_face: Face, target_face: Face, temp_vision_frame: VisionFrame,
-                  src_idx: int) -> VisionFrame:
+                  src_idx: int, target_frame_number: int, padding: Padding) -> VisionFrame:
         masker = FaceMasker()
         model_template = self.get_model_options().get('template')
         model_size = self.get_model_options().get('size')
@@ -485,19 +504,33 @@ class FaceSwapper(BaseProcessor):
                                                                         target_face.landmark_set.get('5/68'),
                                                                         model_template, pixel_boost_size)
         temp_vision_frames = []
-        
-        # Use the combined mask function instead of creating individual masks
-        crop_mask = masker.create_combined_mask(
-            state_manager.get_item('face_mask_types'),
-            crop_vision_frame.shape[:2][::-1], 
-            state_manager.get_item('face_mask_blur'),
-            state_manager.get_item('face_mask_padding'),
-            state_manager.get_item('face_mask_regions'),
-            crop_vision_frame,
-            temp_vision_frame,
-            target_face.landmark_set.get('5/68'),
-            target_face
-        )
+        crop_masks = []
+
+        if 'box' in state_manager.get_item('face_mask_types'):
+            # Use auto-padding data if available
+            auto_padding_model = state_manager.get_item('auto_padding_model')
+            if auto_padding_model and auto_padding_model != "None":
+                # Auto-padding mode: use detected padding or reasonable defaults
+                if hasattr(target_face, 'auto_padding_data') and target_face.auto_padding_data['padding_needed']:
+                    effective_padding = target_face.auto_padding_data['recommended_padding']
+                else:
+                    # No objects detected, use default padding for auto-padding mode
+                    effective_padding = (0, 0, 0, 0)
+            else:
+                # Manual padding mode: use the calculated padding (which may be modified by update_padding)
+                effective_padding = padding
+            
+            box_mask = masker.create_static_box_mask(crop_vision_frame.shape[:2][::-1],
+                                                     state_manager.get_item('face_mask_blur'),
+                                                     effective_padding)
+            crop_masks.append(box_mask)
+
+        if 'occlusion' in state_manager.get_item('face_mask_types'):
+            occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
+            crop_masks.append(occlusion_mask)
+            
+# Custom masks have been replaced by auto-padding system
+        # The auto-padding detection is now handled in sort_and_filter_faces
 
         pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
         for pixel_boost_vision_frame in pixel_boost_vision_frames:
@@ -507,8 +540,11 @@ class FaceSwapper(BaseProcessor):
             temp_vision_frames.append(pixel_boost_vision_frame)
         crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
 
-        # No need to reduce crop_masks as we're using the combined mask
-        crop_mask = crop_mask.clip(0, 1)
+        if 'region' in state_manager.get_item('face_mask_types'):
+            region_mask = masker.create_region_mask(crop_vision_frame, state_manager.get_item('face_mask_regions'))
+            crop_masks.append(region_mask)
+
+        crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
         temp_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
         return temp_vision_frame
 

@@ -1,4 +1,4 @@
-from typing import Any, Union, Optional
+from typing import Any, Union
 
 from facefusion.app_context import detect_app_context
 from facefusion.processors.typing import ProcessorState, ProcessorStateKey

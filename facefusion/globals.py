@@ -33,8 +33,7 @@ face_landmarker_model: Optional[str] = 'many'
 face_swapper_model: Optional[str] = 'inswapper_128_fp16'
 frame_colorizer_model: Optional[str] = 'ddcolor'
 frame_enhancer_model: Optional[str] = 'real_esrgan_x2_fp16'
-lip_syncer_model: Optional[str] = 'musetalk_v15'
-lip_sync_empty_audio: Optional[bool] = False
+lip_syncer_model: Optional[str] = 'wav2lip_gan_96'
 style_changer_model: Optional[str] = '3d'
 face_swapper_pixel_boost: Optional[str] = "512x512"
 # memory

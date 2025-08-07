@@ -207,17 +207,10 @@ class AgeModifier(BaseProcessor):
                                                                                  extend_face_landmark_5,
                                                                                  model_template, model_size)
         extend_vision_frame_raw = extend_vision_frame.copy()
-        
-        # This is a special case - we need specific masks and transforms for this processor
-        # Create a combined mask for the needed types but adjust for this processor's needs
-        mask_types = state_manager.get_item('face_mask_types')
-        if 'box' in mask_types:
-            box_mask = masker.create_static_box_mask(model_size, state_manager.get_item('face_mask_blur'), (0, 0, 0, 0))
-            crop_masks = [box_mask]
-        else:
-            crop_masks = []
+        box_mask = masker.create_static_box_mask(model_size, state_manager.get_item('face_mask_blur'), (0, 0, 0, 0))
+        crop_masks = [box_mask]
 
-        if 'occlusion' in mask_types:
+        if 'occlusion' in state_manager.get_item('face_mask_types'):
             occlusion_mask = masker.create_occlusion_mask(crop_vision_frame)
             combined_matrix = merge_matrix([extend_affine_matrix, cv2.invertAffineTransform(affine_matrix)])
             occlusion_mask = cv2.warpAffine(occlusion_mask, combined_matrix, model_size)

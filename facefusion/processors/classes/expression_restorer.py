@@ -19,7 +19,7 @@ from facefusion.program_helper import find_argument_group
 from facefusion.thread_helper import conditional_thread_semaphore, thread_semaphore
 from facefusion.typing import ApplyStateItem, Args, Face, QueuePayload, VisionFrame
 from facefusion.vision import get_video_frame, read_image, read_static_image, write_image
-from facefusion.workers.classes.face_masker import FaceMasker
+from facefusion.workers.classes.face_masker import FaceMasker, clear_yolo_model_cache
 
 
 def normalize_crop_frame(crop_vision_frame: VisionFrame) -> VisionFrame:
@@ -113,7 +113,7 @@ class ExpressionRestorer(BaseProcessor):
         reference_faces = inputs.get("reference_faces")
         source_vision_frame = inputs.get("source_vision_frame")
         target_vision_frame = inputs.get("target_vision_frame")
-        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]))
+        many_faces = sort_and_filter_faces(get_many_faces([target_vision_frame]), vision_frame=target_vision_frame)
 
         face_selector_mode = state_manager.get_item("face_selector_mode")
         if face_selector_mode == "many":
@@ -188,19 +188,30 @@ class ExpressionRestorer(BaseProcessor):
         target_crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
             temp_vision_frame, target_face.landmark_set.get("5/68"), model_template, model_size
         )
-        
-        # Use the combined mask function instead of creating individual masks
-        crop_mask = masker.create_combined_mask(
-            state_manager.get_item('face_mask_types'),
-            target_crop_vision_frame.shape[:2][::-1], 
-            state_manager.get_item('face_mask_blur'),
-            state_manager.get_item('face_mask_padding'),
-            state_manager.get_item('face_mask_regions'),
-            target_crop_vision_frame,
-            temp_vision_frame,
-            target_face.landmark_set.get('5/68'),
-            target_face
+        # Use auto-padding data if available
+        auto_padding_model = state_manager.get_item('auto_padding_model')
+        if auto_padding_model and auto_padding_model != "None":
+            # Auto-padding mode: use detected padding or reasonable defaults
+            if hasattr(target_face, 'auto_padding_data') and target_face.auto_padding_data['padding_needed']:
+                effective_padding = target_face.auto_padding_data['recommended_padding']
+            else:
+                # No objects detected, use default padding for auto-padding mode
+                effective_padding = state_manager.get_item('face_mask_padding') or (0, 0, 0, 0)
+        else:
+            # Manual padding mode: use default padding
+            effective_padding = (0, 0, 0, 0)
+            
+        box_mask = masker.create_static_box_mask(
+            target_crop_vision_frame.shape[:2][::-1], state_manager.get_item("face_mask_blur"), effective_padding
         )
+        crop_masks = [box_mask]
+
+        if "occlusion" in state_manager.get_item("face_mask_types"):
+            occlusion_mask = masker.create_occlusion_mask(target_crop_vision_frame)
+            crop_masks.append(occlusion_mask)
+            
+# Custom masks have been replaced by auto-padding system
+        # The auto-padding detection is now handled in sort_and_filter_faces
 
         source_crop_vision_frame = self.prepare_crop_frame(source_crop_vision_frame)
         target_crop_vision_frame = self.prepare_crop_frame(target_crop_vision_frame)
@@ -208,6 +219,7 @@ class ExpressionRestorer(BaseProcessor):
             source_crop_vision_frame, target_crop_vision_frame, expression_restorer_factor
         )
         target_crop_vision_frame = normalize_crop_frame(target_crop_vision_frame)
+        crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
         temp_vision_frame = paste_back(temp_vision_frame, target_crop_vision_frame, crop_mask, affine_matrix)
         return temp_vision_frame
 
