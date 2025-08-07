@@ -256,43 +256,22 @@ class StyleChanger(BaseProcessor):
     REFERENCE_PTS = get_reference_facial_points(default_square=True)
     BOX_WIDTH = 288
     STYLE_MODEL_DIR = resolve_relative_path('../.assets/models/style')
-    GLOBAL_MASK = None  # Initialize lazily to avoid import-time errors
+    GLOBAL_MASK = cv2.imread(os.path.join(STYLE_MODEL_DIR, 'alpha.jpg'))
+    GLOBAL_MASK = cv2.resize(GLOBAL_MASK, (BOX_WIDTH, BOX_WIDTH), interpolation=cv2.INTER_AREA)
+    GLOBAL_MASK = cv2.cvtColor(GLOBAL_MASK, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
     def __init__(self):
         super().__init__()
         self.reference_pts = get_reference_facial_points(default_square=True)
         self.box_width = 288
-        self._global_mask = None  # Lazy initialization
+        self.global_mask = self._initialize_global_mask()
         self.model_path = resolve_relative_path('../.assets/models/style')
-    
-    @property
-    def global_mask(self) -> np.ndarray:
-        """Lazy initialization of global mask to avoid import-time errors"""
-        if self._global_mask is None:
-            self._global_mask = self._initialize_global_mask()
-        return self._global_mask
 
     @staticmethod
     def _initialize_global_mask() -> np.ndarray:
         style_model_dir = resolve_relative_path('../.assets/models/style')
         mask_path = os.path.join(style_model_dir, 'alpha.jpg')
-        
-        # Check if the mask file exists
-        if not os.path.exists(mask_path):
-            # Create directory if it doesn't exist
-            os.makedirs(style_model_dir, exist_ok=True)
-            raise FileNotFoundError(f"Alpha mask file not found: {mask_path}. "
-                                  f"Please ensure alpha.jpg exists in {style_model_dir}")
-        
         mask = cv2.imread(mask_path)
-        if mask is None:
-            raise ValueError(f"Failed to load alpha mask from {mask_path}. "
-                           f"The file may be corrupted or not a valid image.")
-        
-        # Check if mask has valid dimensions
-        if mask.shape[0] == 0 or mask.shape[1] == 0:
-            raise ValueError(f"Alpha mask has invalid dimensions: {mask.shape}")
-            
         mask = cv2.resize(mask, (288, 288), interpolation=cv2.INTER_AREA)
         return cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
@@ -413,7 +392,7 @@ class StyleChanger(BaseProcessor):
                         trans_inv, (img_resized.shape[1], img_resized.shape[0]),
                         borderValue=(0, 0, 0)
                     )
-                    mask = self.global_mask
+                    mask = self.GLOBAL_MASK
                     mask_trans_inv = cv2.warpAffine(
                         mask,
                         trans_inv, (img_resized.shape[1], img_resized.shape[0]),
