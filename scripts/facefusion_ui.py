@@ -145,8 +145,6 @@ def load_facefusion():
 
 
 script_callbacks.on_ui_tabs(load_facefusion)
-script_callbacks.on_app_started(run_preloads)
-
 
 def update_source_faces(file_paths: List[str]) -> None:
     if not file_paths:

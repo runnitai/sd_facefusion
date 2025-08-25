@@ -1,50 +1,122 @@
-🌟 **SD FaceFusion, by RunDiffusion**
+🌟 SD FaceFusion for Automatic1111 (by RunDiffusion)
 ==========
 
-![image](https://github.com/runnitai/sd_facefusion/assets/1633844/bbfa6b69-c8db-4089-81df-048dd6fe89a5)
-
-> 🚀 Next generation face swapper and enhancer extension for Automatic1111, based on the original FaceFusion project.
+> Extension of the upstream FaceFusion project tailored for Automatic1111. Adds YOLO-driven auto-padding masks, extra processors, integrated tabs and postprocessing, and model/output paths aligned with Automatic1111.
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/facefusion/facefusion/ci.yml.svg?branch=master)](https://github.com/facefusion/facefusion/actions?query=workflow:ci)
-![License](https://img.shields.io/badge/license-MIT-brightgreen)
+Upstream project: [facefusion/facefusion](https://github.com/facefusion/facefusion)
 
 
-👀 **Preview**
--------
+👀 Preview
+--------
 
 <img width="1199" alt="image" src="https://github.com/runnitai/sd_facefusion/assets/1633844/7534bc81-1305-427e-b6e8-1b6e0617397c">
-🌐 For the most optimal cloud experience for Automatic, SD FaceFusion, and everything else, check out [Rundiffusion](https://rundiffusion.com/).
 
 
-🔥 **Features**
+🔥 What’s different from upstream
 --------
-- Job Queue to allow pre-staging multiple jobs and letting it run.
-- Multiple reference face selection for better face consistency.
-- Optional target video loading from URL or direct path. Works for Youtube (see below) and other video files where the type is directly detectable from the URL.
-- Automatic threading for optimal job performance regardless of GPU.
-- Auto-downloading of models, and integration with Automatic1111 for outputs and model storage.
-- Live job updates with preview images while processing.
+- **Automatic1111 integration**: Adds a dedicated "RD FaceFusion" tab and an optional postprocessing step in txt2img/img2img. Uses Automatic1111 `models` and output paths.
+- **YOLO Auto Padding (custom masking)**:
+  - Select any Ultralytics YOLO model to detect objects that intersect with or are near faces and automatically apply padding around the face crop.
+  - Works with `.pt` models placed in `models/adetailer` (preferred). If a mask is available, it’s used; otherwise bounding boxes are converted to masks. Configurable confidence and intersection threshold.
+  - Replaces the old "custom" mask type with a more robust, detection-driven workflow. Manual on/off markers are still available when Auto Padding is off.
+- **Additional/extended processors**: Ships face processors like `Face Swapper`, `Face Enhancer` (with smart enhance), `Expression Restorer` (LivePortrait-based options), `Face Editor`, `Face Debugger`, `Lip Syncer`, `Style Changer`, `Style Transfer`, `Frame Enhancer`, `Frame Colorizer` and more under `facefusion/processors/classes`.
+- **Enhanced face detection options**: Adds `yoloface` (default) and `yunet` in addition to upstream detectors.
+- **Job system and live previews**: Queue jobs, multi-step processing, and preview frames while processing.
+- **Model/download alignment**: Auto-downloads models into paths consistent with Automatic1111; leverages onnxruntime-gpu and caches YOLO models in-process for performance.
 
 
-
-🛠 **Installation**
-------------
-
-- Install from the URL for this repo. All models will be downloaded on first run.
-- For youtube downloading, you need to manually patch the pytube library in the venv to fix some age restricted error.
-  [Pytube Patch](https://github.com/pytube/pytube/pull/1790/files)
-
-⚠️ **Disclaimer**
-----------
-
-We acknowledge the unethical potential of FaceFusion and are resolutely dedicated to establishing safeguards against such misuse. This program has been engineered to abstain from processing inappropriate content such as nudity, graphic content, and sensitive material.
-
-It is important to note that we maintain a strong stance against any type of pornographic nature and do not collaborate with any websites promoting the unauthorized use of our software.
-
-Users who seek to engage in such activities will face consequences, including being banned from our community. We reserve the right to report developers on GitHub who distribute unlocked forks of our software at any time.
+🧩 Automatic1111 integration
+--------
+- Tab: Appears as "RD FaceFusion" with File/Live/Benchmark layouts.
+- Postprocessing: Optional checkbox to run FaceFusion after generation and swap/enhance using provided source faces.
+- Outputs: Written to Automatic1111 temp/output dirs; model paths resolve via `modules.paths_internal.models_path`.
 
 
-📚 **Documentation**
--------------
+🎯 YOLO Auto Padding (custom object-aware masking)
+--------
+- UI: In Masking options, select a model in "Auto Padding Model". When a model is selected:
+  - "Detection Confidence" (0–1) and "Intersection Threshold (px)" appear.
+  - Manual mask timing buttons are hidden (you can re-enable by setting model to "None").
+- Models: Place `.pt` files in `models/adetailer/`. The dropdown lists available files from there.
+- Behavior: The worker detects objects, filters by confidence, and checks intersection/proximity to each face. If intersecting/near, padding is applied to the crop. Processors (e.g., Swapper/Enhancer/Expression Restorer) consume the recommended padding automatically.
+- Notes:
+  - We cache YOLO models and suppress Ultralytics logs to keep the UI responsive.
+  - Legacy "custom mask" is deprecated in favor of Auto Padding.
 
-Read the [documentation](https://docs.facefusion.io) for a deep dive.
+
+🎨 Style processors
+--------
+- **Style Changer** (face-aware ONNX, per-face + background)
+  - Models: dual ONNX models per style (head/background) auto-downloaded to `extensions/sd_facefusion/facefusion/.assets/models/style/`.
+    - Available styles include: `anime`, `3d`, `handdrawn`, `sketch`, `artstyle`, `design`, `illustration`.
+  - Options: "Selected Style", "Style Target" (`source` or `target`), and "Skip Head" when applying to target.
+  - Behavior: detects faces, warps/crops the head region, stylizes head and/or background, and blends using an internal alpha mask.
+  - Performance: runs via onnxruntime; GPU providers recommended for speed.
+
+- **Style Transfer** (global neural style transfer, PyTorch)
+  - Model: `style_net-TIP-final.pth` auto-downloaded to `extensions/sd_facefusion/facefusion/.assets/models/style/`.
+  - Inputs: one or more style images (UI: provide style images; multiple are averaged by default). Works on images and video frames.
+  - Behavior: performs sequence-level global feature sharing for video (samples frames at intervals, precomputes norms) to keep style consistent across frames.
+  - Performance: CUDA recommended. CPU works but is slower.
+
+UI notes:
+- Enable the processors under "Processors". Style Changer options appear in the left panel; Style Transfer options appear near the Source panel (right column) with style image inputs.
+- `Style Transfer` is a non-face processor (applies to the whole frame). `Style Changer` is face-aware and participates in face masking options.
+
+
+🧠 Processors available (high level)
+--------
+- **Face Swapper**: Primary swapping module with optional Pixel Boost.
+- **Face Enhancer**: `gfpgan_1.4` etc., with Smart Enhance controls and minimum-size thresholds.
+- **Expression Restorer**: LivePortrait-based expression constraints/limits.
+- **Face Editor / Debugger**: Fine-grained attribute controls and visual debugging overlays.
+- **Lip Syncer**: Audio-driven lip movement.
+- **Style Changer / Style Transfer**, **Frame Enhancer / Frame Colorizer**.
+
+You can enable/disable processors and their options in the UI; arguments are also available via our program interface.
+
+
+🧭 Differences vs upstream at a glance
+--------
+- Integrated into Automatic1111 (UI tabs and postprocessing APIs) rather than a standalone app only.
+- YOLO-driven Auto Padding pipeline replaces upstream custom mask type and is wired into face selection and processors.
+- Uses Automatic1111 model/output paths and supports YOLO models from `models/adetailer`.
+- Expanded detectors (`yoloface`, `yunet`) and default detector set to `yoloface`.
+- Caching and runtime handling for Ultralytics models; quieter logs; onnxruntime-gpu ensured.
+- Some upstream CLI commands still exist, but the typical flow is via the Automatic1111 UI.
+
+Upstream reference: [facefusion/facefusion](https://github.com/facefusion/facefusion)
+
+
+🛠 Installation
+--------
+- Install this extension by URL in Automatic1111 like any other extension.
+- First run auto-installs requirements and onnxruntime-gpu; torchaudio is installed to match your Torch/CUDA build.
+- For YouTube URLs, this fork uses `yt-dlp` (no manual `pytube` patching required).
+
+
+📁 Model paths
+--------
+- FaceFusion models are auto-downloaded on demand to the extension’s model folders.
+- YOLO models for Auto Padding: drop `.pt` files into `models/adetailer/`.
+
+
+⚙️ Configuration tips
+--------
+- `face_detector_model`: default `yoloface`.
+- Auto Padding state keys: `auto_padding_model`, `auto_padding_confidence` (default 0.5), `auto_padding_intersection_threshold` (default 50 px).
+- Manual mask timing remains available when Auto Padding is disabled (Enable/Disable/Clear markers per frame).
+
+
+⚠️ Disclaimer
+--------
+We acknowledge the unethical potential of face manipulation technology and are dedicated to establishing safeguards against misuse. This software abstains from processing inappropriate content such as nudity, graphic content, and other sensitive material.
+
+We do not collaborate with any websites promoting the unauthorized use of this software. Users seeking to engage in such activities may be banned from our community.
+
+
+📚 Documentation
+--------
+- Upstream docs: `https://docs.facefusion.io`  
+- This fork’s UI is self-documenting via tooltips and labels; key differences are summarized above.
